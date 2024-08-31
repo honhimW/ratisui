@@ -1,4 +1,4 @@
-use crate::app::{Listenable, Renderable, TabImplementation};
+use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::highlight_value::{HighlightKind, HighlightProcessor, HighlightText};
 use crate::redis_opt::{redis_operations, redis_opt};
 use crate::tabs::explorer::CurrentScreen::Keys;
@@ -16,7 +16,7 @@ use ratatui::Frame;
 use redis::{Cmd, Commands, ConnectionLike, Iter, RedisResult, ScanOptions, Value};
 use std::collections::HashMap;
 use std::ops::Not;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
@@ -28,13 +28,12 @@ pub struct ExplorerTab {
     show_filter: bool,
     filter_mod: FilterMod,
     scan_size: u16,
-    filter_text_area: TextArea<'static>,
+    filter_text_area: Arc<std::sync::RwLock<TextArea<'static>>>,
     scan_keys_result: Vec<RedisKey>,
-    tree_state: TreeState<String>,
+    // tree_state: TreeState<String>,
     tree_state_arc: Arc<RwLock<TreeState<String>>>,
     tree_items: Vec<TreeItem<'static, String>>,
     redis_separator: String,
-    mounted: bool,
     selected_key: Option<RedisKey>,
     select_string_value: Option<String>,
 }
@@ -158,18 +157,18 @@ impl RedisKey {
 
 impl ExplorerTab {
     pub fn new() -> Self {
+        let state = TreeState::default();
+        let arc = Arc::new(RwLock::new(state));
         Self {
             current_screen: CurrentScreen::Keys,
             show_filter: false,
             filter_mod: FilterMod::Fuzzy,
             scan_size: 2_000,
-            filter_text_area: TextArea::default(),
+            filter_text_area: Arc::new(std::sync::RwLock::new(TextArea::default())),
             scan_keys_result: vec![],
-            tree_state: TreeState::default(),
-            tree_state_arc: Arc::new(RwLock::new(TreeState::default())),
+            tree_state_arc: arc,
             tree_items: vec![],
             redis_separator: ":".to_string(),
-            mounted: false,
             selected_key: None,
             select_string_value: None,
         }
@@ -185,18 +184,18 @@ impl ExplorerTab {
         color
     }
 
-    fn render_keys_block(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        self.render_tree(frame, area);
+    fn render_keys_block(&self, frame: &mut Frame, area: Rect) -> Result<()> {
+        self.render_tree(frame, area)?;
         if self.show_filter {
             let vertical = Layout::vertical([Min(0), Length(3), Length(1)]).split(area);
             let horizontal = Layout::horizontal([Length(1), Min(0), Length(1)]).split(vertical[1]);
-            self.render_filter_input(frame, horizontal[1]);
+            self.render_filter_input(frame, horizontal[1])?;
         }
 
         Ok(())
     }
 
-    fn render_values_block(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+    fn render_values_block(&self, frame: &mut Frame, area: Rect) -> Result<()> {
         let vertical = Layout::vertical([Length(5), Min(0)]).split(area);
         self.render_key_information(frame, vertical[0])?;
         self.render_value_view(frame, vertical[1])?;
@@ -204,7 +203,7 @@ impl ExplorerTab {
         Ok(())
     }
 
-    fn render_key_information(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+    fn render_key_information(&self, frame: &mut Frame, area: Rect) -> Result<()> {
         let values_block = Block::default().title("Info")
             .padding(Padding::horizontal(1))
             .borders(Borders::ALL)
@@ -263,7 +262,7 @@ impl ExplorerTab {
         Ok(())
     }
 
-    fn render_value_view(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+    fn render_value_view(&self, frame: &mut Frame, area: Rect) -> Result<()> {
         let values_block = Block::default().title("Values")
             .padding(Padding::horizontal(1))
             .borders(Borders::ALL)
@@ -276,21 +275,24 @@ impl ExplorerTab {
         Ok(())
     }
 
-    fn render_filter_input(&mut self, frame: &mut Frame, area: Rect) {
-        self.filter_text_area.set_cursor_line_style(Style::default());
+    fn render_filter_input(&self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let arc = Arc::clone(&self.filter_text_area);
+        let mut filter_text_area = arc.write().unwrap();
+        filter_text_area.set_cursor_line_style(Style::default());
         match self.filter_mod {
-            FilterMod::Fuzzy => { self.filter_text_area.set_placeholder_text(" Fuzzy "); }
-            FilterMod::Pattern => { self.filter_text_area.set_placeholder_text(" Pattern "); }
+            FilterMod::Fuzzy => { filter_text_area.set_placeholder_text(" Fuzzy "); }
+            FilterMod::Pattern => { filter_text_area.set_placeholder_text(" Pattern "); }
         }
-        self.filter_text_area.set_block(
+        filter_text_area.set_block(
             Block::bordered()
                 .border_style(self.border_color(CurrentScreen::Keys))
                 .title(format!("Scan Keys ({})", self.scan_keys_result.len()))
         );
-        frame.render_widget(&self.filter_text_area, area);
+        frame.render_widget(&filter_text_area.clone(), area);
+        Ok(())
     }
 
-    fn render_tree(&mut self, frame: &mut Frame, area: Rect) {
+    fn render_tree(&self, frame: &mut Frame, area: Rect) -> Result<()> {
         let tree = Tree::new(&self.tree_items)
             .expect("")
             .block(
@@ -312,7 +314,12 @@ impl ExplorerTab {
             )
             .node_no_children_symbol("- ")
             .highlight_symbol("");
-        frame.render_stateful_widget(tree, area, &mut self.tree_state);
+        tokio::task::block_in_place(|| {
+            let arc = Arc::clone(&self.tree_state_arc);
+            let mut guard = arc.blocking_write();
+            frame.render_stateful_widget(tree, area, &mut guard);
+        });
+        Ok(())
     }
 
     fn toggle_screen(&mut self, screen: CurrentScreen) {
@@ -351,7 +358,7 @@ impl ExplorerTab {
         Ok(())
     }
 
-    fn build_tree_items(&mut self, filter_text: &String) -> Result<()> {
+    async fn build_tree_items(&mut self, filter_text: &String) -> Result<()> {
         match self.filter_mod {
             FilterMod::Fuzzy => {
                 let mut matcher = filter_text.clone();
@@ -393,32 +400,35 @@ impl ExplorerTab {
                         }
                     }
                 }
-                if contains {
-                    if let Some(filter_position) = redis_key.name.rfind(filter_text) {
-                        let split = redis_key.name.split(":");
-                        let vec: Vec<String> = split.map(|x| x.to_string()).collect();
-                        let mut i = 0;
-                        let last_index = filter_position + filter_text.len();
-                        let mut open_vec: Vec<String> = vec![];
-                        for segment in vec {
-                            i += &segment.len();
-                            i += 1; // ':'
-                            if i < last_index {
-                                open_vec.push(segment);
-                                let mut open = vec![];
-                                for j in 1..open_vec.len() + 1 {
-                                    let string = open_vec[0..j].join(":");
-                                    open.push(string);
-                                }
-                                self.tree_state.open(open);
-                            } else {
-                                break;
+
+                contains
+            });
+            for redis_key in self.scan_keys_result.iter() {
+                if let Some(filter_position) = redis_key.name.rfind(filter_text) {
+                    let split = redis_key.name.split(":");
+                    let vec: Vec<String> = split.map(|x| x.to_string()).collect();
+                    let mut i = 0;
+                    let last_index = filter_position + filter_text.len();
+                    let mut open_vec: Vec<String> = vec![];
+                    for segment in vec {
+                        i += &segment.len();
+                        i += 1; // ':'
+                        if i < last_index {
+                            open_vec.push(segment);
+                            let mut open = vec![];
+                            for j in 1..open_vec.len() + 1 {
+                                let string = open_vec[0..j].join(":");
+                                open.push(string);
                             }
+                            let arc = Arc::clone(&self.tree_state_arc);
+                            let mut guard = arc.write().await;
+                            guard.open(open);
+                        } else {
+                            break;
                         }
                     }
                 }
-                contains
-            });
+            }
         }
         let mut root = TreeNode::new();
         for data in &self.scan_keys_result {
@@ -430,7 +440,11 @@ impl ExplorerTab {
     }
 
     fn get_filter_text(&self) -> Option<String> {
-        self.filter_text_area.lines().get(0).cloned()
+        if let Ok(filter_text_area) = self.filter_text_area.read() {
+            filter_text_area.lines().get(0).cloned()
+        } else {
+            None
+        }
     }
 
     async fn handle_filter_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
@@ -444,7 +458,7 @@ impl ExplorerTab {
             KeyEvent { code: KeyCode::Enter, .. } => {
                 // TODO perform scan keys, or scan after input changed, enter will refresh keys
                 if let Some(first_line) = self.get_filter_text() {
-                    self.build_tree_items(&first_line)?;
+                    self.build_tree_items(&first_line).await?;
                 }
             }
             KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
@@ -455,14 +469,16 @@ impl ExplorerTab {
                 }
             }
             input => {
-                self.filter_text_area.input(input);
+                let arc = Arc::clone(&self.filter_text_area);
+                let mut guard = arc.write().unwrap();
+                guard.input(input);
             }
         }
         Ok(true)
     }
 
     async fn do_get_value(&mut self) -> Result<()> {
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        // tokio::time::sleep(Duration::from_millis(300)).await;
         if let Some(redis_key) = &self.selected_key {
             let key_name = redis_key.name.clone();
             let value = redis_opt(|op| {
@@ -546,28 +562,32 @@ impl ExplorerTab {
     }
 
     async fn handle_tree_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        let arc = Arc::clone(&self.tree_state_arc);
+        let mut tree_state = arc.write().await;
         if key_event.modifiers == KeyModifiers::NONE {
             let accepted = match key_event.code {
-                KeyCode::Left | KeyCode::Char('h') => self.tree_state.key_left(),
+                KeyCode::Left | KeyCode::Char('h') => tree_state.key_left(),
                 KeyCode::Right | KeyCode::Char('l') => {
                     if let Some(redis_key) = &self.selected_key {
                         self.toggle_screen(CurrentScreen::Values);
                         true
                     } else {
-                        self.tree_state.key_right()
+                        tree_state.key_right()
                     }
                 }
-                KeyCode::Down | KeyCode::Char('j') => self.tree_state.key_down(),
-                KeyCode::Up | KeyCode::Char('k') => self.tree_state.key_up(),
-                KeyCode::Esc => self.tree_state.select(Vec::new()),
-                KeyCode::Home => self.tree_state.select_first(),
-                KeyCode::End => self.tree_state.select_last(),
-                KeyCode::PageDown => self.tree_state.scroll_down(3),
-                KeyCode::PageUp => self.tree_state.scroll_up(3),
+                KeyCode::Down | KeyCode::Char('j') => tree_state.key_down(),
+                KeyCode::Up | KeyCode::Char('k') => tree_state.key_up(),
+                KeyCode::Esc => tree_state.select(Vec::new()),
+                KeyCode::Home => tree_state.select_first(),
+                KeyCode::End => tree_state.select_last(),
+                KeyCode::PageDown => tree_state.scroll_down(3),
+                KeyCode::PageUp => tree_state.scroll_up(3),
                 _ => false,
             };
 
-            self.update_selected_key().await?;
+            let vec = tree_state.selected().to_vec();
+            drop(tree_state);
+            self.update_selected_key(vec).await?;
             self.do_get_value().await?;
 
             return Ok(accepted);
@@ -575,8 +595,7 @@ impl ExplorerTab {
         Ok(false)
     }
 
-    async fn update_selected_key(&mut self) -> Result<()> {
-        let id_list = self.tree_state.selected();
+    async fn update_selected_key(&mut self, id_list: Vec<String>) -> Result<()> {
         let key_id = id_list.last();
         if let Some(id) = key_id {
             let option = self.scan_keys_result.iter().find(|redis_key| {
@@ -647,11 +666,7 @@ impl TabImplementation for ExplorerTab {
 }
 
 impl Renderable for ExplorerTab {
-    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        if !self.mounted {
-            self.build_tree_items(&String::new())?;
-            self.mounted = true;
-        }
+    fn render_frame(&self, frame: &mut Frame, rect: Rect) -> Result<()> {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
@@ -697,12 +712,12 @@ impl Listenable for ExplorerTab {
 
         if CurrentScreen::Values == self.current_screen {
             if KeyCode::Left == key_event.code {
-                self.toggle_screen(CurrentScreen::Keys);
+                self.toggle_screen(Keys);
                 return Ok(true);
             }
         }
 
-        if CurrentScreen::Keys == self.current_screen {
+        if Keys == self.current_screen {
             if key_event.modifiers == KeyModifiers::NONE {
                 if self.handle_tree_key_event(key_event).await? {
                     return Ok(true);
@@ -729,5 +744,12 @@ impl Listenable for ExplorerTab {
             _ => {}
         }
         Ok(false)
+    }
+
+    async fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
+        if _app_event == AppEvent::Init {
+            self.build_tree_items(&String::new()).await?;
+        }
+        Ok(())
     }
 }

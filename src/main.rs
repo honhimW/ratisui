@@ -9,13 +9,14 @@ mod tui;
 mod tabs;
 mod components;
 
+use std::cell::Cell;
 use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use log::debug;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use tokio::join;
 use tokio::sync::RwLock;
-use crate::app::{App, AppState, Listenable, Renderable};
+use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
 use crate::configuration::{load_app_configuration, load_database_configuration};
 use crate::input::InputEvent;
 use crate::redis_opt::{redis_operations, switch_client};
@@ -86,11 +87,11 @@ async fn render(app_arc: Arc<RwLock<App>>) -> Result<()> {
         if !app_read_guard.health() {
             break;
         }
-        let context_write_guard = app_read_guard.context.read().await;
+        let context_read_guard = app_read_guard.context.read().await;
         let render_result = terminal.draw(|frame| {
-            let _ = context_write_guard.render_frame(frame, frame.area());
+            let _ = context_read_guard.render_frame(frame, frame.area());
         });
-        drop(context_write_guard);
+        drop(context_read_guard);
         drop(app_read_guard);
         if let Err(e) = render_result {
             let mut app_write_guard = app_arc.write().await;
@@ -107,6 +108,15 @@ async fn handle_events(app_arc: Arc<RwLock<App>>) -> Result<()> {
         let app_read_guard = app_arc.read().await;
         if !app_read_guard.health() {
             break;
+        }
+        if app_read_guard.state == AppState::Preparing {
+            let mut context_write_guard = app_read_guard.context.write().await;
+            context_write_guard.on_app_event(AppEvent::Init).await?;
+            drop(context_write_guard);
+            drop(app_read_guard);
+            let mut app_write_guard = app_arc.write().await;
+            app_write_guard.state = AppState::Running;
+            continue;
         }
         let event_result = app_read_guard.input.receiver().try_recv();
         drop(app_read_guard);

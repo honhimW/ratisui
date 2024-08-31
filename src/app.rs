@@ -26,6 +26,13 @@ pub enum AppState {
     Closed,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AppEvent {
+    Init,
+    Reset,
+    Destroy,
+}
+
 #[async_trait]
 pub trait TabImplementation : Renderable + Listenable + Send {
     fn palette(&self) -> tailwind::Palette;
@@ -37,10 +44,14 @@ pub trait Listenable {
     async fn handle_key_event(&mut self, _key_event: KeyEvent) -> Result<bool> {
         Ok(false)
     }
+
+    async fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
+        Ok(())
+    }
 }
 
 pub trait Renderable {
-    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()>;
+    fn render_frame(&self, frame: &mut Frame, rect: Rect) -> Result<()>;
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
         vec![]

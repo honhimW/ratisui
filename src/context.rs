@@ -1,4 +1,5 @@
-use crate::app::{Listenable, Renderable, TabImplementation};
+use std::sync::Arc;
+use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use crate::tabs::explorer::ExplorerTab;
 use crate::tabs::profiler::ProfilerTab;
 use anyhow::Result;
@@ -12,6 +13,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
 use ratatui::{symbols, Frame};
 use ratatui::style::palette::tailwind;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
+use tokio::sync::RwLock;
 
 pub struct Context {
     current_tab: CurrentTab,
@@ -102,7 +104,7 @@ impl Context {
         Ok(())
     }
 
-    fn render_selected_tab(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+    fn render_selected_tab(&self, frame: &mut Frame, area: Rect) -> Result<()> {
         match self.current_tab {
             CurrentTab::Explorer => {
                 self.explorer_tab.render_frame(frame, area)
@@ -129,7 +131,7 @@ impl Context {
 }
 
 impl Renderable for Context {
-    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()>
+    fn render_frame(&self, frame: &mut Frame, rect: Rect) -> Result<()>
     where
         Self: Sized,
     {
@@ -178,5 +180,11 @@ impl Listenable for Context {
             _ => {}
         }
         Ok(true)
+    }
+
+    async fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
+        self.explorer_tab.on_app_event(app_event.clone()).await?;
+        self.profiler_tab.on_app_event(app_event.clone()).await?;
+        Ok(())
     }
 }
