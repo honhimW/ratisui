@@ -2,7 +2,7 @@ use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::highlight_value::{HighlightKind, HighlightProcessor, HighlightText};
 use crate::redis_opt::{redis_operations, redis_opt};
 use crate::tabs::explorer::CurrentScreen::Keys;
-use anyhow::Result;
+use anyhow::{Error, Result};
 use async_trait::async_trait;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
@@ -18,24 +18,38 @@ use std::collections::HashMap;
 use std::ops::Not;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
+use uuid::{uuid, Uuid};
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
     show_filter: bool,
     filter_mod: FilterMod,
     scan_size: u16,
-    filter_text_area: Arc<std::sync::RwLock<TextArea<'static>>>,
+    filter_text_area: TextArea<'static>,
     scan_keys_result: Vec<RedisKey>,
-    // tree_state: TreeState<String>,
-    tree_state_arc: Arc<RwLock<TreeState<String>>>,
+    tree_state: TreeState<String>,
     tree_items: Vec<TreeItem<'static, String>>,
     redis_separator: String,
     selected_key: Option<RedisKey>,
     select_string_value: Option<String>,
+    data_sender: Sender<Data>,
+    data_receiver: Receiver<Data>,
+}
+
+#[derive(Default, Clone)]
+struct Data {
+    key_name: String,
+    scan_keys_result: (bool, Vec<RedisKey>),
+    select_string_value: (bool, Option<String>),
+    key_type: (bool, Option<String>),
+    key_size: (bool, Option<usize>),
+    length: (bool, Option<usize>),
+    ttl: (bool, Option<u64>),
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -157,20 +171,46 @@ impl RedisKey {
 
 impl ExplorerTab {
     pub fn new() -> Self {
-        let state = TreeState::default();
-        let arc = Arc::new(RwLock::new(state));
+        let (tx, rx) = unbounded();
         Self {
-            current_screen: CurrentScreen::Keys,
+            current_screen: Keys,
             show_filter: false,
             filter_mod: FilterMod::Fuzzy,
             scan_size: 2_000,
-            filter_text_area: Arc::new(std::sync::RwLock::new(TextArea::default())),
+            filter_text_area: TextArea::default(),
             scan_keys_result: vec![],
-            tree_state_arc: arc,
+            tree_state: Default::default(),
             tree_items: vec![],
             redis_separator: ":".to_string(),
             selected_key: None,
             select_string_value: None,
+            data_sender: tx,
+            data_receiver: rx,
+        }
+    }
+
+    fn update_data(&mut self, data: Data) {
+        if let Some(redis_key) = &mut self.selected_key {
+            if redis_key.name == data.key_name {
+                if data.scan_keys_result.0 {
+                    self.scan_keys_result = data.scan_keys_result.1;
+                }
+                if data.key_type.0 {
+                    redis_key.key_type = data.key_type.1.unwrap_or("unknown".to_string());
+                }
+                if data.key_size.0 {
+                    redis_key.key_size = data.key_size.1;
+                }
+                if data.length.0 {
+                    redis_key.length = data.length.1;
+                }
+                if data.ttl.0 {
+                    redis_key.ttl = data.ttl.1;
+                }
+                if data.select_string_value.0 {
+                    self.select_string_value = data.select_string_value.1;
+                }
+            }
         }
     }
 
@@ -184,7 +224,7 @@ impl ExplorerTab {
         color
     }
 
-    fn render_keys_block(&self, frame: &mut Frame, area: Rect) -> Result<()> {
+    fn render_keys_block(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         self.render_tree(frame, area)?;
         if self.show_filter {
             let vertical = Layout::vertical([Min(0), Length(3), Length(1)]).split(area);
@@ -232,7 +272,8 @@ impl ExplorerTab {
             let key_size_span = Span::raw(format!("Key Size: {:?} B", redis_key.key_size.unwrap_or(0)));
             let length_span = Span::raw(format!("  Length: {:?}", redis_key.length.unwrap_or(0)));
             let ttl_span = if redis_key.ttl.is_some() {
-                Span::raw(format!("  TTL: {:?}", Duration::from_secs(redis_key.ttl.unwrap_or(0))))
+                let duration = chronoutil::RelativeDuration::seconds(redis_key.ttl.unwrap_or(0) as i64).format_to_iso8601();
+                Span::raw(format!("  TTL: {}", duration))
             } else {
                 Span::raw("  TTL: No Limit".to_string())
             };
@@ -275,24 +316,22 @@ impl ExplorerTab {
         Ok(())
     }
 
-    fn render_filter_input(&self, frame: &mut Frame, area: Rect) -> Result<()> {
-        let arc = Arc::clone(&self.filter_text_area);
-        let mut filter_text_area = arc.write().unwrap();
-        filter_text_area.set_cursor_line_style(Style::default());
+    fn render_filter_input(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        self.filter_text_area.set_cursor_line_style(Style::default());
         match self.filter_mod {
-            FilterMod::Fuzzy => { filter_text_area.set_placeholder_text(" Fuzzy "); }
-            FilterMod::Pattern => { filter_text_area.set_placeholder_text(" Pattern "); }
+            FilterMod::Fuzzy => { self.filter_text_area.set_placeholder_text(" Fuzzy "); }
+            FilterMod::Pattern => { self.filter_text_area.set_placeholder_text(" Pattern "); }
         }
-        filter_text_area.set_block(
+        self.filter_text_area.set_block(
             Block::bordered()
                 .border_style(self.border_color(CurrentScreen::Keys))
                 .title(format!("Scan Keys ({})", self.scan_keys_result.len()))
         );
-        frame.render_widget(&filter_text_area.clone(), area);
+        frame.render_widget(&self.filter_text_area.clone(), area);
         Ok(())
     }
 
-    fn render_tree(&self, frame: &mut Frame, area: Rect) -> Result<()> {
+    fn render_tree(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let tree = Tree::new(&self.tree_items)
             .expect("")
             .block(
@@ -315,9 +354,7 @@ impl ExplorerTab {
             .node_no_children_symbol("- ")
             .highlight_symbol("");
         tokio::task::block_in_place(|| {
-            let arc = Arc::clone(&self.tree_state_arc);
-            let mut guard = arc.blocking_write();
-            frame.render_stateful_widget(tree, area, &mut guard);
+            frame.render_stateful_widget(tree, area, &mut self.tree_state);
         });
         Ok(())
     }
@@ -358,7 +395,7 @@ impl ExplorerTab {
         Ok(())
     }
 
-    async fn build_tree_items(&mut self, filter_text: &String) -> Result<()> {
+    fn build_tree_items(&mut self, filter_text: &String) -> Result<()> {
         match self.filter_mod {
             FilterMod::Fuzzy => {
                 let mut matcher = filter_text.clone();
@@ -420,9 +457,7 @@ impl ExplorerTab {
                                 let string = open_vec[0..j].join(":");
                                 open.push(string);
                             }
-                            let arc = Arc::clone(&self.tree_state_arc);
-                            let mut guard = arc.write().await;
-                            guard.open(open);
+                            self.tree_state.open(open);
                         } else {
                             break;
                         }
@@ -440,14 +475,10 @@ impl ExplorerTab {
     }
 
     fn get_filter_text(&self) -> Option<String> {
-        if let Ok(filter_text_area) = self.filter_text_area.read() {
-            filter_text_area.lines().get(0).cloned()
-        } else {
-            None
-        }
+        self.filter_text_area.lines().get(0).cloned()
     }
 
-    async fn handle_filter_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+    fn handle_filter_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         if key_event.kind != KeyEventKind::Press {
             return Ok(true);
         }
@@ -458,7 +489,7 @@ impl ExplorerTab {
             KeyEvent { code: KeyCode::Enter, .. } => {
                 // TODO perform scan keys, or scan after input changed, enter will refresh keys
                 if let Some(first_line) = self.get_filter_text() {
-                    self.build_tree_items(&first_line).await?;
+                    self.build_tree_items(&first_line)?;
                 }
             }
             KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
@@ -469,43 +500,10 @@ impl ExplorerTab {
                 }
             }
             input => {
-                let arc = Arc::clone(&self.filter_text_area);
-                let mut guard = arc.write().unwrap();
-                guard.input(input);
+                self.filter_text_area.input(input);
             }
         }
         Ok(true)
-    }
-
-    async fn do_get_value(&mut self) -> Result<()> {
-        // tokio::time::sleep(Duration::from_millis(300)).await;
-        if let Some(redis_key) = &self.selected_key {
-            let key_name = redis_key.name.clone();
-            let value = redis_opt(|op| {
-                let mut con = op.get_connection()?;
-                if redis_key.key_type.eq_ignore_ascii_case("string") {
-                    let bytes: Vec<u8> = con.get(&key_name)?;
-                    return if let Ok(string) = String::from_utf8(bytes.clone()) {
-                        Ok(string)
-                    } else {
-                        Ok(bytes.iter().map(|&b| {
-                            if b.is_ascii() {
-                                (b as char).to_string()
-                            } else {
-                                format!("\\x{:02x}", b)
-                            }
-                        }).collect::<String>())
-                    };
-                }
-                Ok("".to_string())
-            });
-            if let Ok(s) = value {
-                self.select_string_value = Some(s);
-            } else {
-                self.select_string_value = None;
-            }
-        }
-        Ok(())
     }
 
     fn get_value(&self) -> Result<Text> {
@@ -561,95 +559,195 @@ impl ExplorerTab {
         Ok(text)
     }
 
-    async fn handle_tree_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
-        let arc = Arc::clone(&self.tree_state_arc);
-        let mut tree_state = arc.write().await;
+    fn handle_tree_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         if key_event.modifiers == KeyModifiers::NONE {
+            let current_selected_key = self.selected_key.clone().map(|current| { current.name });
             let accepted = match key_event.code {
-                KeyCode::Left | KeyCode::Char('h') => tree_state.key_left(),
+                KeyCode::Left | KeyCode::Char('h') => self.tree_state.key_left(),
                 KeyCode::Right | KeyCode::Char('l') => {
-                    if let Some(redis_key) = &self.selected_key {
+                    if self.selected_key.is_some() {
                         self.toggle_screen(CurrentScreen::Values);
                         true
                     } else {
-                        tree_state.key_right()
+                        self.tree_state.key_right()
                     }
                 }
-                KeyCode::Down | KeyCode::Char('j') => tree_state.key_down(),
-                KeyCode::Up | KeyCode::Char('k') => tree_state.key_up(),
-                KeyCode::Esc => tree_state.select(Vec::new()),
-                KeyCode::Home => tree_state.select_first(),
-                KeyCode::End => tree_state.select_last(),
-                KeyCode::PageDown => tree_state.scroll_down(3),
-                KeyCode::PageUp => tree_state.scroll_up(3),
+                KeyCode::Down | KeyCode::Char('j') => self.tree_state.key_down(),
+                KeyCode::Up | KeyCode::Char('k') => self.tree_state.key_up(),
+                KeyCode::Esc => self.tree_state.select(Vec::new()),
+                KeyCode::Home => self.tree_state.select_first(),
+                KeyCode::End => self.tree_state.select_last(),
+                KeyCode::PageDown => self.tree_state.scroll_down(3),
+                KeyCode::PageUp => self.tree_state.scroll_up(3),
                 _ => false,
             };
 
-            let vec = tree_state.selected().to_vec();
-            drop(tree_state);
-            self.update_selected_key(vec).await?;
-            self.do_get_value().await?;
+            if accepted {
+                let vec = self.tree_state.selected().to_vec();
+                let changed_selected_key = vec.last().cloned();
+                if changed_selected_key != current_selected_key {
+                    if let Some(id) = changed_selected_key {
+                        let option = self.scan_keys_result.iter().find(|redis_key| {
+                            id.eq(&redis_key.name)
+                        }).cloned();
+                        self.selected_key = option;
+                        self.select_string_value = None;
+                        if self.selected_key.is_some() {
+                            let sender = self.data_sender.clone();
+                            tokio::spawn(async move {
+                                let data = Self::do_get_key_info(id.clone()).await?;
+                                sender.send(data.clone())?;
+                                if let Some(key_type) = data.key_type.1 {
+                                    let data = Self::do_get_value(id.clone(), key_type).await?;
+                                    sender.send(data)?;
+                                }
+                                Ok::<(), Error>(())
+                            });
+                        }
+                    }
+                }
+            }
 
             return Ok(accepted);
         }
         Ok(false)
     }
 
-    async fn update_selected_key(&mut self, id_list: Vec<String>) -> Result<()> {
-        let key_id = id_list.last();
-        if let Some(id) = key_id {
-            let option = self.scan_keys_result.iter().find(|redis_key| {
-                id.eq(&redis_key.name)
-            }).cloned();
-            if let Some(mut redis_key) = option {
-                let key_type = redis_opt(|op| {
-                    let mut con = op.get_connection()?;
-                    let key_type: String = con.key_type(&redis_key.name)?;
-                    Ok(key_type)
-                });
-                if let Ok(key_type) = key_type {
-                    redis_key.key_type = key_type;
-                }
-                let key_size = redis_opt(|op| {
-                    let mut con = op.get_connection()?;
-                    let value = con.req_command(&Cmd::new().arg("MEMORY").arg("USAGE").arg(&redis_key.name).arg("SAMPLES").arg("0"))?;
-                    if let Value::Int(int) = value {
-                        let key_size = int as usize;
-                        Ok(key_size)
-                    } else {
-                        Ok(0)
-                    }
-                });
-                if let Ok(key_size) = key_size {
-                    redis_key.key_size = Some(key_size);
-                }
-                let length = redis_opt(|op| {
-                    let mut con = op.get_connection()?;
-                    let length: usize = con.strlen(&redis_key.name)?;
-                    Ok(length)
-                });
-                if let Ok(length) = length {
-                    redis_key.length = Some(length);
-                }
-                let ttl = redis_opt(|op| {
-                    let mut con = op.get_connection()?;
-                    let ttl: i64 = con.ttl(&redis_key.name)?;
-                    Ok(ttl)
-                });
-                if let Ok(ttl) = ttl {
-                    if ttl.is_positive() {
-                        redis_key.ttl = Some(ttl as u64);
-                    } else {
-                        redis_key.ttl = None;
-                    }
-                }
-                self.selected_key = Some(redis_key);
+    async fn do_get_key_info(key_name: String) -> Result<Data> {
+        let mut data = Data::default();
+        data.key_name = key_name.clone();
+        let key_type = redis_opt(|op| {
+            let mut con = op.get_connection()?;
+            let key_type: String = con.key_type(&key_name)?;
+            Ok(key_type)
+        });
+        if let Ok(key_type) = key_type {
+            data.key_type = (true, Some(key_type));
+        }
+        let key_size = redis_opt(|op| {
+            let mut con = op.get_connection()?;
+            let value = con.req_command(&Cmd::new().arg("MEMORY").arg("USAGE").arg(&key_name).arg("SAMPLES").arg("0"))?;
+            if let Value::Int(int) = value {
+                let key_size = int as usize;
+                Ok(key_size)
             } else {
-                self.selected_key = None;
+                Ok(0)
+            }
+        });
+        if let Ok(key_size) = key_size {
+            data.key_size = (true, Some(key_size));
+        }
+        let length = redis_opt(|op| {
+            let mut con = op.get_connection()?;
+            let length: usize = con.strlen(&key_name)?;
+            Ok(length)
+        });
+        if let Ok(length) = length {
+            data.length = (true, Some(length));
+        }
+        let ttl = redis_opt(|op| {
+            let mut con = op.get_connection()?;
+            let ttl: i64 = con.ttl(&key_name)?;
+            Ok(ttl)
+        });
+        if let Ok(ttl) = ttl {
+            if ttl.is_positive() {
+                data.ttl = (true, Some(ttl as u64));
+            } else {
+                data.ttl = (true, None);
             }
         }
-        Ok(())
+        Ok(data)
     }
+
+    async fn do_get_value(key_name: String, key_type: String) -> Result<Data> {
+        // tokio::time::sleep(Duration::from_millis(300)).await;
+        let mut data = Data::default();
+        data.key_name = key_name.clone();
+        let value = redis_opt(|op| {
+            let mut con = op.get_connection()?;
+            return match key_type.to_ascii_lowercase().as_str() {
+                "string" => {
+                    let bytes: Vec<u8> = con.get(&key_name)?;
+                    return if let Ok(string) = String::from_utf8(bytes.clone()) {
+                        Ok(string)
+                    } else {
+                        Ok(bytes.iter().map(|&b| {
+                            if b.is_ascii() {
+                                (b as char).to_string()
+                            } else {
+                                format!("\\x{:02x}", b)
+                            }
+                        }).collect::<String>())
+                    };
+                }
+                _ => {Ok("".to_string())}
+            }
+
+        });
+        if let Ok(s) = value {
+            data.select_string_value = (true, Some(s));
+        } else {
+            data.select_string_value = (true, None);
+        }
+        Ok(data)
+    }
+
+    // fn update_selected_key(&mut self, id_list: Vec<String>) -> Result<()> {
+    //     let key_id = id_list.last();
+    //     if let Some(id) = key_id {
+    //         let option = self.scan_keys_result.iter().find(|redis_key| {
+    //             id.eq(&redis_key.name)
+    //         }).cloned();
+    //         if let Some(mut redis_key) = option {
+    //             let key_type = redis_opt(|op| {
+    //                 let mut con = op.get_connection()?;
+    //                 let key_type: String = con.key_type(&redis_key.name)?;
+    //                 Ok(key_type)
+    //             });
+    //             if let Ok(key_type) = key_type {
+    //                 redis_key.key_type = key_type;
+    //             }
+    //             let key_size = redis_opt(|op| {
+    //                 let mut con = op.get_connection()?;
+    //                 let value = con.req_command(&Cmd::new().arg("MEMORY").arg("USAGE").arg(&redis_key.name).arg("SAMPLES").arg("0"))?;
+    //                 if let Value::Int(int) = value {
+    //                     let key_size = int as usize;
+    //                     Ok(key_size)
+    //                 } else {
+    //                     Ok(0)
+    //                 }
+    //             });
+    //             if let Ok(key_size) = key_size {
+    //                 redis_key.key_size = Some(key_size);
+    //             }
+    //             let length = redis_opt(|op| {
+    //                 let mut con = op.get_connection()?;
+    //                 let length: usize = con.strlen(&redis_key.name)?;
+    //                 Ok(length)
+    //             });
+    //             if let Ok(length) = length {
+    //                 redis_key.length = Some(length);
+    //             }
+    //             let ttl = redis_opt(|op| {
+    //                 let mut con = op.get_connection()?;
+    //                 let ttl: i64 = con.ttl(&redis_key.name)?;
+    //                 Ok(ttl)
+    //             });
+    //             if let Ok(ttl) = ttl {
+    //                 if ttl.is_positive() {
+    //                     redis_key.ttl = Some(ttl as u64);
+    //                 } else {
+    //                     redis_key.ttl = None;
+    //                 }
+    //             }
+    //             self.selected_key = Some(redis_key);
+    //         } else {
+    //             self.selected_key = None;
+    //         }
+    //     }
+    //     Ok(())
+    // }
 }
 
 impl TabImplementation for ExplorerTab {
@@ -666,7 +764,11 @@ impl TabImplementation for ExplorerTab {
 }
 
 impl Renderable for ExplorerTab {
-    fn render_frame(&self, frame: &mut Frame, rect: Rect) -> Result<()> {
+    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
+        while self.data_receiver.is_empty().not() {
+            let data = self.data_receiver.try_recv()?;
+            self.update_data(data);
+        }
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
@@ -703,11 +805,10 @@ impl Renderable for ExplorerTab {
     }
 }
 
-#[async_trait]
 impl Listenable for ExplorerTab {
-    async fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+    fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         if self.show_filter {
-            return self.handle_filter_key_event(key_event).await;
+            return self.handle_filter_key_event(key_event);
         }
 
         if CurrentScreen::Values == self.current_screen {
@@ -719,7 +820,7 @@ impl Listenable for ExplorerTab {
 
         if Keys == self.current_screen {
             if key_event.modifiers == KeyModifiers::NONE {
-                if self.handle_tree_key_event(key_event).await? {
+                if self.handle_tree_key_event(key_event)? {
                     return Ok(true);
                 };
                 match key_event.code {
@@ -746,9 +847,9 @@ impl Listenable for ExplorerTab {
         Ok(false)
     }
 
-    async fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
+    fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
         if _app_event == AppEvent::Init {
-            self.build_tree_items(&String::new()).await?;
+            self.build_tree_items(&String::new())?;
         }
         Ok(())
     }

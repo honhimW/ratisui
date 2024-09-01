@@ -104,7 +104,7 @@ impl Context {
         Ok(())
     }
 
-    fn render_selected_tab(&self, frame: &mut Frame, area: Rect) -> Result<()> {
+    fn render_selected_tab(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         match self.current_tab {
             CurrentTab::Explorer => {
                 self.explorer_tab.render_frame(frame, area)
@@ -131,7 +131,7 @@ impl Context {
 }
 
 impl Renderable for Context {
-    fn render_frame(&self, frame: &mut Frame, rect: Rect) -> Result<()>
+    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()>
     where
         Self: Sized,
     {
@@ -165,12 +165,11 @@ impl Renderable for Context {
     }
 }
 
-#[async_trait]
 impl Listenable for Context {
 
-    async fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+    fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         let mut current_tab = self.get_current_tab_as_mut();
-        if current_tab.handle_key_event(key_event).await? {
+        if current_tab.handle_key_event(key_event)? {
             return Ok(true)
         }
 
@@ -182,9 +181,9 @@ impl Listenable for Context {
         Ok(true)
     }
 
-    async fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
-        self.explorer_tab.on_app_event(app_event.clone()).await?;
-        self.profiler_tab.on_app_event(app_event.clone()).await?;
+    fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
+        self.explorer_tab.on_app_event(app_event.clone())?;
+        self.profiler_tab.on_app_event(app_event.clone())?;
         Ok(())
     }
 }

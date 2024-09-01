@@ -26,7 +26,7 @@ impl TabImplementation for ProfilerTab {
 }
 
 impl Renderable for ProfilerTab {
-    fn render_frame(&self, frame: &mut Frame, rect: Rect) -> anyhow::Result<()>
+    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> anyhow::Result<()>
     where
         Self: Sized,
     {

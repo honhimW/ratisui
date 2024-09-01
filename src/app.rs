@@ -13,7 +13,7 @@ use tokio::sync::{Mutex, RwLock};
 
 pub struct App {
     pub state: AppState,
-    pub context: Arc<RwLock<context::Context>>,
+    pub context: context::Context,
     pub input: Input,
     debug_message: Option<String>,
 }
@@ -33,25 +33,23 @@ pub enum AppEvent {
     Destroy,
 }
 
-#[async_trait]
-pub trait TabImplementation : Renderable + Listenable + Send {
+pub trait TabImplementation : Renderable + Listenable{
     fn palette(&self) -> tailwind::Palette;
     fn title(&self) -> Line<'static>;
 }
 
-#[async_trait]
 pub trait Listenable {
-    async fn handle_key_event(&mut self, _key_event: KeyEvent) -> Result<bool> {
+    fn handle_key_event(&mut self, _key_event: KeyEvent) -> Result<bool> {
         Ok(false)
     }
 
-    async fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
+    fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
         Ok(())
     }
 }
 
 pub trait Renderable {
-    fn render_frame(&self, frame: &mut Frame, rect: Rect) -> Result<()>;
+    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()>;
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
         vec![]
@@ -61,7 +59,7 @@ pub trait Renderable {
 impl App {
     pub fn new() -> Self {
         Self {
-            context: Arc::new(RwLock::new(context::Context::new())),
+            context: context::Context::new(),
             state: AppState::Preparing,
             input: Input::new(),
             debug_message: None,
@@ -70,25 +68,6 @@ impl App {
 
     pub fn health(&self) -> bool {
         self.state == AppState::Running || self.state == AppState::Preparing
-    }
-
-    async fn handle_events(&mut self) -> Result<()> {
-        // TODO using Select::new() and Select::select() instead
-        let _event = self.input.receiver().recv()?;
-        if let InputEvent::Input(e) = _event {
-            if let Event::Key(key_event) = e {
-                if key_event.kind == KeyEventKind::Press {
-                    if key_event.modifiers == event::KeyModifiers::CONTROL && key_event.code == event::KeyCode::Char('c') {
-                        self.state = AppState::Closing;
-                    }
-                    return self.context.write().await.handle_key_event(key_event)
-                        .await
-                        .map(|_| ())
-                        .context(format!("handling key event failed: {key_event:#?}"));
-                }
-            }
-        }
-        Ok(())
     }
 
 }
