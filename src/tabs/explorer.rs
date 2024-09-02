@@ -1,6 +1,6 @@
 use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::highlight_value::{HighlightKind, HighlightProcessor, HighlightText};
-use crate::redis_opt::{redis_operations, redis_opt};
+use crate::redis_opt::{async_redis_opt, redis_operations, redis_opt};
 use crate::tabs::explorer::CurrentScreen::Keys;
 use anyhow::{Error, Result};
 use async_trait::async_trait;
@@ -19,6 +19,7 @@ use std::ops::Not;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use tokio::join;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
 use tui_textarea::TextArea;
@@ -616,40 +617,32 @@ impl ExplorerTab {
     async fn do_get_key_info(key_name: String) -> Result<Data> {
         let mut data = Data::default();
         data.key_name = key_name.clone();
-        let key_type = redis_opt(|op| {
-            let mut con = op.get_connection()?;
-            let key_type: String = con.key_type(&key_name)?;
-            Ok(key_type)
+        let key_name_clone = key_name.clone();
+        let key_type = async_redis_opt(|op| async move {
+            Ok(op.key_type(key_name_clone).await?)
         });
+        let key_name_clone = key_name.clone();
+        let key_size = async_redis_opt(|op| async move {
+            Ok(op.mem_usage(key_name_clone).await?)
+        });
+        let key_name_clone = key_name.clone();
+        let length = async_redis_opt(|op| async move {
+            Ok(op.strlen(key_name_clone).await?)
+        });
+        let key_name_clone = key_name.clone();
+        let ttl = async_redis_opt(|op| async move {
+            Ok(op.ttl(key_name_clone).await?)
+        });
+        let (key_type, key_size, length, ttl) = join!(key_type, key_size, length, ttl);
         if let Ok(key_type) = key_type {
             data.key_type = (true, Some(key_type));
         }
-        let key_size = redis_opt(|op| {
-            let mut con = op.get_connection()?;
-            let value = con.req_command(&Cmd::new().arg("MEMORY").arg("USAGE").arg(&key_name).arg("SAMPLES").arg("0"))?;
-            if let Value::Int(int) = value {
-                let key_size = int as usize;
-                Ok(key_size)
-            } else {
-                Ok(0)
-            }
-        });
         if let Ok(key_size) = key_size {
-            data.key_size = (true, Some(key_size));
+            data.key_size = (true, Some(key_size as usize));
         }
-        let length = redis_opt(|op| {
-            let mut con = op.get_connection()?;
-            let length: usize = con.strlen(&key_name)?;
-            Ok(length)
-        });
         if let Ok(length) = length {
             data.length = (true, Some(length));
         }
-        let ttl = redis_opt(|op| {
-            let mut con = op.get_connection()?;
-            let ttl: i64 = con.ttl(&key_name)?;
-            Ok(ttl)
-        });
         if let Ok(ttl) = ttl {
             if ttl.is_positive() {
                 data.ttl = (true, Some(ttl as u64));

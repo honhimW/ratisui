@@ -1,20 +1,29 @@
 use anyhow::Result;
+use deadpool_redis::Runtime;
 use redis::ConnectionAddr::Tcp;
-use redis::{Client, Commands, ConnectionInfo, ProtocolVersion, RedisConnectionInfo};
+use redis::{AsyncCommands, Client, ConnectionInfo, ProtocolVersion, RedisConnectionInfo};
 
-fn main() -> Result<()> {
-    let client = Client::open(ConnectionInfo {
-        addr: Tcp("redis-16430.c1.asia-northeast1-1.gce.redns.redis-cloud.com".to_string(), 16430),
+#[tokio::main]
+async fn main() -> Result<()> {
+    let config = deadpool_redis::Config::from_connection_info(ConnectionInfo {
+        addr: Tcp("10.37.1.132".to_string(), 6379),
         redis: RedisConnectionInfo {
             db: 0,
-            username: Some("default".to_string()),
-            password: Some("9JRCAjglNSTc4pXWOggLT7BKljwuoSSy".to_string()),
+            username: None,
+            password: Some("123456".to_string()),
             protocol: ProtocolVersion::RESP3,
         },
-    })?;
+    });
+    let pool = config.create_pool(Some(Runtime::Tokio1))?;
 
-    let mut connection = client.get_connection()?;
+    let config1 = deadpool_redis::cluster::Config::from_urls(vec![]);
+    let pool1 = config1.create_pool(Some(Runtime::Tokio1))?;
 
+
+    let mut connection = pool.get().await?;
+
+    let x: String = connection.get("ab").await?;
+    println!("{}", x);
     connection.set("json", r#"
 {
     "comment": "json with comment", // This is a comment
@@ -35,7 +44,9 @@ fn main() -> Result<()> {
         "number": 1.23e4
     }
 }
-    "#)?;
+    "#).await?;
+
+
 
     Ok(())
 }
