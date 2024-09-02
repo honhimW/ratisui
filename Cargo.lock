@@ -1384,6 +1384,7 @@ dependencies = [
  "dirs",
  "encoding_rs",
  "hex",
+ "itertools",
  "log",
  "log4rs",
  "once_cell",
@@ -1402,6 +1403,7 @@ dependencies = [
  "tui-textarea",
  "tui-tree-widget",
  "tui-widgets",
+ "unicode-width",
  "uuid",
 ]
 

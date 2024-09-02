@@ -2,7 +2,7 @@ use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::highlight_value::{HighlightKind, HighlightProcessor, HighlightText};
 use crate::redis_opt::{async_redis_opt, redis_operations, redis_opt};
 use crate::tabs::explorer::CurrentScreen::Keys;
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result};
 use async_trait::async_trait;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
@@ -25,6 +25,7 @@ use tokio::sync::RwLock;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 use uuid::{uuid, Uuid};
+use crate::components::list_table::ListValue;
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
@@ -38,6 +39,7 @@ pub struct ExplorerTab {
     redis_separator: String,
     selected_key: Option<RedisKey>,
     select_string_value: Option<String>,
+    select_list_value: Option<Vec<String>>,
     data_sender: Sender<Data>,
     data_receiver: Receiver<Data>,
 }
@@ -47,6 +49,7 @@ struct Data {
     key_name: String,
     scan_keys_result: (bool, Vec<RedisKey>),
     select_string_value: (bool, Option<String>),
+    select_list_value: (bool, Option<Vec<String>>),
     key_type: (bool, Option<String>),
     key_size: (bool, Option<usize>),
     length: (bool, Option<usize>),
@@ -185,6 +188,7 @@ impl ExplorerTab {
             redis_separator: ":".to_string(),
             selected_key: None,
             select_string_value: None,
+            select_list_value: None,
             data_sender: tx,
             data_receiver: rx,
         }
@@ -210,6 +214,9 @@ impl ExplorerTab {
                 }
                 if data.select_string_value.0 {
                     self.select_string_value = data.select_string_value.1;
+                }
+                if data.select_list_value.0 {
+                    self.select_list_value = data.select_list_value.1;
                 }
             }
         }
@@ -309,10 +316,16 @@ impl ExplorerTab {
             .padding(Padding::horizontal(1))
             .borders(Borders::ALL)
             .border_style(self.border_color(CurrentScreen::Values));
-        if let Ok(text) = self.get_value() {
-            let values_text = Paragraph::new(text)
-                .block(values_block);
-            frame.render_widget(values_text, area);
+        if self.select_string_value.is_some() {
+            if let Ok(text) = self.get_raw_value() {
+                let values_text = Paragraph::new(text)
+                    .block(values_block);
+                frame.render_widget(values_text, area);
+            }
+        } else if self.select_list_value.is_some() {
+            if let Ok(mut list_value) = self.get_list_value() {
+                list_value.render_frame(frame, area)?;
+            }
         }
         Ok(())
     }
@@ -507,7 +520,7 @@ impl ExplorerTab {
         Ok(true)
     }
 
-    fn get_value(&self) -> Result<Text> {
+    fn get_raw_value(&self) -> Result<Text> {
         let mut value = "".to_string();
         if let Some(s) = &self.select_string_value {
             value = s.clone().to_string();
@@ -560,6 +573,24 @@ impl ExplorerTab {
         Ok(text)
     }
 
+    fn get_list_value(&self) -> Result<ListValue> {
+        let mut list_value;
+        if let Some(list) = self.select_list_value.clone() {
+            let mut vec = vec![];
+            for (idx, string) in list.iter().enumerate() {
+                let data = crate::components::list_table::Data {
+                    index: idx.to_string(),
+                    value: string.clone(),
+                };
+                vec.push(data);
+            }
+            list_value = ListValue::new(vec);
+        } else {
+            list_value = ListValue::new(vec![]);
+        }
+        Ok(list_value)
+    }
+
     fn handle_tree_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         if key_event.modifiers == KeyModifiers::NONE {
             let current_selected_key = self.selected_key.clone().map(|current| { current.name });
@@ -593,6 +624,7 @@ impl ExplorerTab {
                         }).cloned();
                         self.selected_key = option;
                         self.select_string_value = None;
+                        self.select_list_value = None;
                         if self.selected_key.is_some() {
                             let sender = self.data_sender.clone();
                             tokio::spawn(async move {
@@ -654,93 +686,46 @@ impl ExplorerTab {
     }
 
     async fn do_get_value(key_name: String, key_type: String) -> Result<Data> {
-        // tokio::time::sleep(Duration::from_millis(300)).await;
         let mut data = Data::default();
         data.key_name = key_name.clone();
-        let value = redis_opt(|op| {
-            let mut con = op.get_connection()?;
-            return match key_type.to_ascii_lowercase().as_str() {
+        let key_name_clone = key_name.clone();
+        async_redis_opt(|op| async move {
+            match key_type.to_ascii_lowercase().as_str() {
                 "string" => {
-                    let bytes: Vec<u8> = con.get(&key_name)?;
-                    return if let Ok(string) = String::from_utf8(bytes.clone()) {
-                        Ok(string)
-                    } else {
-                        Ok(bytes.iter().map(|&b| {
-                            if b.is_ascii() {
-                                (b as char).to_string()
-                            } else {
-                                format!("\\x{:02x}", b)
-                            }
-                        }).collect::<String>())
-                    };
+                    let bytes: Vec<u8> = op.get(key_name_clone).await?;
+                    let string = bytes_to_string(bytes).context("Failed to parse string")?;
+                    data.select_string_value = (true, Some(string));
                 }
-                _ => {Ok("".to_string())}
+                "list" => {
+                    let values: Vec<Vec<u8>> = op.get_list(key_name_clone).await?;
+                    let strings: Vec<String> = values.iter().map(|item| {
+                        match bytes_to_string(item.clone()) {
+                            Ok(s) => {s}
+                            Err(_) => {String::new()}
+                        }
+                    }).collect();
+                    data.select_list_value = (true, Some(strings));
+                }
+                _ => {}
             }
-
-        });
-        if let Ok(s) = value {
-            data.select_string_value = (true, Some(s));
-        } else {
-            data.select_string_value = (true, None);
-        }
-        Ok(data)
+            Ok(data)
+        }).await
     }
 
-    // fn update_selected_key(&mut self, id_list: Vec<String>) -> Result<()> {
-    //     let key_id = id_list.last();
-    //     if let Some(id) = key_id {
-    //         let option = self.scan_keys_result.iter().find(|redis_key| {
-    //             id.eq(&redis_key.name)
-    //         }).cloned();
-    //         if let Some(mut redis_key) = option {
-    //             let key_type = redis_opt(|op| {
-    //                 let mut con = op.get_connection()?;
-    //                 let key_type: String = con.key_type(&redis_key.name)?;
-    //                 Ok(key_type)
-    //             });
-    //             if let Ok(key_type) = key_type {
-    //                 redis_key.key_type = key_type;
-    //             }
-    //             let key_size = redis_opt(|op| {
-    //                 let mut con = op.get_connection()?;
-    //                 let value = con.req_command(&Cmd::new().arg("MEMORY").arg("USAGE").arg(&redis_key.name).arg("SAMPLES").arg("0"))?;
-    //                 if let Value::Int(int) = value {
-    //                     let key_size = int as usize;
-    //                     Ok(key_size)
-    //                 } else {
-    //                     Ok(0)
-    //                 }
-    //             });
-    //             if let Ok(key_size) = key_size {
-    //                 redis_key.key_size = Some(key_size);
-    //             }
-    //             let length = redis_opt(|op| {
-    //                 let mut con = op.get_connection()?;
-    //                 let length: usize = con.strlen(&redis_key.name)?;
-    //                 Ok(length)
-    //             });
-    //             if let Ok(length) = length {
-    //                 redis_key.length = Some(length);
-    //             }
-    //             let ttl = redis_opt(|op| {
-    //                 let mut con = op.get_connection()?;
-    //                 let ttl: i64 = con.ttl(&redis_key.name)?;
-    //                 Ok(ttl)
-    //             });
-    //             if let Ok(ttl) = ttl {
-    //                 if ttl.is_positive() {
-    //                     redis_key.ttl = Some(ttl as u64);
-    //                 } else {
-    //                     redis_key.ttl = None;
-    //                 }
-    //             }
-    //             self.selected_key = Some(redis_key);
-    //         } else {
-    //             self.selected_key = None;
-    //         }
-    //     }
-    //     Ok(())
-    // }
+}
+
+fn bytes_to_string(bytes: Vec<u8>) -> Result<String> {
+    if let Ok(string) = String::from_utf8(bytes.clone()) {
+        Ok(string)
+    } else {
+        Ok(bytes.iter().map(|&b| {
+            if b.is_ascii() {
+                (b as char).to_string()
+            } else {
+                format!("\\x{:02x}", b)
+            }
+        }).collect::<String>())
+    }
 }
 
 impl TabImplementation for ExplorerTab {

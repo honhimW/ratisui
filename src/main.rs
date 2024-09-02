@@ -113,7 +113,7 @@ fn render(mut app: App) -> Result<()> {
                         if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('c') {
                             app.state = AppState::Closing;
                         } else {
-                            let _ = app.context.handle_key_event(key_event)?;
+                            let _ = app.context.handle_key_event(key_event);
                         }
                     }
                 }

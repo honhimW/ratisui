@@ -336,6 +336,19 @@ impl RedisOperations {
         }
     }
 
+    pub async fn get_list<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K) -> Result<V> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: V = connection.lrange(key, 0, -1).await?;
+            Ok(v)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: V = connection.lrange(key, 0, -1).await?;
+            Ok(v)
+        }
+    }
+
     pub async fn key_type<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<String> {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
