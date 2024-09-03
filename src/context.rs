@@ -159,6 +159,7 @@ impl Renderable for Context {
                 self.profiler_tab.footer_elements()
             }
         };
+        footer_elements.push(("c", "Connection"));
         footer_elements.push(("^c", "Quit"));
         footer_elements.push(("^h", "Help"));
         footer_elements

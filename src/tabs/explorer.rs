@@ -1,9 +1,10 @@
 use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::highlight_value::{HighlightKind, HighlightProcessor, HighlightText};
-use crate::redis_opt::{async_redis_opt, redis_operations, redis_opt};
+use crate::components::list_list::ListValue;
+use crate::redis_opt::{async_redis_opt, redis_operations};
 use crate::tabs::explorer::CurrentScreen::Keys;
 use anyhow::{Context, Error, Result};
-use async_trait::async_trait;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -13,19 +14,13 @@ use ratatui::style::{Color, Modifier};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
 use ratatui::Frame;
-use redis::{Cmd, Commands, ConnectionLike, Iter, RedisResult, ScanOptions, Value};
+use redis::Commands;
 use std::collections::HashMap;
 use std::ops::Not;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use crossbeam_channel::{unbounded, Receiver, Sender};
 use tokio::join;
-use tokio::runtime::Runtime;
-use tokio::sync::RwLock;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
-use uuid::{uuid, Uuid};
-use crate::components::list_table::ListValue;
+use crate::components::raw_value::raw_value_to_highlight_text;
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
@@ -39,7 +34,7 @@ pub struct ExplorerTab {
     redis_separator: String,
     selected_key: Option<RedisKey>,
     select_string_value: Option<String>,
-    select_list_value: Option<Vec<String>>,
+    selected_list_value: Option<ListValue>,
     data_sender: Sender<Data>,
     data_receiver: Receiver<Data>,
 }
@@ -188,18 +183,19 @@ impl ExplorerTab {
             redis_separator: ":".to_string(),
             selected_key: None,
             select_string_value: None,
-            select_list_value: None,
+            selected_list_value: None,
             data_sender: tx,
             data_receiver: rx,
         }
     }
 
     fn update_data(&mut self, data: Data) {
+        if data.scan_keys_result.0 {
+            self.scan_keys_result = data.scan_keys_result.1;
+            let _ = self.build_tree_items();
+        }
         if let Some(redis_key) = &mut self.selected_key {
             if redis_key.name == data.key_name {
-                if data.scan_keys_result.0 {
-                    self.scan_keys_result = data.scan_keys_result.1;
-                }
                 if data.key_type.0 {
                     redis_key.key_type = data.key_type.1.unwrap_or("unknown".to_string());
                 }
@@ -216,7 +212,7 @@ impl ExplorerTab {
                     self.select_string_value = data.select_string_value.1;
                 }
                 if data.select_list_value.0 {
-                    self.select_list_value = data.select_list_value.1;
+                    self.selected_list_value = Some(ListValue::new(data.select_list_value.1.unwrap_or(vec![])));
                 }
             }
         }
@@ -243,7 +239,7 @@ impl ExplorerTab {
         Ok(())
     }
 
-    fn render_values_block(&self, frame: &mut Frame, area: Rect) -> Result<()> {
+    fn render_values_block(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let vertical = Layout::vertical([Length(5), Min(0)]).split(area);
         self.render_key_information(frame, vertical[0])?;
         self.render_value_view(frame, vertical[1])?;
@@ -311,7 +307,7 @@ impl ExplorerTab {
         Ok(())
     }
 
-    fn render_value_view(&self, frame: &mut Frame, area: Rect) -> Result<()> {
+    fn render_value_view(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let values_block = Block::default().title("Values")
             .padding(Padding::horizontal(1))
             .borders(Borders::ALL)
@@ -322,10 +318,16 @@ impl ExplorerTab {
                     .block(values_block);
                 frame.render_widget(values_text, area);
             }
-        } else if self.select_list_value.is_some() {
-            if let Ok(mut list_value) = self.get_list_value() {
+        } else if self.selected_list_value.is_some() {
+            if let Some(ref mut list_value) = self.selected_list_value {
+                frame.render_widget(values_block.clone(), area.clone());
+                let area = values_block.inner(area);
                 list_value.render_frame(frame, area)?;
             }
+        } else {
+            let values_text = Paragraph::new("N/A")
+                .block(values_block);
+            frame.render_widget(values_text, area);
         }
         Ok(())
     }
@@ -377,40 +379,8 @@ impl ExplorerTab {
         self.current_screen = screen;
     }
 
-    fn do_scan(&mut self, pattern: String, count: u16) -> Result<()> {
-        let x = redis_operations();
-
-        if let Some(c) = x {
-            let mut con = c.get_connection()?;
-            let iter: Iter<String> = con.scan_options(ScanOptions::default().with_pattern(pattern.clone()).with_count(count as usize))?;
-            let mut results: Vec<RedisKey> = vec![];
-            for key in iter {
-                let redis_key;
-                let key_type = "unknown".to_string();
-                redis_key = RedisKey::new(&key, key_type.as_str());
-                results.push(redis_key);
-            }
-            self.scan_keys_result = results;
-        } else {
-            self.scan_keys_result = vec![
-                RedisKey::new("spring:security:token:abc", "JSON"),
-                RedisKey::new("spring:security:token:def", "JSON"),
-                RedisKey::new("spring:security:session:123", "List"),
-                RedisKey::new("spring:security:session:456", "List"),
-                RedisKey::new("spring:security:session:743812974890321749807590817498321749", "String"),
-                RedisKey::new("spring:security:version", "String"),
-                RedisKey::new("spring:cache:user:anonymous", "List"),
-                RedisKey::new("spring:cache:user:root", "Stream"),
-                RedisKey::new("spring:cache:user:guest", "ZSet"),
-                RedisKey::new("spring:cache:version", "Set"),
-                RedisKey::new("properties", "Hash"),
-            ];
-        }
-        Ok(())
-    }
-
-    fn build_tree_items(&mut self, filter_text: &String) -> Result<()> {
-        match self.filter_mod {
+    fn do_scan(&mut self, filter_text: String) -> Result<()> {
+        let pattern = match self.filter_mod {
             FilterMod::Fuzzy => {
                 let mut matcher = filter_text.clone();
                 if matcher.is_empty() {
@@ -418,62 +388,78 @@ impl ExplorerTab {
                 } else {
                     matcher = format!("*{}*", matcher);
                 }
-                self.do_scan(matcher, 2000)?;
+                matcher
             }
             FilterMod::Pattern => {
-                self.do_scan(filter_text.clone(), 2000)?;
+                filter_text.clone()
             }
-        }
-        if filter_text.is_empty().not() {
-            self.scan_keys_result.retain(|redis_key| {
-                let contains;
-                match self.filter_mod {
-                    FilterMod::Fuzzy => { contains = redis_key.name.contains(filter_text); }
-                    FilterMod::Pattern => {
-                        // TODO scan key
-                        let fuzzy_start = filter_text.starts_with("*");
-                        let fuzzy_end = filter_text.ends_with("*");
-                        let mut _filter_text = filter_text.clone();
-                        if fuzzy_start {
-                            _filter_text = _filter_text[1..].to_string();
-                        }
-                        if fuzzy_end {
-                            _filter_text = _filter_text[.._filter_text.len() - 1].to_string();
-                        }
-                        if fuzzy_start && fuzzy_end {
-                            contains = redis_key.name.contains(&_filter_text);
-                        } else if fuzzy_start && !fuzzy_end {
-                            contains = redis_key.name.ends_with(&_filter_text);
-                        } else if !fuzzy_start && fuzzy_end {
-                            contains = redis_key.name.starts_with(&_filter_text);
-                        } else {
-                            contains = redis_key.name.eq(&_filter_text);
+        };
+
+        let sender = self.data_sender.clone();
+        let pattern_clone = pattern.clone();
+        let size_clone = self.scan_size.clone();
+        tokio::spawn(async move {
+            let data = Self::do_scan_keys(pattern_clone, size_clone).await?;
+            sender.send(data.clone())?;
+            Ok::<(), Error>(())
+        });
+        Ok(())
+    }
+
+    fn build_tree_items(&mut self) -> Result<()> {
+        if let Some(first_line) = self.get_filter_text() {
+            if !first_line.is_empty() {
+                let filter_text = &first_line.clone();
+                self.scan_keys_result.retain(|redis_key| {
+                    let contains;
+                    match self.filter_mod {
+                        FilterMod::Fuzzy => { contains = redis_key.name.contains(filter_text); }
+                        FilterMod::Pattern => {
+                            // TODO scan key
+                            let fuzzy_start = filter_text.starts_with("*");
+                            let fuzzy_end = filter_text.ends_with("*");
+                            let mut _filter_text = filter_text.clone();
+                            if fuzzy_start {
+                                _filter_text = _filter_text[1..].to_string();
+                            }
+                            if fuzzy_end {
+                                _filter_text = _filter_text[.._filter_text.len() - 1].to_string();
+                            }
+                            if fuzzy_start && fuzzy_end {
+                                contains = redis_key.name.contains(&_filter_text);
+                            } else if fuzzy_start && !fuzzy_end {
+                                contains = redis_key.name.ends_with(&_filter_text);
+                            } else if !fuzzy_start && fuzzy_end {
+                                contains = redis_key.name.starts_with(&_filter_text);
+                            } else {
+                                contains = redis_key.name.eq(&_filter_text);
+                            }
                         }
                     }
-                }
 
-                contains
-            });
-            for redis_key in self.scan_keys_result.iter() {
-                if let Some(filter_position) = redis_key.name.rfind(filter_text) {
-                    let split = redis_key.name.split(":");
-                    let vec: Vec<String> = split.map(|x| x.to_string()).collect();
-                    let mut i = 0;
-                    let last_index = filter_position + filter_text.len();
-                    let mut open_vec: Vec<String> = vec![];
-                    for segment in vec {
-                        i += &segment.len();
-                        i += 1; // ':'
-                        if i < last_index {
-                            open_vec.push(segment);
-                            let mut open = vec![];
-                            for j in 1..open_vec.len() + 1 {
-                                let string = open_vec[0..j].join(":");
-                                open.push(string);
+                    contains
+                });
+                for redis_key in self.scan_keys_result.iter() {
+                    if let Some(filter_position) = redis_key.name.rfind(filter_text) {
+                        let split = redis_key.name.split(":");
+                        let vec: Vec<String> = split.map(|x| x.to_string()).collect();
+                        let mut i = 0;
+                        let last_index = filter_position + filter_text.len();
+                        let mut open_vec: Vec<String> = vec![];
+                        for segment in vec {
+                            i += &segment.len();
+                            i += 1; // ':'
+                            if i < last_index {
+                                open_vec.push(segment);
+                                let mut open = vec![];
+                                for j in 1..open_vec.len() + 1 {
+                                    let string = open_vec[0..j].join(":");
+                                    open.push(string);
+                                }
+                                self.tree_state.open(open);
+                            } else {
+                                break;
                             }
-                            self.tree_state.open(open);
-                        } else {
-                            break;
                         }
                     }
                 }
@@ -498,12 +484,16 @@ impl ExplorerTab {
         }
         match key_event {
             KeyEvent { code: KeyCode::Esc, .. } => {
-                self.show_filter = false;
+                if self.filter_text_area.is_selecting() {
+                    self.filter_text_area.cancel_selection();
+                } else {
+                    self.show_filter = false;
+                }
             }
             KeyEvent { code: KeyCode::Enter, .. } => {
                 // TODO perform scan keys, or scan after input changed, enter will refresh keys
                 if let Some(first_line) = self.get_filter_text() {
-                    self.build_tree_items(&first_line)?;
+                    self.do_scan(first_line.clone())?;
                 }
             }
             KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
@@ -513,6 +503,9 @@ impl ExplorerTab {
                     FilterMod::Pattern => { self.filter_mod = FilterMod::Fuzzy; }
                 }
             }
+            KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
+                self.filter_text_area.select_all();
+            }
             input => {
                 self.filter_text_area.input(input);
             }
@@ -521,74 +514,11 @@ impl ExplorerTab {
     }
 
     fn get_raw_value(&self) -> Result<Text> {
-        let mut value = "".to_string();
-        if let Some(s) = &self.select_string_value {
-            value = s.clone().to_string();
-        }
-        let mut processor = HighlightProcessor::new(value.clone());
-        // processor.disable_formatting();
-        let result = processor.process();
-        let fragments = match result {
-            Ok(_) => { processor.get_fragments().clone() }
-            Err(_) => {
-                vec![HighlightText {
-                    text: value.clone(),
-                    kind: HighlightKind::String,
-                }]
-            }
-        };
-        let mut text = Text::default();
-        for highlight_text in fragments {
-            let fragment = highlight_text.text.clone();
-            let mut style = Style::default();
-            match highlight_text.kind {
-                HighlightKind::String => style = Style::default().fg(tailwind::AMBER.c400),
-                HighlightKind::Boolean |
-                HighlightKind::Keyword |
-                HighlightKind::Constant |
-                HighlightKind::Null => style = Style::default().fg(tailwind::ROSE.c600),
-                HighlightKind::Property => style = Style::default().fg(tailwind::FUCHSIA.c700),
-                HighlightKind::Comment => style = Style::default().fg(tailwind::CYAN.c500),
-                _ => {}
-            }
-
-            let lines: Vec<&str> = fragment.lines().collect();
-            if lines.len() > 1 {
-                for (i, &l) in lines.iter().enumerate() {
-                    if i == 0 {
-                        let span = Span::styled(l.to_string(), style);
-                        text.push_span(span);
-                    } else {
-                        let line = Line::styled(l.to_string(), style);
-                        text.push_line(line);
-                    }
-                }
-            } else {
-                for l in lines {
-                    let span = Span::styled(l.to_string(), style);
-                    text.push_span(span);
-                }
-            }
-        }
-        Ok(text)
-    }
-
-    fn get_list_value(&self) -> Result<ListValue> {
-        let mut list_value;
-        if let Some(list) = self.select_list_value.clone() {
-            let mut vec = vec![];
-            for (idx, string) in list.iter().enumerate() {
-                let data = crate::components::list_table::Data {
-                    index: idx.to_string(),
-                    value: string.clone(),
-                };
-                vec.push(data);
-            }
-            list_value = ListValue::new(vec);
+        if let Some(ref value) = self.select_string_value {
+            Ok(raw_value_to_highlight_text(value, true))
         } else {
-            list_value = ListValue::new(vec![]);
+            Ok(Text::default())
         }
-        Ok(list_value)
     }
 
     fn handle_tree_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
@@ -624,7 +554,7 @@ impl ExplorerTab {
                         }).cloned();
                         self.selected_key = option;
                         self.select_string_value = None;
-                        self.select_list_value = None;
+                        self.selected_list_value = None;
                         if self.selected_key.is_some() {
                             let sender = self.data_sender.clone();
                             tokio::spawn(async move {
@@ -646,6 +576,20 @@ impl ExplorerTab {
         Ok(false)
     }
 
+    async fn do_scan_keys(pattern: String, count: u16) -> Result<Data> {
+        let mut data = Data::default();
+        let keys = async_redis_opt(|op| async move {
+            Ok(op.scan(pattern, count as usize).await?)
+        }).await;
+        if let Ok(keys) = keys {
+            let vec = keys.iter()
+                .map(|s| RedisKey::new(s, "unknown"))
+                .collect::<Vec<RedisKey>>();
+            data.scan_keys_result = (true, vec);
+        }
+        Ok(data)
+    }
+
     async fn do_get_key_info(key_name: String) -> Result<Data> {
         let mut data = Data::default();
         data.key_name = key_name.clone();
@@ -658,23 +602,32 @@ impl ExplorerTab {
             Ok(op.mem_usage(key_name_clone).await?)
         });
         let key_name_clone = key_name.clone();
-        let length = async_redis_opt(|op| async move {
-            Ok(op.strlen(key_name_clone).await?)
-        });
-        let key_name_clone = key_name.clone();
         let ttl = async_redis_opt(|op| async move {
             Ok(op.ttl(key_name_clone).await?)
         });
-        let (key_type, key_size, length, ttl) = join!(key_type, key_size, length, ttl);
+        let (key_type, key_size, ttl) = join!(key_type, key_size, ttl);
         if let Ok(key_type) = key_type {
-            data.key_type = (true, Some(key_type));
+            data.key_type = (true, Some(key_type.clone()));
+            let key_name_clone = key_name.clone();
+            let key_type_clone = key_type.clone();
+            let length = async_redis_opt(|op| async move {
+                match key_type_clone.to_ascii_lowercase().as_str() {
+                    "string" => Ok(op.strlen(key_name_clone).await?),
+                    "list" => Ok(op.llen(key_name_clone).await?),
+                    "hash" => Ok(op.hlen(key_name_clone).await?),
+                    "set" => Ok(op.scard(key_name_clone).await?),
+                    "zset" => Ok(op.zcard(key_name_clone).await?),
+                    _ => Ok(0)
+                }
+            }).await;
+            if let Ok(length) = length {
+                data.length = (true, Some(length));
+            }
         }
         if let Ok(key_size) = key_size {
             data.key_size = (true, Some(key_size as usize));
         }
-        if let Ok(length) = length {
-            data.length = (true, Some(length));
-        }
+
         if let Ok(ttl) = ttl {
             if ttl.is_positive() {
                 data.ttl = (true, Some(ttl as u64));
@@ -744,8 +697,10 @@ impl TabImplementation for ExplorerTab {
 impl Renderable for ExplorerTab {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
         while self.data_receiver.is_empty().not() {
-            let data = self.data_receiver.try_recv()?;
-            self.update_data(data);
+            let data = self.data_receiver.try_recv();
+            if let Ok(data) = data {
+                self.update_data(data);
+            }
         }
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -770,7 +725,6 @@ impl Renderable for ExplorerTab {
         } else {
             if self.current_screen == Keys {
                 elements.push(("/", "Scan"));
-                elements.push(("c", "Connection"));
                 elements.push(("d", "Delete"));
                 elements.push(("r", "Rename"));
                 elements.push(("↑/j", "Up"));
@@ -790,9 +744,15 @@ impl Listenable for ExplorerTab {
         }
 
         if CurrentScreen::Values == self.current_screen {
-            if KeyCode::Left == key_event.code {
+            if KeyCode::Left == key_event.code || KeyCode::Char('h') == key_event.code {
                 self.toggle_screen(Keys);
                 return Ok(true);
+            }
+            if let Some(ref mut list_value) = self.selected_list_value {
+                let accepted = list_value.handle_key_event(key_event)?;
+                if accepted {
+                    return Ok(true);
+                }
             }
         }
 
@@ -827,7 +787,9 @@ impl Listenable for ExplorerTab {
 
     fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
         if _app_event == AppEvent::Init {
-            self.build_tree_items(&String::new())?;
+            if let Some(first_line) = self.get_filter_text() {
+                self.do_scan(first_line.clone())?;
+            }
         }
         Ok(())
     }

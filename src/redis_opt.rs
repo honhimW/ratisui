@@ -341,6 +341,7 @@ impl RedisOperations {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
             let v: V = connection.lrange(key, 0, -1).await?;
+
             Ok(v)
         } else {
             let mut connection = self.pool.get().await?;
@@ -385,6 +386,79 @@ impl RedisOperations {
             let mut connection = self.pool.get().await?;
             let v: usize = connection.strlen(key).await?;
             Ok(v)
+        }
+    }
+
+    pub async fn llen<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<usize> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: usize = connection.llen(key).await?;
+            Ok(v)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: usize = connection.llen(key).await?;
+            Ok(v)
+        }
+    }
+
+    pub async fn scard<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<usize> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: usize = connection.scard(key).await?;
+            Ok(v)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: usize = connection.scard(key).await?;
+            Ok(v)
+        }
+    }
+
+    pub async fn zcard<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<usize> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: usize = connection.zcard(key).await?;
+            Ok(v)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: usize = connection.zcard(key).await?;
+            Ok(v)
+        }
+    }
+
+    pub async fn hlen<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<usize> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: usize = connection.hlen(key).await?;
+            Ok(v)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: usize = connection.hlen(key).await?;
+            Ok(v)
+        }
+    }
+
+    pub async fn sscan<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<Vec<String>> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let mut iter: AsyncIter<String> = connection.sscan(key).await?;
+            let mut vec = vec![];
+            while let Some(item) = iter.next_item().await {
+                vec.push(item);
+            }
+            Ok(vec)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let mut iter: AsyncIter<String> = connection.sscan(key).await?;
+            let mut vec = vec![];
+            while let Some(item) = iter.next_item().await {
+                vec.push(item);
+            }
+            Ok(vec)
         }
     }
 

@@ -13,6 +13,7 @@
 //! [examples]: https://github.com/ratatui/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui/ratatui/blob/main/examples/README.md
 
+use std::cmp;
 use anyhow::Result;
 use itertools::Itertools;
 use ratatui::{
@@ -21,15 +22,20 @@ use ratatui::{
     style::{self, Color, Modifier, Style, Stylize},
     text::{Line, Text},
     widgets::{
+        StatefulWidget,
         Block, BorderType, Cell, HighlightSpacing, Paragraph, Row, Scrollbar, ScrollbarOrientation,
         ScrollbarState, Table, TableState,
     },
     DefaultTerminal, Frame,
 };
 use ratatui::crossterm::event::KeyEvent;
+use ratatui::layout::Alignment;
+use ratatui::widgets::{List, ListItem};
 use style::palette::tailwind;
+use tui_widget_list::{ListBuilder, ListState, ListView};
 use unicode_width::UnicodeWidthStr;
 use crate::app::{Listenable, Renderable};
+use crate::components::raw_value::raw_value_to_highlight_text;
 
 const PALETTES: [tailwind::Palette; 4] = [
     tailwind::BLUE,
@@ -47,22 +53,22 @@ struct TableColors {
     header_bg: Color,
     header_fg: Color,
     row_fg: Color,
-    selected_style_fg: Color,
+    selected_style_bg: Color,
     normal_row_color: Color,
     alt_row_color: Color,
     footer_border_color: Color,
 }
 
 impl TableColors {
-    const fn new(color: &tailwind::Palette) -> Self {
+    fn new(color: &tailwind::Palette) -> Self {
         Self {
-            buffer_bg: tailwind::SLATE.c950,
+            buffer_bg: Color::default(),
             header_bg: color.c900,
-            header_fg: tailwind::SLATE.c200,
-            row_fg: tailwind::SLATE.c200,
-            selected_style_fg: color.c400,
-            normal_row_color: tailwind::SLATE.c950,
-            alt_row_color: tailwind::SLATE.c900,
+            header_fg: color.c200,
+            row_fg: color.c200,
+            selected_style_bg: color.c900,
+            normal_row_color: Color::default(),
+            alt_row_color: color.c950,
             footer_border_color: color.c400,
         }
     }
@@ -89,6 +95,7 @@ impl Data {
 }
 
 pub struct ListValue {
+    item_values: Vec<String>,
     state: TableState,
     items: Vec<Data>,
     longest_item_lens: (u16, u16),
@@ -98,14 +105,23 @@ pub struct ListValue {
 }
 
 impl ListValue {
-    pub fn new(data: Vec<Data>) -> Self {
+    pub fn new(data: Vec<String>) -> Self {
+        let mut vec = vec![];
+        for (idx, string) in data.iter().enumerate() {
+            let data = Data {
+                index: idx.to_string(),
+                value: string.clone().replace("\n", "\\n"),
+            };
+            vec.push(data);
+        }
         Self {
+            item_values: data,
             state: TableState::default().with_selected(0),
-            longest_item_lens: constraint_len_calculator(&data),
-            scroll_state: ScrollbarState::new((data.len() - 1) * ITEM_HEIGHT),
-            colors: TableColors::new(&PALETTES[0]),
-            color_index: 0,
-            items: data,
+            longest_item_lens: constraint_len_calculator(&vec),
+            scroll_state: ScrollbarState::new((vec.len() - 1) * ITEM_HEIGHT),
+            colors: TableColors::new(&tailwind::GRAY),
+            color_index: 3,
+            items: vec,
         }
     }
 
@@ -154,18 +170,24 @@ impl ListValue {
 
     fn render_table(&mut self, frame: &mut Frame, area: Rect) {
         let header_style = Style::default()
+            .bold()
             .fg(self.colors.header_fg)
             .bg(self.colors.header_bg);
         let selected_style = Style::default()
-            .add_modifier(Modifier::REVERSED)
-            .fg(self.colors.selected_style_fg);
+            // .add_modifier(Modifier::REVERSED)
+            // .bg(self.colors.selected_style_bg)
+            ;
 
-        let header = ["Name", "Address"]
+        let header = ["Index", "Value"]
             .into_iter()
+            .map(|title| {
+                Cell::from(Text::from(format!("\n{title}\n")))
+            })
             .map(Cell::from)
             .collect::<Row>()
             .style(header_style)
-            .height(1);
+            .height(3)
+            ;
         let rows = self.items.iter().enumerate().map(|(i, data)| {
             let color = match i % 2 {
                 0 => self.colors.normal_row_color,
@@ -173,27 +195,27 @@ impl ListValue {
             };
             let item = data.ref_array();
             item.into_iter()
-                .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
+                .map(|content| Cell::from(raw_value_to_highlight_text(&content, false)))
                 .collect::<Row>()
                 .style(Style::new().fg(self.colors.row_fg).bg(color))
-                .height(4)
+                .height(1)
         });
-        let bar = " █ ";
+        let bar = " ➤ ";
         let t = Table::new(
             rows,
             [
                 // + 1 is for padding.
-                Constraint::Length(self.longest_item_lens.0 + 1),
+                Constraint::Length(cmp::max(self.longest_item_lens.0, 5) + 1),
                 Constraint::Min(self.longest_item_lens.1 + 1),
             ],
         )
             .header(header)
             .highlight_style(selected_style)
             .highlight_symbol(Text::from(vec![
-                "".into(),
                 bar.into(),
-                bar.into(),
-                "".into(),
+                // bar.into(),
+                // bar.into(),
+                // "".into(),
             ]))
             .bg(self.colors.buffer_bg)
             .highlight_spacing(HighlightSpacing::Always);
@@ -229,14 +251,46 @@ impl ListValue {
             );
         frame.render_widget(info_footer, area);
     }
+
+    fn render_list(&mut self, frame: &mut Frame, area: Rect) {
+        let builder = ListBuilder::new(|context| {
+            let mut item = ListItem::new(&format!("Item {:0}", context.index));
+
+            // Alternating styles
+            if context.index % 2 == 0 {
+                item = item.style(Style::default().bg(Color::Rgb(28, 28, 32)));
+            } else {
+                item = item.style(Style::default().bg(Color::Rgb(0, 0, 0)));
+            }
+
+            // Style the selected element
+            if context.is_selected {
+                item = item.style(Style::default()
+                    .bg(Color::Rgb(255, 153, 0))
+                    .fg(Color::Rgb(28, 28, 32)));
+            };
+
+            // Return the size of the widget along the main axis.
+            let main_axis_size = 1;
+
+            (item, main_axis_size)
+        });
+
+        let item_count = 2;
+        let list = ListView::new(builder, item_count);
+        let state = &mut self.state;
+        let mut l_state = ListState::default();
+
+        list.render(area, frame.buffer_mut(), &mut l_state);
+    }
+    }
 }
 
 impl Renderable for ListValue {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
+
         let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(3)]);
         let rects = vertical.split(rect);
-
-        self.set_colors();
 
         self.render_table(frame, rects[0]);
         self.render_scrollbar(frame, rects[0]);
@@ -258,37 +312,35 @@ impl Renderable for ListValue {
 
 impl Listenable for ListValue {
     fn handle_key_event(&mut self, _key_event: KeyEvent) -> Result<bool> {
-        if let Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Press {
-                let accepted = match key.code {
-                    KeyCode::Esc => true,
-                    KeyCode::Char('j') | KeyCode::Down => {
-                        self.next();
-                        true
-                    },
-                    KeyCode::Char('k') | KeyCode::Up => {
-                        self.previous();
-                        true
-                    },
-                    // KeyCode::Char('l') | KeyCode::Right => self.next_color(),
-                    // KeyCode::Char('h') | KeyCode::Left => self.previous_color(),
-                    _ => {false},
-                };
-                return Ok(accepted);
-            }
+        if _key_event.kind == KeyEventKind::Press {
+            let accepted = match _key_event.code {
+                KeyCode::Esc => true,
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.next();
+                    true
+                },
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.previous();
+                    true
+                },
+                // KeyCode::Char('l') | KeyCode::Right => self.next_color(),
+                // KeyCode::Char('h') | KeyCode::Left => self.previous_color(),
+                _ => {false},
+            };
+            return Ok(accepted);
         }
         Ok(false)
     }
 }
 
 fn constraint_len_calculator(items: &[Data]) -> (u16, u16) {
-    let name_len = items
+    let index_len = items
         .iter()
         .map(Data::index)
         .map(UnicodeWidthStr::width)
         .max()
         .unwrap_or(0);
-    let address_len = items
+    let value_len = items
         .iter()
         .map(Data::value)
         .flat_map(str::lines)
@@ -297,7 +349,7 @@ fn constraint_len_calculator(items: &[Data]) -> (u16, u16) {
         .unwrap_or(0);
 
     #[allow(clippy::cast_possible_truncation)]
-    (name_len as u16, address_len as u16)
+    (index_len as u16, value_len as u16)
 }
 
 #[cfg(test)]
