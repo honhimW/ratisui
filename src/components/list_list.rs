@@ -35,6 +35,7 @@ use style::palette::tailwind;
 use tui_widget_list::{ListBuilder, ListState, ListView};
 use unicode_width::UnicodeWidthStr;
 use crate::app::{Listenable, Renderable};
+use crate::components::list_row::ListRow;
 use crate::components::raw_value::raw_value_to_highlight_text;
 
 const PALETTES: [tailwind::Palette; 4] = [
@@ -253,27 +254,27 @@ impl ListValue {
     }
 
     fn render_list(&mut self, frame: &mut Frame, area: Rect) {
-        let builder = ListBuilder::new(|context| {
-            let mut item = ListItem::new(&format!("Item {:0}", context.index));
+        ListRow
+        let builder = ListBuilder::new(move |context| {
+            let mut main_axis_size = 2;
 
-            // Alternating styles
+            let mut container = containers[context.index].clone();
+
             if context.index % 2 == 0 {
-                item = item.style(Style::default().bg(Color::Rgb(28, 28, 32)));
+                container.style = Style::default().bg(Color::Rgb(28, 28, 32));
             } else {
-                item = item.style(Style::default().bg(Color::Rgb(0, 0, 0)));
+                container.style = Style::default().bg(Color::Rgb(0, 0, 0));
             }
 
-            // Style the selected element
             if context.is_selected {
-                item = item.style(Style::default()
-                    .bg(Color::Rgb(255, 153, 0))
-                    .fg(Color::Rgb(28, 28, 32)));
-            };
+                container.style = Style::default()
+                    .bg(tailwind::ROSE.c300)
+                    .fg(Color::Rgb(28, 28, 32));
+                container.expand = true;
+                main_axis_size = 3 + container.content.len() as u16;
+            }
 
-            // Return the size of the widget along the main axis.
-            let main_axis_size = 1;
-
-            (item, main_axis_size)
+            (container, main_axis_size)
         });
 
         let item_count = 2;
@@ -283,18 +284,18 @@ impl ListValue {
 
         list.render(area, frame.buffer_mut(), &mut l_state);
     }
-    }
 }
 
 impl Renderable for ListValue {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
+        self.render_list(frame, rect);
 
-        let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(3)]);
-        let rects = vertical.split(rect);
-
-        self.render_table(frame, rects[0]);
-        self.render_scrollbar(frame, rects[0]);
-        self.render_footer(frame, rects[1]);
+        // let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(3)]);
+        // let rects = vertical.split(rect);
+        //
+        // self.render_table(frame, rects[0]);
+        // self.render_scrollbar(frame, rects[0]);
+        // self.render_footer(frame, rects[1]);
 
         Ok(())
     }
