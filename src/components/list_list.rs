@@ -30,12 +30,14 @@ use ratatui::{
 };
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Alignment;
+use ratatui::layout::Constraint::{Length, Min};
+use ratatui::style::Styled;
 use ratatui::widgets::{List, ListItem};
 use style::palette::tailwind;
 use tui_widget_list::{ListBuilder, ListState, ListView};
 use unicode_width::UnicodeWidthStr;
 use crate::app::{Listenable, Renderable};
-use crate::components::list_row::ListRow;
+use crate::components::list_row::{ListRow, RowsBuilder};
 use crate::components::raw_value::raw_value_to_highlight_text;
 
 const PALETTES: [tailwind::Palette; 4] = [
@@ -189,19 +191,36 @@ impl ListValue {
             .style(header_style)
             .height(3)
             ;
+
+
+        let selected_idx = self.state.selected().unwrap_or(0);
+        let selected_height = 3;
         let rows = self.items.iter().enumerate().map(|(i, data)| {
             let color = match i % 2 {
                 0 => self.colors.normal_row_color,
                 _ => self.colors.alt_row_color,
             };
             let item = data.ref_array();
+
+            let height = if selected_idx == i {
+                selected_height
+            } else {
+                1
+            };
             item.into_iter()
                 .map(|content| Cell::from(raw_value_to_highlight_text(&content, false)))
                 .collect::<Row>()
                 .style(Style::new().fg(self.colors.row_fg).bg(color))
-                .height(1)
+                .height(height)
         });
         let bar = " ➤ ";
+        // let bar = " █ ";
+        let mut lines: Vec<Line> = vec![];
+        for _ in 0..selected_height {
+            lines.push(bar.into());
+            break;
+        }
+        let heilight_symbol = Text::from(lines);
         let t = Table::new(
             rows,
             [
@@ -212,12 +231,7 @@ impl ListValue {
         )
             .header(header)
             .highlight_style(selected_style)
-            .highlight_symbol(Text::from(vec![
-                bar.into(),
-                // bar.into(),
-                // bar.into(),
-                // "".into(),
-            ]))
+            .highlight_symbol(heilight_symbol)
             .bg(self.colors.buffer_bg)
             .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut self.state);
@@ -254,30 +268,42 @@ impl ListValue {
     }
 
     fn render_list(&mut self, frame: &mut Frame, area: Rect) {
-        ListRow
+        let mut rows_builder = RowsBuilder::new(vec![Length(5), Min(5)]);
+        rows_builder.add_row(vec![String::from("index"), String::from("value")]);
+        rows_builder.add_row(vec![String::from("hello"), String::from("world")]);
+        rows_builder.add_row(vec![String::from("foo"), String::from("bar")]);
+        rows_builder.add_row(vec![String::from("bool"), String::from("false")]);
+        rows_builder.add_row(vec![String::from("bool"), String::from("false")]);
+        rows_builder.add_row(vec![String::from("num"), String::from("123.321")]);
+        let rows = rows_builder.get_rows();
+        let list_size = rows.len();
         let builder = ListBuilder::new(move |context| {
             let mut main_axis_size = 2;
-
-            let mut container = containers[context.index].clone();
+            let mut row = rows[context.index].clone();
 
             if context.index % 2 == 0 {
-                container.style = Style::default().bg(Color::Rgb(28, 28, 32));
+                row = row.set_style(Style::default().bg(Color::Rgb(28, 28, 32)));
             } else {
-                container.style = Style::default().bg(Color::Rgb(0, 0, 0));
+                row = row.set_style(Style::default().bg(Color::Rgb(0, 0, 0)));
             }
 
             if context.is_selected {
-                container.style = Style::default()
+                row = row.set_style(Style::default()
                     .bg(tailwind::ROSE.c300)
-                    .fg(Color::Rgb(28, 28, 32));
-                container.expand = true;
-                main_axis_size = 3 + container.content.len() as u16;
+                    .fg(Color::Rgb(28, 28, 32)));
+                row.expand = true;
+                main_axis_size = 3 + row.max_height;
+            }
+            if row.is_first {
+                main_axis_size = main_axis_size + 1;
+                row = row.set_style(Style::default()
+                    .bg(tailwind::ROSE.c800));
             }
 
-            (container, main_axis_size)
+            (row, main_axis_size)
         });
 
-        let item_count = 2;
+        let item_count = list_size;
         let list = ListView::new(builder, item_count);
         let state = &mut self.state;
         let mut l_state = ListState::default();
@@ -288,14 +314,14 @@ impl ListValue {
 
 impl Renderable for ListValue {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        self.render_list(frame, rect);
+        // self.render_list(frame, rect);
 
-        // let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(3)]);
-        // let rects = vertical.split(rect);
-        //
-        // self.render_table(frame, rects[0]);
-        // self.render_scrollbar(frame, rects[0]);
-        // self.render_footer(frame, rects[1]);
+        let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(3)]);
+        let rects = vertical.split(rect);
+
+        self.render_table(frame, rects[0]);
+        self.render_scrollbar(frame, rects[0]);
+        self.render_footer(frame, rects[1]);
 
         Ok(())
     }
