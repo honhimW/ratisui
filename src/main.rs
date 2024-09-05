@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
 
 async fn render(mut app: App, config: Configuration) -> Result<()> {
     let mut terminal = tui::init()?;
-    let fps = cmp::min(config.fps.clone() as usize, 60);
+    let fps = cmp::min(config.fps.unwrap_or(30) as usize, 60);
     let delay_millis = 1000 / fps;
     let delay_duration = Duration::from_millis(delay_millis as u64);
     let mut fps_calculator = FpsCalculator::default();

@@ -91,7 +91,7 @@ impl Data {
 
 }
 
-pub struct ListValue {
+pub struct SetValue {
     item_values: Vec<String>,
     state: TableState,
     items: Vec<Data>,
@@ -101,7 +101,7 @@ pub struct ListValue {
     color_index: usize,
 }
 
-impl ListValue {
+impl SetValue {
     pub fn new(data: Vec<String>) -> Self {
         let mut vec = vec![];
         for (idx, string) in data.iter().enumerate() {
@@ -176,7 +176,7 @@ impl ListValue {
             // .bg(self.colors.selected_style_bg)
             ;
 
-        let header = ["Index", "Value"]
+        let header = ["No.", "Value"]
             .into_iter()
             .map(|title| {
                 Cell::from(Text::from(format!("\n{title}\n")))
@@ -265,7 +265,7 @@ impl ListValue {
 
 }
 
-impl Renderable for ListValue {
+impl Renderable for SetValue {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
         self.render_table(frame, rect);
         self.render_scrollbar(frame, rect);
@@ -283,7 +283,7 @@ impl Renderable for ListValue {
     }
 }
 
-impl Listenable for ListValue {
+impl Listenable for SetValue {
     fn handle_key_event(&mut self, _key_event: KeyEvent) -> Result<bool> {
         if _key_event.kind == KeyEventKind::Press {
             let accepted = match _key_event.code {

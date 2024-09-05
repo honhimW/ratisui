@@ -22,6 +22,7 @@ use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 use crate::components::raw_value::raw_value_to_highlight_text;
+use crate::components::set_table::SetValue;
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
@@ -34,8 +35,9 @@ pub struct ExplorerTab {
     tree_items: Vec<TreeItem<'static, String>>,
     redis_separator: String,
     selected_key: Option<RedisKey>,
-    select_string_value: Option<String>,
+    selected_string_value: Option<String>,
     selected_list_value: Option<ListValue>,
+    selected_set_value: Option<SetValue>,
     data_sender: Sender<Data>,
     data_receiver: Receiver<Data>,
 }
@@ -44,8 +46,9 @@ pub struct ExplorerTab {
 struct Data {
     key_name: String,
     scan_keys_result: (bool, Vec<RedisKey>),
-    select_string_value: (bool, Option<String>),
-    select_list_value: (bool, Option<Vec<String>>),
+    selected_string_value: (bool, Option<String>),
+    selected_list_value: (bool, Option<Vec<String>>),
+    selected_set_value: (bool, Option<Vec<String>>),
     key_type: (bool, Option<String>),
     key_size: (bool, Option<usize>),
     length: (bool, Option<usize>),
@@ -183,8 +186,9 @@ impl ExplorerTab {
             tree_items: vec![],
             redis_separator: ":".to_string(),
             selected_key: None,
-            select_string_value: None,
+            selected_string_value: None,
             selected_list_value: None,
+            selected_set_value: None,
             data_sender: tx,
             data_receiver: rx,
         }
@@ -209,11 +213,14 @@ impl ExplorerTab {
                 if data.ttl.0 {
                     redis_key.ttl = data.ttl.1;
                 }
-                if data.select_string_value.0 {
-                    self.select_string_value = data.select_string_value.1;
+                if data.selected_string_value.0 {
+                    self.selected_string_value = data.selected_string_value.1;
                 }
-                if data.select_list_value.0 {
-                    self.selected_list_value = Some(ListValue::new(data.select_list_value.1.unwrap_or(vec![])));
+                if data.selected_list_value.0 {
+                    self.selected_list_value = Some(ListValue::new(data.selected_list_value.1.unwrap_or(vec![])));
+                }
+                if data.selected_set_value.0 {
+                    self.selected_set_value = Some(SetValue::new(data.selected_set_value.1.unwrap_or(vec![])));
                 }
             }
         }
@@ -313,7 +320,7 @@ impl ExplorerTab {
             .padding(Padding::horizontal(1))
             .borders(Borders::ALL)
             .border_style(self.border_color(CurrentScreen::Values));
-        if self.select_string_value.is_some() {
+        if self.selected_string_value.is_some() {
             if let Ok(text) = self.get_raw_value() {
                 let values_text = Paragraph::new(text)
                     .block(values_block);
@@ -324,6 +331,12 @@ impl ExplorerTab {
                 frame.render_widget(values_block.clone(), area.clone());
                 let area = values_block.inner(area);
                 list_value.render_frame(frame, area)?;
+            }
+        } else if self.selected_set_value.is_some() {
+            if let Some(ref mut set_value) = self.selected_set_value {
+                frame.render_widget(values_block.clone(), area.clone());
+                let area = values_block.inner(area);
+                set_value.render_frame(frame, area)?;
             }
         } else {
             let values_text = Paragraph::new("N/A")
@@ -515,7 +528,7 @@ impl ExplorerTab {
     }
 
     fn get_raw_value(&self) -> Result<Text> {
-        if let Some(ref value) = self.select_string_value {
+        if let Some(ref value) = self.selected_string_value {
             Ok(raw_value_to_highlight_text(Cow::from(value), true))
         } else {
             Ok(Text::default())
@@ -554,8 +567,9 @@ impl ExplorerTab {
                             id.eq(&redis_key.name)
                         }).cloned();
                         self.selected_key = option;
-                        self.select_string_value = None;
+                        self.selected_string_value = None;
                         self.selected_list_value = None;
+                        self.selected_set_value = None;
                         if self.selected_key.is_some() {
                             let sender = self.data_sender.clone();
                             tokio::spawn(async move {
@@ -648,7 +662,7 @@ impl ExplorerTab {
                 "string" => {
                     let bytes: Vec<u8> = op.get(key_name_clone).await?;
                     let string = bytes_to_string(bytes).context("Failed to parse string")?;
-                    data.select_string_value = (true, Some(string));
+                    data.selected_string_value = (true, Some(string));
                 }
                 "list" => {
                     let values: Vec<Vec<u8>> = op.get_list(key_name_clone).await?;
@@ -658,7 +672,17 @@ impl ExplorerTab {
                             Err(_) => {String::new()}
                         }
                     }).collect();
-                    data.select_list_value = (true, Some(strings));
+                    data.selected_list_value = (true, Some(strings));
+                }
+                "set" => {
+                    let values: Vec<Vec<u8>> = op.get_set(key_name_clone).await?;
+                    let strings: Vec<String> = values.iter().map(|item| {
+                        match bytes_to_string(item.clone()) {
+                            Ok(s) => {s}
+                            Err(_) => {String::new()}
+                        }
+                    }).collect();
+                    data.selected_set_value = (true, Some(strings));
                 }
                 _ => {}
             }
@@ -735,6 +759,12 @@ impl Renderable for ExplorerTab {
             } else if self.current_screen == CurrentScreen::Values {
                 if let Some(ref list_value) = self.selected_list_value {
                     list_value.footer_elements().iter().for_each(|(k, v)| {
+                        elements.push((k, v));
+                    });
+                    elements.push(("←/h", "Close"));
+                }
+                if let Some(ref set_value) = self.selected_set_value {
+                    set_value.footer_elements().iter().for_each(|(k, v)| {
                         elements.push((k, v));
                     });
                     elements.push(("←/h", "Close"));

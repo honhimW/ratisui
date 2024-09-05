@@ -11,12 +11,14 @@ use ratatui::style::palette::tailwind;
 use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
 use ratatui::{symbols, Frame};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
+use crate::tabs::logger::LoggerTab;
 
 pub struct Context {
     current_tab: CurrentTab,
     current_tab_index: usize,
     explorer_tab: ExplorerTab,
     profiler_tab: ProfilerTab,
+    logger_tab: LoggerTab,
     pub fps: f32,
 }
 
@@ -24,6 +26,7 @@ pub struct Context {
 enum CurrentTab {
     Explorer,
     Profiler,
+    Logger,
 }
 
 impl Context {
@@ -33,6 +36,7 @@ impl Context {
             current_tab_index: 0,
             explorer_tab: ExplorerTab::new(),
             profiler_tab: ProfilerTab::default(),
+            logger_tab: LoggerTab::default(),
             fps: 0.0,
         }
     }
@@ -45,6 +49,7 @@ impl Context {
         match self.current_tab {
             CurrentTab::Explorer => &self.explorer_tab,
             CurrentTab::Profiler => &self.profiler_tab,
+            CurrentTab::Logger => &self.logger_tab,
         }
     }
 
@@ -52,6 +57,7 @@ impl Context {
         match self.current_tab {
             CurrentTab::Explorer => &mut self.explorer_tab,
             CurrentTab::Profiler => &mut self.profiler_tab,
+            CurrentTab::Logger => &mut self.logger_tab,
         }
     }
 
@@ -59,6 +65,7 @@ impl Context {
         vec![
             &self.explorer_tab,
             &self.profiler_tab,
+            &self.logger_tab,
         ]
     }
 
@@ -117,6 +124,9 @@ impl Context {
             CurrentTab::Profiler => {
                 self.profiler_tab.render_frame(frame, area)
             }
+            CurrentTab::Logger => {
+                self.logger_tab.render_frame(frame, area)
+            }
         }
     }
 
@@ -146,8 +156,8 @@ impl Renderable for Context {
         let horizontal = Layout::horizontal([Min(0), Length(15), Length(5)]);
         let [tabs_area, title_area, fps_area] = horizontal.areas(header_area);
 
-        self.render_title(frame, title_area)?;
         self.render_tabs(frame, tabs_area)?;
+        self.render_title(frame, title_area)?;
         self.render_fps(frame, fps_area)?;
         self.render_separator(frame, separator_area)?;
         self.render_selected_tab(frame, inner_area)?;
@@ -163,6 +173,9 @@ impl Renderable for Context {
             }
             CurrentTab::Profiler => {
                 self.profiler_tab.footer_elements()
+            }
+            CurrentTab::Logger => {
+                self.logger_tab.footer_elements()
             }
         };
         footer_elements.push(("c", "Connection"));
