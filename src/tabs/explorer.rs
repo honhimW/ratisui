@@ -1,6 +1,7 @@
+use std::borrow::Cow;
 use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::highlight_value::{HighlightKind, HighlightProcessor, HighlightText};
-use crate::components::list_list::ListValue;
+use crate::components::list_table::ListValue;
 use crate::redis_opt::{async_redis_opt, redis_operations};
 use crate::tabs::explorer::CurrentScreen::Keys;
 use anyhow::{Context, Error, Result};
@@ -515,7 +516,7 @@ impl ExplorerTab {
 
     fn get_raw_value(&self) -> Result<Text> {
         if let Some(ref value) = self.select_string_value {
-            Ok(raw_value_to_highlight_text(value, true))
+            Ok(raw_value_to_highlight_text(Cow::from(value), true))
         } else {
             Ok(Text::default())
         }
@@ -731,6 +732,13 @@ impl Renderable for ExplorerTab {
                 elements.push(("↓/k", "Down"));
                 elements.push(("←/h", "Close"));
                 elements.push(("→/l", "Open"));
+            } else if self.current_screen == CurrentScreen::Values {
+                if let Some(ref list_value) = self.selected_list_value {
+                    list_value.footer_elements().iter().for_each(|(k, v)| {
+                        elements.push((k, v));
+                    });
+                    elements.push(("←/h", "Close"));
+                }
             }
         }
         elements

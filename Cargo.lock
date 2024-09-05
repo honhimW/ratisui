@@ -1402,7 +1402,6 @@ dependencies = [
  "tree-sitter-json",
  "tui-textarea",
  "tui-tree-widget",
- "tui-widget-list",
  "tui-widgets",
  "unicode-width",
  "uuid",
@@ -2142,15 +2141,6 @@ checksum = "df0b54061d997162f225bed5d2147574af0648480214759a000e33f6cea0017a"
 dependencies = [
  "ratatui 0.28.1",
  "unicode-width",
-]
-
-[[package]]
-name = "tui-widget-list"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f953e329dc348bdda7bb2e1533ab5c9d9a0a896814f09a7bb491fd31c7bcc822"
-dependencies = [
- "ratatui 0.28.1",
 ]
 
 [[package]]

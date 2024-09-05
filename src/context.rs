@@ -1,25 +1,23 @@
-use std::sync::Arc;
 use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use crate::tabs::explorer::ExplorerTab;
 use crate::tabs::profiler::ProfilerTab;
 use anyhow::Result;
-use async_trait::async_trait;
 use ratatui::crossterm::event;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::layout::{Alignment, Layout, Rect};
 use ratatui::prelude::{Color, Span, Style, Stylize, Text};
+use ratatui::style::palette::tailwind;
 use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
 use ratatui::{symbols, Frame};
-use ratatui::style::palette::tailwind;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
-use tokio::sync::RwLock;
 
 pub struct Context {
     current_tab: CurrentTab,
     current_tab_index: usize,
     explorer_tab: ExplorerTab,
     profiler_tab: ProfilerTab,
+    pub fps: f32,
 }
 
 #[derive(Eq, PartialEq, EnumCount, EnumIter)]
@@ -35,6 +33,7 @@ impl Context {
             current_tab_index: 0,
             explorer_tab: ExplorerTab::new(),
             profiler_tab: ProfilerTab::default(),
+            fps: 0.0,
         }
     }
 
@@ -62,7 +61,7 @@ impl Context {
             &self.profiler_tab,
         ]
     }
-    
+
     fn next_tab(&mut self) {
         let tmp_index = self.current_tab_index + 1;
         self.current_tab_index = tmp_index % CurrentTab::COUNT;
@@ -90,6 +89,12 @@ impl Context {
                                 .padding("", "")
                                 .divider("|"), area);
 
+        Ok(())
+    }
+
+    fn render_fps(&self, frame: &mut Frame, area: Rect) -> Result<()> {
+        frame.render_widget(Text::from(format!("{:.1}", self.fps))
+                                .style(Style::default().fg(tailwind::GRAY.c500)), area);
         Ok(())
     }
 
@@ -138,11 +143,12 @@ impl Renderable for Context {
         let vertical = Layout::vertical([Length(1), Length(1), Min(0), Length(1)]);
         let [header_area, separator_area, inner_area, footer_area] = vertical.areas(rect);
 
-        let horizontal = Layout::horizontal([Min(0), Length(20)]);
-        let [tabs_area, title_area] = horizontal.areas(header_area);
+        let horizontal = Layout::horizontal([Min(0), Length(15), Length(5)]);
+        let [tabs_area, title_area, fps_area] = horizontal.areas(header_area);
 
         self.render_title(frame, title_area)?;
         self.render_tabs(frame, tabs_area)?;
+        self.render_fps(frame, fps_area)?;
         self.render_separator(frame, separator_area)?;
         self.render_selected_tab(frame, inner_area)?;
         self.render_footer(frame, footer_area)?;
@@ -167,11 +173,10 @@ impl Renderable for Context {
 }
 
 impl Listenable for Context {
-
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         let mut current_tab = self.get_current_tab_as_mut();
         if current_tab.handle_key_event(key_event)? {
-            return Ok(true)
+            return Ok(true);
         }
 
         match key_event.code {

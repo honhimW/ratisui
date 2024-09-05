@@ -75,6 +75,7 @@ fn get_file_path(file_name: &str) -> Result<std::path::PathBuf> {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Configuration {
+    pub fps: u8,
     pub scan_size: u16,
 }
 
@@ -87,6 +88,7 @@ pub struct Databases {
 impl Configuration {
     fn default() -> Self {
         Self {
+            fps: 30,
             scan_size: 2_000,
         }
     }

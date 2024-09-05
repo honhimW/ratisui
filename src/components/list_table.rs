@@ -13,32 +13,29 @@
 //! [examples]: https://github.com/ratatui/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui/ratatui/blob/main/examples/README.md
 
-use std::cmp;
+use std::borrow::Cow;
+use crate::app::{Listenable, Renderable};
+use crate::components::raw_value::raw_value_to_highlight_text;
 use anyhow::Result;
 use itertools::Itertools;
-use ratatui::{
-    crossterm::event::{self, Event, KeyCode, KeyEventKind},
-    layout::{Constraint, Layout, Margin, Rect},
-    style::{self, Color, Modifier, Style, Stylize},
-    text::{Line, Text},
-    widgets::{
-        StatefulWidget,
-        Block, BorderType, Cell, HighlightSpacing, Paragraph, Row, Scrollbar, ScrollbarOrientation,
-        ScrollbarState, Table, TableState,
-    },
-    DefaultTerminal, Frame,
-};
 use ratatui::crossterm::event::KeyEvent;
-use ratatui::layout::Alignment;
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::style::Styled;
-use ratatui::widgets::{List, ListItem};
+use ratatui::{
+    crossterm::event::{KeyCode, KeyEventKind},
+    layout::{Constraint, Layout, Margin, Rect},
+    style::{self, Color, Style, Stylize},
+    text::{Line, Text},
+    widgets::{
+        Block,
+        BorderType, Cell, HighlightSpacing, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
+        StatefulWidget, Table, TableState,
+    }
+    , Frame,
+};
+use std::cmp;
 use style::palette::tailwind;
-use tui_widget_list::{ListBuilder, ListState, ListView};
 use unicode_width::UnicodeWidthStr;
-use crate::app::{Listenable, Renderable};
-use crate::components::list_row::{ListRow, RowsBuilder};
-use crate::components::raw_value::raw_value_to_highlight_text;
 
 const PALETTES: [tailwind::Palette; 4] = [
     tailwind::BLUE,
@@ -59,7 +56,6 @@ struct TableColors {
     selected_style_bg: Color,
     normal_row_color: Color,
     alt_row_color: Color,
-    footer_border_color: Color,
 }
 
 impl TableColors {
@@ -72,7 +68,6 @@ impl TableColors {
             selected_style_bg: color.c900,
             normal_row_color: Color::default(),
             alt_row_color: color.c950,
-            footer_border_color: color.c400,
         }
     }
 }
@@ -194,7 +189,7 @@ impl ListValue {
 
 
         let selected_idx = self.state.selected().unwrap_or(0);
-        let selected_height = 3;
+        let selected_height = 5;
         let rows = self.items.iter().enumerate().map(|(i, data)| {
             let color = match i % 2 {
                 0 => self.colors.normal_row_color,
@@ -205,28 +200,38 @@ impl ListValue {
             let height = if selected_idx == i {
                 selected_height
             } else {
-                1
+                3
             };
             item.into_iter()
-                .map(|content| Cell::from(raw_value_to_highlight_text(&content, false)))
+                .map(|content| {
+                    let mut text = Text::default();
+                    text.push_line(Line::default());
+                    let highlight_text = raw_value_to_highlight_text(Cow::from(content), false);
+                    for line in highlight_text.lines {
+                        text.push_line(line);
+                    }
+                    text.push_line(Line::default());
+                    Cell::from(text)
+                })
                 .collect::<Row>()
                 .style(Style::new().fg(self.colors.row_fg).bg(color))
                 .height(height)
         });
-        let bar = " ➤ ";
-        // let bar = " █ ";
+        // let bar = " ➤ ";
+        let bar = " █ ";
         let mut lines: Vec<Line> = vec![];
-        for _ in 0..selected_height {
+        lines.push("".into());
+        for _ in 0..selected_height.saturating_sub(2) {
             lines.push(bar.into());
-            break;
         }
+        lines.push("".into());
         let heilight_symbol = Text::from(lines);
         let t = Table::new(
             rows,
             [
                 // + 1 is for padding.
-                Constraint::Length(cmp::max(self.longest_item_lens.0, 5) + 1),
-                Constraint::Min(self.longest_item_lens.1 + 1),
+                Length(cmp::max(self.longest_item_lens.0, 5) + 1),
+                Min(self.longest_item_lens.1 + 1),
             ],
         )
             .header(header)
@@ -251,84 +256,18 @@ impl ListValue {
         );
     }
 
-    fn render_footer(&self, frame: &mut Frame, area: Rect) {
-        let info_footer = Paragraph::new(Line::from(INFO_TEXT))
-            .style(
-                Style::new()
-                    .fg(self.colors.row_fg)
-                    .bg(self.colors.buffer_bg),
-            )
-            .centered()
-            .block(
-                Block::bordered()
-                    .border_type(BorderType::Double)
-                    .border_style(Style::new().fg(self.colors.footer_border_color)),
-            );
-        frame.render_widget(info_footer, area);
-    }
-
-    fn render_list(&mut self, frame: &mut Frame, area: Rect) {
-        let mut rows_builder = RowsBuilder::new(vec![Length(5), Min(5)]);
-        rows_builder.add_row(vec![String::from("index"), String::from("value")]);
-        rows_builder.add_row(vec![String::from("hello"), String::from("world")]);
-        rows_builder.add_row(vec![String::from("foo"), String::from("bar")]);
-        rows_builder.add_row(vec![String::from("bool"), String::from("false")]);
-        rows_builder.add_row(vec![String::from("bool"), String::from("false")]);
-        rows_builder.add_row(vec![String::from("num"), String::from("123.321")]);
-        let rows = rows_builder.get_rows();
-        let list_size = rows.len();
-        let builder = ListBuilder::new(move |context| {
-            let mut main_axis_size = 2;
-            let mut row = rows[context.index].clone();
-
-            if context.index % 2 == 0 {
-                row = row.set_style(Style::default().bg(Color::Rgb(28, 28, 32)));
-            } else {
-                row = row.set_style(Style::default().bg(Color::Rgb(0, 0, 0)));
-            }
-
-            if context.is_selected {
-                row = row.set_style(Style::default()
-                    .bg(tailwind::ROSE.c300)
-                    .fg(Color::Rgb(28, 28, 32)));
-                row.expand = true;
-                main_axis_size = 3 + row.max_height;
-            }
-            if row.is_first {
-                main_axis_size = main_axis_size + 1;
-                row = row.set_style(Style::default()
-                    .bg(tailwind::ROSE.c800));
-            }
-
-            (row, main_axis_size)
-        });
-
-        let item_count = list_size;
-        let list = ListView::new(builder, item_count);
-        let state = &mut self.state;
-        let mut l_state = ListState::default();
-
-        list.render(area, frame.buffer_mut(), &mut l_state);
-    }
 }
 
 impl Renderable for ListValue {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        // self.render_list(frame, rect);
-
-        let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(3)]);
-        let rects = vertical.split(rect);
-
-        self.render_table(frame, rects[0]);
-        self.render_scrollbar(frame, rects[0]);
-        self.render_footer(frame, rects[1]);
+        self.render_table(frame, rect);
+        self.render_scrollbar(frame, rect);
 
         Ok(())
     }
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
         let mut elements = vec![];
-        elements.push(("Esc", "Escape"));
         elements.push(("↑/j", "Up"));
         elements.push(("↓/k", "Down"));
         // elements.push(("←/h", "Close"));

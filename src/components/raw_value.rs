@@ -1,11 +1,12 @@
+use std::borrow::Cow;
 use ratatui::prelude::Text;
 use ratatui::style::palette::tailwind;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use crate::components::highlight_value::{HighlightKind, HighlightProcessor, HighlightText};
 
-pub fn raw_value_to_highlight_text(value: &String, format: bool) -> Text {
-    let mut processor = HighlightProcessor::new(value.clone());
+pub fn raw_value_to_highlight_text(value: Cow<str>, format: bool) -> Text {
+    let mut processor = HighlightProcessor::new(value.to_string());
     if !format {
         processor.disable_formatting();
     }
@@ -14,7 +15,7 @@ pub fn raw_value_to_highlight_text(value: &String, format: bool) -> Text {
         Ok(_) => { processor.get_fragments().clone() }
         Err(_) => {
             vec![HighlightText {
-                text: value.clone(),
+                text: value.to_string(),
                 kind: HighlightKind::String,
             }]
         }

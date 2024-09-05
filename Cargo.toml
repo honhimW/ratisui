@@ -55,7 +55,6 @@ chronoutil = "0.2.7"
 deadpool-redis = { version = "0.16.0", features = ["serde", "cluster"] }
 itertools = "0.13.0"
 unicode-width = "0.1.13"
-tui-widget-list = "0.12.1"
 #syntect = "5.2.0"
 
 # git crates

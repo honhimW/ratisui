@@ -10,15 +10,20 @@ mod tabs;
 mod components;
 
 use std::cell::Cell;
+use std::cmp;
+use std::ops::Add;
 use std::sync::Arc;
+use std::time::Duration;
 use anyhow::{anyhow, Result};
 use log4rs::config::RawConfig;
 use log::debug;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use tokio::join;
 use tokio::sync::RwLock;
+use tokio::time::{interval, Instant};
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
-use crate::configuration::{load_app_configuration, load_database_configuration};
+use crate::components::fps::FpsCalculator;
+use crate::configuration::{load_app_configuration, load_database_configuration, Configuration};
 use crate::input::InputEvent;
 use crate::redis_opt::{redis_operations, switch_client};
 
@@ -53,24 +58,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    render(App::new())?;
-
-    // let renderer = tokio::spawn(render(Arc::clone(&arc)));
-    // let handler = tokio::spawn(handle_events(Arc::clone(&arc)));
-    // let (renderer_result, handler_result) = join!(renderer, handler);
-    //
-    // if let Err(e) = renderer_result {
-    //     eprintln!(
-    //         "Failed to render: {}",
-    //         e,
-    //     )
-    // }
-    // if let Err(e) = handler_result {
-    //     eprintln!(
-    //         "Failed to handle event: {}",
-    //         e,
-    //     )
-    // }
+    render(App::new(), app_config).await?;
 
     if let Err(e) = tui::restore() {
         eprintln!(
@@ -82,14 +70,25 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn render(mut app: App) -> Result<()> {
+async fn render(mut app: App, config: Configuration) -> Result<()> {
     let mut terminal = tui::init()?;
-
+    let fps = cmp::min(config.fps.clone() as usize, 60);
+    let delay_millis = 1000 / fps;
+    let delay_duration = Duration::from_millis(delay_millis as u64);
+    let mut fps_calculator = FpsCalculator::default();
+    let mut interval = interval(delay_duration);
     loop {
+        interval.tick().await;
         if !app.health() {
             break;
         }
         let render_result = terminal.draw(|frame| {
+            fps_calculator.calculate_fps();
+            if let Some(fps) = fps_calculator.fps.clone() {
+                app.context.fps = fps;
+            } else {
+                app.context.fps = 0.0;
+            }
             let _ = app.context.render_frame(frame, frame.area());
         });
 
@@ -104,21 +103,25 @@ fn render(mut app: App) -> Result<()> {
             continue;
         }
 
-        let event_result = app.input.receiver().try_recv();
-
-        if let Ok(input_event) = event_result {
-            if let InputEvent::Input(event) = input_event {
-                if let Event::Key(key_event) = event {
-                    if key_event.kind == KeyEventKind::Press {
-                        if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('c') {
-                            app.state = AppState::Closing;
-                        } else {
-                            let _ = app.context.handle_key_event(key_event);
+        loop {
+            let event_result = app.input.receiver().try_recv();
+            if let Ok(input_event) = event_result {
+                if let InputEvent::Input(event) = input_event {
+                    if let Event::Key(key_event) = event {
+                        if key_event.kind == KeyEventKind::Press {
+                            if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('c') {
+                                app.state = AppState::Closing;
+                            } else {
+                                let _ = app.context.handle_key_event(key_event);
+                            }
                         }
                     }
                 }
+            } else {
+                break;
             }
         }
+
     }
 
     Ok(())
