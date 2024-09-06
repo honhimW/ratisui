@@ -3,11 +3,13 @@ use redis::cluster::{ClusterClient, ClusterConnection};
 use redis::ConnectionAddr::{Tcp, TcpTls};
 use redis::{AsyncCommands, AsyncIter, Client, Cmd, Commands, Connection, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, Iter, ProtocolVersion, RedisConnectionInfo, RedisResult, ScanOptions, ToRedisArgs, Value};
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{RwLock, RwLockReadGuard};
 use deadpool_redis::{Pool, Runtime};
 use deadpool_redis::redis::cmd;
+use log::info;
 use once_cell::sync::Lazy;
 use redis::aio::ConnectionManager;
 use crate::configuration::{to_protocol_version, Database};
@@ -31,9 +33,8 @@ where
 pub async fn async_redis_opt<F, FUT, R>(opt: F) -> Result<R>
 where
     F: FnOnce(RedisOperations) -> FUT,
-    FUT: Future<Output=Result<R>>
+    FUT: Future<Output=Result<R>>,
 {
-
     let x = redis_operations();
     if let Some(c) = x {
         opt(c.clone()).await
@@ -105,7 +106,7 @@ pub struct RedisOperations {
     server_info: Option<String>,
     cluster_client: Option<ClusterClient>,
     nodes: HashMap<String, NodeClientHolder>,
-    cluster_pool: Option<deadpool_redis::cluster::Pool>
+    cluster_pool: Option<deadpool_redis::cluster::Pool>,
 }
 
 #[derive(Clone)]
@@ -157,6 +158,18 @@ impl RedisOperations {
         self.cluster_client.is_some()
     }
 
+    fn print(&self) {
+        if self.is_cluster() {
+            info!("Cluster mode");
+            info!("Cluster nodes: {}", self.nodes.len());
+            for (s, node) in self.nodes.iter() {
+                info!("{s}: {} {}", node.node_client.get_connection_info().addr, node.is_master);
+            }
+        } else {
+            info!("Standalone mode: {}", self.client.get_connection_info().addr);
+        }
+    }
+
     fn initialize(&mut self) -> Result<()> {
         let mut connection = self.client.get_connection()?;
         let value = connection.req_command(&Cmd::new().arg("INFO").arg("SERVER"))?;
@@ -164,12 +177,13 @@ impl RedisOperations {
             self.server_info = Some(text);
             let redis_mode = self.get_server_info("redis_mode").context("there will always contain redis_mode property")?;
             if redis_mode == "cluster" {
-               self.initialize_cluster()?;
+                self.initialize_cluster()?;
             } else {
                 let config = deadpool_redis::Config::from_connection_info(deadpool_redis::ConnectionInfo::from(self.client.get_connection_info().clone()));
                 let pool = config.create_pool(Some(Runtime::Tokio1))?;
                 self.pool = pool;
             }
+            self.print();
             Ok(())
         } else {
             Err(anyhow!("Failed to initialize"))
@@ -364,6 +378,32 @@ impl RedisOperations {
         }
     }
 
+    pub async fn get_zset<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K) -> Result<V> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: V = connection.zrange_withscores(key, 0, -1).await?;
+            Ok(v)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: V = connection.zrange_withscores(key, 0, -1).await?;
+            Ok(v)
+        }
+    }
+
+    pub async fn get_hash<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K) -> Result<V> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: V = connection.hgetall(key).await?;
+            Ok(v)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: V = connection.hgetall(key).await?;
+            Ok(v)
+        }
+    }
+
     pub async fn key_type<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<String> {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
@@ -504,8 +544,6 @@ impl RedisOperations {
             }
         }
     }
-
-
 }
 
 #[cfg(test)]

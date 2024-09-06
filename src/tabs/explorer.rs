@@ -1,9 +1,9 @@
-use std::borrow::Cow;
 use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
-use crate::components::highlight_value::{HighlightKind, HighlightProcessor, HighlightText};
 use crate::components::list_table::ListValue;
+use crate::components::raw_value::raw_value_to_highlight_text;
+use crate::components::set_table::SetValue;
 use crate::redis_opt::{async_redis_opt, redis_operations};
-use crate::tabs::explorer::CurrentScreen::Keys;
+use crate::tabs::explorer::CurrentScreen::{KeysTree, ValuesViewer};
 use anyhow::{Context, Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -16,13 +16,14 @@ use ratatui::text::Span;
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
 use ratatui::Frame;
 use redis::Commands;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Not;
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
-use crate::components::raw_value::raw_value_to_highlight_text;
-use crate::components::set_table::SetValue;
+use crate::components::hash_table::HashValue;
+use crate::components::zset_table::ZSetValue;
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
@@ -38,6 +39,8 @@ pub struct ExplorerTab {
     selected_string_value: Option<String>,
     selected_list_value: Option<ListValue>,
     selected_set_value: Option<SetValue>,
+    selected_zset_value: Option<ZSetValue>,
+    selected_hash_value: Option<HashValue>,
     data_sender: Sender<Data>,
     data_receiver: Receiver<Data>,
 }
@@ -49,6 +52,8 @@ struct Data {
     selected_string_value: (bool, Option<String>),
     selected_list_value: (bool, Option<Vec<String>>),
     selected_set_value: (bool, Option<Vec<String>>),
+    selected_zset_value: (bool, Option<Vec<(String, f64)>>),
+    selected_hash_value: (bool, Option<HashMap<String, String>>),
     key_type: (bool, Option<String>),
     key_size: (bool, Option<usize>),
     length: (bool, Option<usize>),
@@ -58,8 +63,8 @@ struct Data {
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CurrentScreen {
     #[default]
-    Keys,
-    Values,
+    KeysTree,
+    ValuesViewer,
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -176,7 +181,7 @@ impl ExplorerTab {
     pub fn new() -> Self {
         let (tx, rx) = unbounded();
         Self {
-            current_screen: Keys,
+            current_screen: KeysTree,
             show_filter: false,
             filter_mod: FilterMod::Fuzzy,
             scan_size: 2_000,
@@ -189,6 +194,8 @@ impl ExplorerTab {
             selected_string_value: None,
             selected_list_value: None,
             selected_set_value: None,
+            selected_zset_value: None,
+            selected_hash_value: None,
             data_sender: tx,
             data_receiver: rx,
         }
@@ -221,6 +228,12 @@ impl ExplorerTab {
                 }
                 if data.selected_set_value.0 {
                     self.selected_set_value = Some(SetValue::new(data.selected_set_value.1.unwrap_or(vec![])));
+                }
+                if data.selected_zset_value.0 {
+                    self.selected_zset_value = Some(ZSetValue::new(data.selected_zset_value.1.unwrap_or(vec![])));
+                }
+                if data.selected_hash_value.0 {
+                    self.selected_hash_value = Some(HashValue::new(data.selected_hash_value.1.unwrap_or(HashMap::new())));
                 }
             }
         }
@@ -259,7 +272,7 @@ impl ExplorerTab {
         let values_block = Block::default().title("Info")
             .padding(Padding::horizontal(1))
             .borders(Borders::ALL)
-            .border_style(self.border_color(CurrentScreen::Values));
+            .border_style(self.border_color(ValuesViewer));
 
         if let Some(redis_key) = &self.selected_key {
             let key_name = redis_key.name.clone();
@@ -319,7 +332,7 @@ impl ExplorerTab {
         let values_block = Block::default().title("Values")
             .padding(Padding::horizontal(1))
             .borders(Borders::ALL)
-            .border_style(self.border_color(CurrentScreen::Values));
+            .border_style(self.border_color(ValuesViewer));
         if self.selected_string_value.is_some() {
             if let Ok(text) = self.get_raw_value() {
                 let values_text = Paragraph::new(text)
@@ -338,6 +351,18 @@ impl ExplorerTab {
                 let area = values_block.inner(area);
                 set_value.render_frame(frame, area)?;
             }
+        } else if self.selected_zset_value.is_some() {
+            if let Some(ref mut set_value) = self.selected_zset_value {
+                frame.render_widget(values_block.clone(), area.clone());
+                let area = values_block.inner(area);
+                set_value.render_frame(frame, area)?;
+            }
+        } else if self.selected_hash_value.is_some() {
+            if let Some(ref mut hash_value) = self.selected_hash_value {
+                frame.render_widget(values_block.clone(), area.clone());
+                let area = values_block.inner(area);
+                hash_value.render_frame(frame, area)?;
+            }
         } else {
             let values_text = Paragraph::new("N/A")
                 .block(values_block);
@@ -354,7 +379,7 @@ impl ExplorerTab {
         }
         self.filter_text_area.set_block(
             Block::bordered()
-                .border_style(self.border_color(CurrentScreen::Keys))
+                .border_style(self.border_color(KeysTree))
                 .title(format!("Scan Keys ({})", self.scan_keys_result.len()))
         );
         frame.render_widget(&self.filter_text_area.clone(), area);
@@ -542,14 +567,28 @@ impl ExplorerTab {
                 KeyCode::Left | KeyCode::Char('h') => self.tree_state.key_left(),
                 KeyCode::Right | KeyCode::Char('l') => {
                     if self.selected_key.is_some() {
-                        self.toggle_screen(CurrentScreen::Values);
+                        self.toggle_screen(ValuesViewer);
                         true
                     } else {
                         self.tree_state.key_right()
                     }
                 }
-                KeyCode::Down | KeyCode::Char('j') => self.tree_state.key_down(),
-                KeyCode::Up | KeyCode::Char('k') => self.tree_state.key_up(),
+                KeyCode::Down | KeyCode::Char('j') => {
+                    let key_down = self.tree_state.key_down();
+                    if key_down {
+                        key_down
+                    } else {
+                        self.tree_state.select_first()
+                    }
+                },
+                KeyCode::Up | KeyCode::Char('k') => {
+                    let key_up = self.tree_state.key_up();
+                    if key_up {
+                        key_up
+                    } else {
+                        self.tree_state.select_last()
+                    }
+                },
                 KeyCode::Esc => self.tree_state.select(Vec::new()),
                 KeyCode::Home => self.tree_state.select_first(),
                 KeyCode::End => self.tree_state.select_last(),
@@ -570,6 +609,8 @@ impl ExplorerTab {
                         self.selected_string_value = None;
                         self.selected_list_value = None;
                         self.selected_set_value = None;
+                        self.selected_zset_value = None;
+                        self.selected_hash_value = None;
                         if self.selected_key.is_some() {
                             let sender = self.data_sender.clone();
                             tokio::spawn(async move {
@@ -684,6 +725,25 @@ impl ExplorerTab {
                     }).collect();
                     data.selected_set_value = (true, Some(strings));
                 }
+                "zset" => {
+                    let values: Vec<(Vec<u8>, f64)> = op.get_zset(key_name_clone).await?;
+                    let tuples: Vec<(String, f64)> = values.iter().map(|(item, score)| {
+                        match bytes_to_string(item.clone()) {
+                            Ok(s) => {(s, score.clone())}
+                            Err(_) => {(String::new(), score.clone())}
+                        }
+                    }).collect();
+                    data.selected_zset_value = (true, Some(tuples));
+                }
+                "hash" => {
+                    let values: HashMap<Vec<u8>, Vec<u8>> = op.get_hash(key_name_clone).await?;
+                    let hash_value: HashMap<String, String> = values.iter().map(|(key, value)| {
+                        let key_str: String = bytes_to_string(key.clone()).unwrap_or_else(|_| { String::new() });
+                        let value_str = bytes_to_string(value.clone()).unwrap_or_else(|_| { String::new() });
+                        (key_str, value_str)
+                    }).collect();
+                    data.selected_hash_value = (true, Some(hash_value));
+                }
                 _ => {}
             }
             Ok(data)
@@ -748,7 +808,7 @@ impl Renderable for ExplorerTab {
             elements.push(("Esc", "Close"));
             elements.push(("Enter", "Do Scan"));
         } else {
-            if self.current_screen == Keys {
+            if self.current_screen == KeysTree {
                 elements.push(("/", "Scan"));
                 elements.push(("d", "Delete"));
                 elements.push(("r", "Rename"));
@@ -756,7 +816,7 @@ impl Renderable for ExplorerTab {
                 elements.push(("↓/k", "Down"));
                 elements.push(("←/h", "Close"));
                 elements.push(("→/l", "Open"));
-            } else if self.current_screen == CurrentScreen::Values {
+            } else if self.current_screen == ValuesViewer {
                 if let Some(ref list_value) = self.selected_list_value {
                     list_value.footer_elements().iter().for_each(|(k, v)| {
                         elements.push((k, v));
@@ -765,6 +825,18 @@ impl Renderable for ExplorerTab {
                 }
                 if let Some(ref set_value) = self.selected_set_value {
                     set_value.footer_elements().iter().for_each(|(k, v)| {
+                        elements.push((k, v));
+                    });
+                    elements.push(("←/h", "Close"));
+                }
+                if let Some(ref zset_value) = self.selected_zset_value {
+                    zset_value.footer_elements().iter().for_each(|(k, v)| {
+                        elements.push((k, v));
+                    });
+                    elements.push(("←/h", "Close"));
+                }
+                if let Some(ref hash_value) = self.selected_hash_value {
+                    hash_value.footer_elements().iter().for_each(|(k, v)| {
                         elements.push((k, v));
                     });
                     elements.push(("←/h", "Close"));
@@ -781,9 +853,9 @@ impl Listenable for ExplorerTab {
             return self.handle_filter_key_event(key_event);
         }
 
-        if CurrentScreen::Values == self.current_screen {
+        if ValuesViewer == self.current_screen {
             if KeyCode::Left == key_event.code || KeyCode::Char('h') == key_event.code {
-                self.toggle_screen(Keys);
+                self.toggle_screen(KeysTree);
                 return Ok(true);
             }
             if let Some(ref mut list_value) = self.selected_list_value {
@@ -792,9 +864,27 @@ impl Listenable for ExplorerTab {
                     return Ok(true);
                 }
             }
+            if let Some(ref mut set_value) = self.selected_set_value {
+                let accepted = set_value.handle_key_event(key_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut zset_value) = self.selected_zset_value {
+                let accepted = zset_value.handle_key_event(key_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut hash_value) = self.selected_hash_value {
+                let accepted = hash_value.handle_key_event(key_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
         }
 
-        if Keys == self.current_screen {
+        if KeysTree == self.current_screen {
             if key_event.modifiers == KeyModifiers::NONE {
                 if self.handle_tree_key_event(key_event)? {
                     return Ok(true);
@@ -811,10 +901,10 @@ impl Listenable for ExplorerTab {
 
         match key_event.code {
             KeyCode::Char('`') => {
-                if CurrentScreen::Keys == self.current_screen {
-                    self.toggle_screen(CurrentScreen::Values);
+                if KeysTree == self.current_screen {
+                    self.toggle_screen(ValuesViewer);
                 } else {
-                    self.toggle_screen(CurrentScreen::Keys);
+                    self.toggle_screen(KeysTree);
                 }
                 return Ok(true);
             }

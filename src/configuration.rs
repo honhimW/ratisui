@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{Debug, Display, Formatter};
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -79,7 +80,7 @@ pub struct Configuration {
     pub scan_size: Option<u16>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct Databases {
     pub default_database: Option<String>,
     pub databases: HashMap<String, Database>,
@@ -112,7 +113,7 @@ impl Databases {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Database {
     pub host: String,
     pub port: u16,
@@ -122,6 +123,21 @@ pub struct Database {
     pub use_ssh_tunnel: bool,
     pub db: u32,
     pub protocol: Protocol,
+}
+
+impl Display for Database {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Database")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &self.password.clone().map(|p| "*".repeat(p.len())))
+            .field("use_tls", &self.use_tls)
+            .field("use_ssh_tunnel", &self.use_ssh_tunnel)
+            .field("db", &self.db)
+            .field("protocol", &self.protocol)
+            .finish()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

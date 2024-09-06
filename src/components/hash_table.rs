@@ -34,7 +34,9 @@ use ratatui::{
     , Frame,
 };
 use std::cmp;
+use std::collections::HashMap;
 use style::palette::tailwind;
+use tui_widgets::popup::SizedWidgetRef;
 use unicode_width::UnicodeWidthStr;
 
 const PALETTES: [tailwind::Palette; 4] = [
@@ -72,6 +74,7 @@ impl TableColors {
 
 pub struct Data {
     pub index: String,
+    pub key: String,
     pub value: String,
     pub origin_value: String,
 }
@@ -85,30 +88,35 @@ impl Data {
         &self.index
     }
 
+    fn key(&self) -> &str {
+        &self.key
+    }
+
     fn value(&self) -> &str {
         &self.value
     }
 
 }
 
-pub struct SetValue {
-    item_values: Vec<String>,
+pub struct HashValue {
+    item_values: HashMap<String, String>,
     state: TableState,
     items: Vec<Data>,
-    longest_item_lens: (u16, u16),
+    longest_item_lens: (u16, u16, u16),
     scroll_state: ScrollbarState,
     colors: TableColors,
     color_index: usize,
 }
 
-impl SetValue {
-    pub fn new(data: Vec<String>) -> Self {
+impl HashValue {
+    pub fn new(data: HashMap<String, String>) -> Self {
         let mut vec = vec![];
-        for (idx, string) in data.iter().enumerate() {
+        for (idx, (key, value)) in data.iter().enumerate() {
             let data = Data {
                 index: idx.to_string(),
-                value: string.clone().replace("\n", "\\n"),
-                origin_value: string.clone(),
+                key: key.to_string(),
+                value: value.clone().replace("\n", "\\n"),
+                origin_value: value.clone(),
             };
             vec.push(data);
         }
@@ -176,7 +184,7 @@ impl SetValue {
             // .bg(self.colors.selected_style_bg)
             ;
 
-        let header = ["No.", "Value"]
+        let header = ["No.", "Key", "Value"]
             .into_iter()
             .map(|title| {
                 Cell::from(Text::from(format!("\n{title}\n")))
@@ -198,13 +206,13 @@ impl SetValue {
             let item;
             let height: u16;
             if selected_idx == i {
-                item = [&data.index, &data.origin_value];
+                item = [&data.index, &data.key, &data.origin_value];
                 let lines_count = data.origin_value.lines().count();
                 let max = cmp::min(lines_count, 20);
                 height = cmp::max(max as u16, 5);
                 selected_height = height.clone();
             } else {
-                item = [&data.index, &data.value];
+                item = [&data.index, &data.key, &data.value];
                 height = 3;
             }
 
@@ -237,7 +245,8 @@ impl SetValue {
             [
                 // + 1 is for padding.
                 Length(cmp::max(self.longest_item_lens.0, 3) + 1),
-                // Min(self.longest_item_lens.1 + 1),
+                Length(cmp::min(self.longest_item_lens.1, 20) + 1),
+                // Min(self.longest_item_lens.2 + 1),
                 Min(1 + 1),
             ],
         )
@@ -265,7 +274,7 @@ impl SetValue {
 
 }
 
-impl Renderable for SetValue {
+impl Renderable for HashValue {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
         self.render_table(frame, rect);
         self.render_scrollbar(frame, rect);
@@ -283,7 +292,7 @@ impl Renderable for SetValue {
     }
 }
 
-impl Listenable for SetValue {
+impl Listenable for HashValue {
     fn handle_key_event(&mut self, _key_event: KeyEvent) -> Result<bool> {
         if _key_event.kind == KeyEventKind::Press {
             let accepted = match _key_event.code {
@@ -306,10 +315,16 @@ impl Listenable for SetValue {
     }
 }
 
-fn constraint_len_calculator(items: &[Data]) -> (u16, u16) {
+fn constraint_len_calculator(items: &[Data]) -> (u16, u16, u16) {
     let index_len = items
         .iter()
         .map(Data::index)
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let key_len = items
+        .iter()
+        .map(Data::key)
         .map(UnicodeWidthStr::width)
         .max()
         .unwrap_or(0);
@@ -322,5 +337,5 @@ fn constraint_len_calculator(items: &[Data]) -> (u16, u16) {
         .unwrap_or(0);
 
     #[allow(clippy::cast_possible_truncation)]
-    (index_len as u16, value_len as u16)
+    (index_len as u16, key_len as u16, value_len as u16)
 }

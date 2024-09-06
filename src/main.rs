@@ -15,8 +15,7 @@ use std::ops::Add;
 use std::sync::Arc;
 use std::time::Duration;
 use anyhow::{anyhow, Result};
-use log4rs::config::RawConfig;
-use log::debug;
+use log::{debug, info, warn};
 use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use tokio::join;
 use tokio::sync::RwLock;
@@ -36,7 +35,8 @@ async fn main() -> Result<()> {
 
     let app_config = load_app_configuration()?;
 
-    log4rs::init_raw_config(RawConfig::default())?;
+    tui_logger::init_logger(log::LevelFilter::Trace).map_err(|e| anyhow!(e))?;
+    tui_logger::set_default_level(log::LevelFilter::Trace);
 
     let db_config = load_database_configuration()?;
 
@@ -48,13 +48,13 @@ async fn main() -> Result<()> {
 
     if let Some(db) = default_db {
         if let Some(database) = db_config.databases.get(&db) {
-            let x = redis_operations();
-            switch_client(database)?;
-            debug!("{:?}", database);
-            if let Some(c) = x {
-                debug!("connected!");
-                // let mut con = c.get_connection()?;
-            }
+            match switch_client(database) {
+                Ok(_) => {
+                    info!("Successfully connected to default database '{db}'");
+                    info!("{database}");
+                }
+                Err(_) => {warn!("Failed to connect to default database.");}
+            };
         }
     }
 

@@ -36,7 +36,7 @@ impl Context {
             current_tab_index: 0,
             explorer_tab: ExplorerTab::new(),
             profiler_tab: ProfilerTab::default(),
-            logger_tab: LoggerTab::default(),
+            logger_tab: LoggerTab::new(),
             fps: 0.0,
         }
     }
@@ -203,6 +203,7 @@ impl Listenable for Context {
     fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
         self.explorer_tab.on_app_event(app_event.clone())?;
         self.profiler_tab.on_app_event(app_event.clone())?;
+        self.logger_tab.on_app_event(app_event.clone())?;
         Ok(())
     }
 }
