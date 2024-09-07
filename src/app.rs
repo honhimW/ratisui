@@ -1,21 +1,16 @@
-use std::sync::Arc;
 use crate::context;
-use crate::input::{Input, InputEvent};
-use crate::tui;
-use anyhow::{Context, Result};
-use async_trait::async_trait;
-use ratatui::crossterm::event::{self, Event, KeyEvent, KeyEventKind};
+use crate::input::Input;
+use anyhow::{Result};
+use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::palette::tailwind;
 use ratatui::text::Line;
 use ratatui::Frame;
-use tokio::sync::{Mutex, RwLock};
 
 pub struct App {
     pub state: AppState,
     pub context: context::Context,
     pub input: Input,
-    debug_message: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,7 +57,6 @@ impl App {
             context: context::Context::new(),
             state: AppState::Preparing,
             input: Input::new(),
-            debug_message: None,
        }
     }
 

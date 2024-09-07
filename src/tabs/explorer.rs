@@ -1,33 +1,34 @@
-use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
+use crate::app::{centered_rect, AppEvent, Listenable, Renderable, TabImplementation};
+use crate::components::hash_table::HashValue;
 use crate::components::list_table::ListValue;
+use crate::components::popup::Popup;
 use crate::components::raw_value::raw_value_to_highlight_text;
 use crate::components::set_table::SetValue;
-use crate::redis_opt::{async_redis_opt, redis_operations};
+use crate::components::zset_table::ZSetValue;
+use crate::redis_opt::async_redis_opt;
 use crate::tabs::explorer::CurrentScreen::{KeysTree, ValuesViewer};
 use anyhow::{Context, Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::prelude::{Line, Style, Stylize, Text};
 use ratatui::style::palette::tailwind;
 use ratatui::style::{Color, Modifier};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
-use ratatui::Frame;
-use redis::Commands;
+use ratatui::{symbols, Frame};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Not;
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
-use crate::components::hash_table::HashValue;
-use crate::components::zset_table::ZSetValue;
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
     show_filter: bool,
+    show_delete_popup: bool,
     filter_mod: FilterMod,
     scan_size: u16,
     filter_text_area: TextArea<'static>,
@@ -122,7 +123,6 @@ impl TreeNode {
 
 fn build_tree_items(node: &TreeNode) -> Vec<TreeItem<'static, String>> {
     let mut items = Vec::new();
-    let id = node.id.clone();
     for (key, child) in &node.children {
         let item;
         if child.children.is_empty() {
@@ -183,6 +183,7 @@ impl ExplorerTab {
         Self {
             current_screen: KeysTree,
             show_filter: false,
+            show_delete_popup: false,
             filter_mod: FilterMod::Fuzzy,
             scan_size: 2_000,
             filter_text_area: TextArea::default(),
@@ -240,13 +241,11 @@ impl ExplorerTab {
     }
 
     fn border_color(&self, screen: CurrentScreen) -> Color {
-        let mut color;
         if screen == self.current_screen {
-            color = tailwind::GRAY.c300
+            tailwind::GRAY.c300
         } else {
-            color = tailwind::GRAY.c600;
+            tailwind::GRAY.c600
         }
-        color
     }
 
     fn render_keys_block(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
@@ -277,7 +276,6 @@ impl ExplorerTab {
         if let Some(redis_key) = &self.selected_key {
             let key_name = redis_key.name.clone();
             let key_type = redis_key.key_type.clone();
-            let x = redis_operations();
             let type_style = get_type_style(&key_type);
 
             let mut lines = Text::default();
@@ -384,6 +382,21 @@ impl ExplorerTab {
         );
         frame.render_widget(&self.filter_text_area.clone(), area);
         Ok(())
+    }
+
+    fn render_delete_popup(&mut self, frame: &mut Frame, area: Rect) {
+        if let Some(redis_key) = &self.selected_key {
+            let popup_area = centered_rect(30, 15, area);
+            let string = String::from(format!("Delete {} ?", redis_key.name));
+            let paragraph = Paragraph::new(Text::raw(string))
+                .alignment(Alignment::Center);
+            let delete_popup = Popup::new(paragraph)
+                .borders(Borders::ALL)
+                .border_set(symbols::border::DOUBLE)
+                .style(Style::default()
+                    .bg(self.palette().c700));
+            frame.render_widget(delete_popup, popup_area);
+        }
     }
 
     fn render_tree(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
@@ -549,6 +562,34 @@ impl ExplorerTab {
                 self.filter_text_area.input(input);
             }
         }
+        Ok(true)
+    }
+
+    fn handle_delete_popup_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        if key_event.kind != KeyEventKind::Press || key_event.modifiers != KeyModifiers::NONE {
+            return Ok(true);
+        }
+
+        match key_event.code {
+            KeyCode::Enter => {
+                // TODO delete
+                if let Some(redis_key) = &self.selected_key {
+                    let key_name = redis_key.name.clone();
+                    tokio::spawn(async move {
+                        Self::do_delete_key(key_name).await?;
+                        Ok::<(), Error>(())
+                    });
+                    let key_name = redis_key.name.as_str();
+                    self.tree_items.retain_mut(|item| item.identifier().eq(key_name));
+                }
+                self.show_delete_popup = false;
+            }
+            KeyCode::Esc => {
+                self.show_delete_popup = false;
+            }
+            _ => {},
+        }
+
         Ok(true)
     }
 
@@ -750,6 +791,13 @@ impl ExplorerTab {
         }).await
     }
 
+    async fn do_delete_key(key_name: String) -> Result<()> {
+        async_redis_opt(|op| async move {
+           Ok(op.del(key_name).await?)
+        }).await?;
+        Ok(())
+    }
+
 }
 
 fn bytes_to_string(bytes: Vec<u8>) -> Result<String> {
@@ -794,6 +842,10 @@ impl Renderable for ExplorerTab {
         self.render_keys_block(frame, chunks[0])?;
         self.render_values_block(frame, chunks[1])?;
 
+        if self.show_delete_popup {
+            self.render_delete_popup(frame, rect);
+        }
+
         Ok(())
     }
 
@@ -810,7 +862,7 @@ impl Renderable for ExplorerTab {
         } else {
             if self.current_screen == KeysTree {
                 elements.push(("/", "Scan"));
-                elements.push(("d", "Delete"));
+                elements.push(("d/Del", "Delete"));
                 elements.push(("r", "Rename"));
                 elements.push(("↑/j", "Up"));
                 elements.push(("↓/k", "Down"));
@@ -849,6 +901,9 @@ impl Renderable for ExplorerTab {
 
 impl Listenable for ExplorerTab {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        if self.show_delete_popup {
+            return self.handle_delete_popup_key_event(key_event);
+        }
         if self.show_filter {
             return self.handle_filter_key_event(key_event);
         }
@@ -892,6 +947,12 @@ impl Listenable for ExplorerTab {
                 match key_event.code {
                     KeyCode::Char('/') => {
                         self.show_filter = true;
+                        return Ok(true);
+                    }
+                    KeyCode::Char('d') | KeyCode::Delete => {
+                        if self.selected_key.is_some() {
+                            self.show_delete_popup = true;
+                        }
                         return Ok(true);
                     }
                     _ => {}

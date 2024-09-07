@@ -29,7 +29,7 @@ redis = { version = "0.26.1", features = [
     "tokio-comp",
     "tokio-rustls-comp",
     "cluster-async",
-    "serde_json"
+    "serde_json",
 ] }
 strum = "0.26.3"
 throbber-widgets-tui = "0.6.0"
@@ -55,6 +55,7 @@ deadpool-redis = { version = "0.16.0", features = ["serde", "cluster"] }
 itertools = "0.13.0"
 unicode-width = "0.1.13"
 tui-logger = "0.12.0"
+tree-sitter-xml = "0.6.4"
 #syntect = "5.2.0"
 
 # git crates

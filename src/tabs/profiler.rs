@@ -1,11 +1,10 @@
-use async_trait::async_trait;
 use crate::app::{Listenable, Renderable, TabImplementation};
-use ratatui::buffer::Buffer;
+use async_trait::async_trait;
 use ratatui::layout::Rect;
 use ratatui::prelude::{Line, Stylize};
 use ratatui::style::palette::tailwind;
+use ratatui::widgets::{Block, Padding, Paragraph};
 use ratatui::{symbols, Frame};
-use ratatui::widgets::{Block, Padding, Paragraph, Widget};
 
 #[derive(Default, Clone, Copy)]
 pub struct ProfilerTab {

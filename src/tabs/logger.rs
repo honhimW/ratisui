@@ -1,24 +1,24 @@
+use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use async_trait::async_trait;
 use log::{debug, error, info, trace, warn, LevelFilter};
-use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
-use ratatui::buffer::Buffer;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::prelude::{Line, Stylize};
 use ratatui::style::palette::tailwind;
-use ratatui::{symbols, Frame};
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, Padding, Paragraph, Widget};
+use ratatui::style::{Style};
+use ratatui::{Frame};
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerSmartWidget, TuiWidgetEvent, TuiWidgetState};
 
 pub struct LoggerTab {
-    states: TuiWidgetState,
+    state: TuiWidgetState,
 }
 
 impl LoggerTab {
     pub fn new() -> Self {
+        let mut state = TuiWidgetState::new().set_default_display_level(LevelFilter::Info);
+        state = state.set_level_for_target("ratisui::tabs::logger", LevelFilter::Off);
         Self {
-            states: TuiWidgetState::new().set_default_display_level(LevelFilter::Info),
+            state,
         }
     }
 }
@@ -57,7 +57,7 @@ impl Renderable for LoggerTab {
             .output_target(true)
             .output_file(true)
             .output_line(true)
-            .state(&self.states)
+            .state(&self.state)
             ;
         frame.render_widget(widget, rect);
 
@@ -79,17 +79,16 @@ impl Renderable for LoggerTab {
 #[async_trait]
 impl Listenable for LoggerTab {
     fn handle_key_event(&mut self, _key_event: KeyEvent) -> anyhow::Result<bool> {
-        trace!("key_event: {:?}", _key_event);
         if _key_event.modifiers == KeyModifiers::NONE && _key_event.kind == KeyEventKind::Press {
             match _key_event.code {
-                KeyCode::Char('h') | KeyCode::Up => self.states.transition(TuiWidgetEvent::UpKey),
-                KeyCode::Char('k') | KeyCode::Down => self.states.transition(TuiWidgetEvent::DownKey),
-                KeyCode::Char('l') | KeyCode::Left => self.states.transition(TuiWidgetEvent::LeftKey),
-                KeyCode::Char('j') | KeyCode::Right => self.states.transition(TuiWidgetEvent::RightKey),
-                KeyCode::PageUp => self.states.transition(TuiWidgetEvent::PrevPageKey),
-                KeyCode::PageDown => self.states.transition(TuiWidgetEvent::NextPageKey),
-                KeyCode::Char('f') => self.states.transition(TuiWidgetEvent::FocusKey),
-                KeyCode::Char('v') => self.states.transition(TuiWidgetEvent::HideKey),
+                KeyCode::Char('k') | KeyCode::Up => self.state.transition(TuiWidgetEvent::UpKey),
+                KeyCode::Char('j') | KeyCode::Down => self.state.transition(TuiWidgetEvent::DownKey),
+                KeyCode::Char('h') | KeyCode::Left => self.state.transition(TuiWidgetEvent::LeftKey),
+                KeyCode::Char('l') | KeyCode::Right => self.state.transition(TuiWidgetEvent::RightKey),
+                KeyCode::PageUp => self.state.transition(TuiWidgetEvent::PrevPageKey),
+                KeyCode::PageDown => self.state.transition(TuiWidgetEvent::NextPageKey),
+                KeyCode::Char('f') => self.state.transition(TuiWidgetEvent::FocusKey),
+                KeyCode::Char('v') => self.state.transition(TuiWidgetEvent::HideKey),
                 _ => {
                     return Ok(false);
                 }

@@ -23,18 +23,17 @@ pub fn raw_value_to_highlight_text(value: Cow<str>, format: bool) -> Text {
     let mut text = Text::default();
     for highlight_text in fragments {
         let fragment = highlight_text.text.clone();
-        let mut style;
-        match highlight_text.kind {
-            HighlightKind::String => style = Style::default().fg(tailwind::AMBER.c400),
+        let style= match highlight_text.kind {
+            HighlightKind::String => Style::default().fg(tailwind::AMBER.c400),
             HighlightKind::Boolean |
             HighlightKind::Keyword |
             HighlightKind::Constant |
-            HighlightKind::Null => style = Style::default().fg(tailwind::ROSE.c600),
-            HighlightKind::Property => style = Style::default().fg(tailwind::FUCHSIA.c700),
-            HighlightKind::Comment => style = Style::default().fg(tailwind::CYAN.c500),
-            HighlightKind::Number => style = Style::default().fg(tailwind::BLUE.c600),
-            _ => style = Style::default(),
-        }
+            HighlightKind::Null => Style::default().fg(tailwind::ROSE.c600),
+            HighlightKind::Property => Style::default().fg(tailwind::FUCHSIA.c700),
+            HighlightKind::Comment => Style::default().fg(tailwind::CYAN.c500),
+            HighlightKind::Number => Style::default().fg(tailwind::BLUE.c600),
+            _ => Style::default(),
+        };
 
         let lines: Vec<&str> = fragment.lines().collect();
         if lines.len() > 1 {

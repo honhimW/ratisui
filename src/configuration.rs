@@ -96,15 +96,6 @@ impl Configuration {
 }
 
 impl Databases {
-    fn with_default() -> Self {
-        let mut _self = Self {
-            default_database: Some("local default".to_string()),
-            databases: HashMap::new(),
-        };
-        _self.databases.insert("local default".to_string(), Database::default());
-        _self
-    }
-
     fn empty() -> Self {
         Self {
             default_database: None,
@@ -170,19 +161,6 @@ impl Database {
     pub fn from(other: Database) -> Self {
         Self {
             ..other
-        }
-    }
-
-    fn new(host: String, port: u16) -> Self {
-        Self {
-            host,
-            port,
-            username: None,
-            password: None,
-            use_tls: false,
-            use_ssh_tunnel: false,
-            db: 0,
-            protocol: Protocol::RESP3,
         }
     }
 }

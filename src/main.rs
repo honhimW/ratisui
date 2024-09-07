@@ -8,23 +8,20 @@ mod redis_opt;
 mod tui;
 mod tabs;
 mod components;
+mod key_utils;
 
-use std::cell::Cell;
-use std::cmp;
-use std::ops::Add;
-use std::sync::Arc;
-use std::time::Duration;
-use anyhow::{anyhow, Result};
-use log::{debug, info, warn};
-use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
-use tokio::join;
-use tokio::sync::RwLock;
-use tokio::time::{interval, Instant};
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
 use crate::components::fps::FpsCalculator;
 use crate::configuration::{load_app_configuration, load_database_configuration, Configuration};
 use crate::input::InputEvent;
-use crate::redis_opt::{redis_operations, switch_client};
+use crate::redis_opt::{switch_client};
+use anyhow::{anyhow, Result};
+use log::{info, warn};
+use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use std::cmp;
+use std::time::Duration;
+use tokio::time::{interval};
+use crate::app::AppState::Closed;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -106,15 +103,23 @@ async fn render(mut app: App, config: Configuration) -> Result<()> {
         loop {
             let event_result = app.input.receiver().try_recv();
             if let Ok(input_event) = event_result {
-                if let InputEvent::Input(event) = input_event {
-                    if let Event::Key(key_event) = event {
-                        if key_event.kind == KeyEventKind::Press {
-                            if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('c') {
-                                app.state = AppState::Closing;
-                            } else {
-                                let _ = app.context.handle_key_event(key_event);
+                match input_event {
+                    InputEvent::Input(input) => {
+                        if let Event::Key(key_event) = input {
+                            if key_event.kind == KeyEventKind::Press {
+                                if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('c') {
+                                    app.state = AppState::Closing;
+                                    app.context.on_app_event(AppEvent::Destroy)?;
+                                } else if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::F(5) {
+                                    app.context.on_app_event(AppEvent::Reset)?
+                                } else {
+                                    let _ = app.context.handle_key_event(key_event);
+                                }
                             }
                         }
+                    }
+                    InputEvent::State(state) => {
+                        info!("Input state changed: {:?}", state);
                     }
                 }
             } else {
@@ -123,7 +128,7 @@ async fn render(mut app: App, config: Configuration) -> Result<()> {
         }
 
     }
-
+    app.state = Closed;
     Ok(())
 }
 

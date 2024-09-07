@@ -1,10 +1,10 @@
-use std::ops::Not;
-use anyhow::{Context, Result, Error, anyhow};
-use serde_json::{json, Value};
+use anyhow::{Context, Result};
+use log::{debug};
+use serde_json::{ Value};
 use tree_sitter::{Node, Parser, Tree};
 use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
 
-const HIGHLIGHTS_QUERY: &'static str = r#"
+const HIGHLIGHTS_QUERY_JSON: &'static str = r#"
 (pair
   key: (_) @property)
 
@@ -35,7 +35,7 @@ const HIGHLIGHTS_QUERY: &'static str = r#"
 pub struct HighlightProcessor {
     source: String,
     fragments: Vec<HighlightText>,
-    content_type: ContentType,
+    content_type: Option<ContentType>,
     tree: Option<Tree>,
     do_formatting: bool,
 }
@@ -46,18 +46,18 @@ pub struct HighlightText {
     pub kind: HighlightKind,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum HighlightKind {
     String,
     Number,
+    Property,
+    Constant,
+    Comment,
+    Keyword,
     Boolean,
     Null,
     Array,
     Object,
-    Keyword,
-    Property,
-    Constant,
-    Comment,
     Unknown,
 }
 
@@ -66,6 +66,7 @@ pub enum ContentType {
     String,
     #[default]
     Json,
+    Xml,
     // JavaSerialized,
     // PhpSerialized,
     // CSharpSerialized,
@@ -77,7 +78,7 @@ impl HighlightProcessor {
         Self {
             source,
             fragments: Vec::new(),
-            content_type: ContentType::default(),
+            content_type: None,
             tree: None,
             do_formatting: true,
         }
@@ -88,9 +89,25 @@ impl HighlightProcessor {
     }
 
     pub fn process(&mut self) -> Result<()> {
+        if let Some(content_type) = &self.content_type {
+            let _ = match content_type {
+                ContentType::String => self.process_plain()?,
+                ContentType::Json => self.process_json()?,
+                ContentType::Xml => self.process_xml()?,
+            };
+            return Ok(());
+        }
         let is_json = self.process_json()?;
-        if !is_json {
-            // TODO process other content types
+        if is_json {
+            return Ok(());
+        }
+        let is_xml = self.process_xml()?;
+        if is_xml {
+            return Ok(());
+        }
+        let is_plain = self.process_plain()?;
+        if is_plain {
+            return Ok(());
         }
         Ok(())
     }
@@ -124,12 +141,23 @@ impl HighlightProcessor {
 
         let tree = parser.parse(self.source.as_str(), self.tree.as_ref())
             .context("parse error")?;
+        let node = tree.root_node();
+        if node.kind() != "document" || (
+            if let Some(first_child) = node.child(0) {
+                first_child.kind() == "ERROR"
+            } else {
+                false
+            }
+        ) {
+            debug!("Source value is not a JSON: {}, SEXP: {}", self.source, tree.root_node().to_sexp());
+            return Ok(false);
+        }
         self.tree = Some(tree);
 
         let mut highlight_config = HighlightConfiguration::new(
             language,
             "json",
-            HIGHLIGHTS_QUERY,
+            HIGHLIGHTS_QUERY_JSON,
             "",
             "",
         )?;
@@ -186,6 +214,101 @@ impl HighlightProcessor {
         Ok(true)
     }
 
+    fn process_xml(&mut self) -> Result<bool> {
+        let mut parser = Parser::new();
+        let language = tree_sitter_xml::language_xml();
+        parser.set_language(&language)?;
+
+        let tree = parser.parse(self.source.as_str(), self.tree.as_ref())
+            .context("parse error")?;
+        let node = tree.root_node();
+        if node.kind() != "document" || (
+            if let Some(first_child) = node.child(0) {
+                first_child.kind() == "ERROR"
+            } else {
+                false
+            }
+        ) {
+            debug!("Source value is not a XML: {}, SEXP: {}", self.source, tree.root_node().to_sexp());
+            return Ok(false);
+        }
+        self.tree = Some(tree);
+
+        let mut highlight_config = HighlightConfiguration::new(
+            language,
+            "xml",
+            tree_sitter_xml::XML_HIGHLIGHT_QUERY,
+            "",
+            "",
+        )?;
+
+        let highlight_names = vec![
+            "document",              // 0
+            "property",              // 1
+            "string.value",          // 2
+            "constant.builtin",      // 3
+            "number",                // 4
+            "comment",               // 5
+            "attribute",             // 6
+            "boolean",               // 7
+            "string",                // 8
+            "string.special",        // 9
+            "string.special.symbol", // 10
+            "constant",              // 11
+            "tag",                   // 12
+            "markup.link",           // 13
+            "keyword",               // 14
+        ];
+        highlight_config.configure(&highlight_names);
+
+        let mut highlighter = Highlighter::new();
+        let highlights = highlighter.highlight(&highlight_config, self.source.as_bytes(), None, |_| None)?;
+        let mut fragments: Vec<HighlightText> = vec![];
+        let mut highlight_text: Option<HighlightText> = None;
+        for event in highlights {
+            match event? {
+                HighlightEvent::Source { start, end } => {
+                    let x = &self.source[start..end];
+                    match highlight_text {
+                        None => {
+                            fragments.push(HighlightText { text: x.to_string(), kind: HighlightKind::Unknown });
+                        }
+                        Some(ref mut ht) => {
+                            ht.text = x.to_string();
+                        }
+                    }
+                }
+                HighlightEvent::HighlightStart(s) => {
+                    let mut ht = HighlightText { text: "".to_string(), kind: HighlightKind::Unknown };
+                    match s.0 {
+                        1 | 6 => ht.kind = HighlightKind::Property,
+                        2 | 8 | 9 => ht.kind = HighlightKind::String,
+                        3 | 7 | 10 | 11 | 12 | 14 => ht.kind = HighlightKind::Constant,
+                        4 => ht.kind = HighlightKind::Number,
+                        5 | 13 => ht.kind = HighlightKind::Comment,
+                        _ => ht.kind = HighlightKind::Unknown
+                    }
+                    highlight_text = Some(ht);
+                }
+                HighlightEvent::HighlightEnd => {
+                    if let Some(ref mut ht) = highlight_text {
+                        fragments.push(ht.clone());
+                        highlight_text = None;
+                    }
+                }
+            }
+        }
+        self.fragments = fragments;
+
+        Ok(true)
+    }
+
+    fn process_plain(&mut self) -> Result<bool> {
+        let mut fragments = vec![];
+        fragments.push(HighlightText { text: self.source.clone(), kind: HighlightKind::String });
+        self.fragments = fragments;
+        Ok(true)
+    }
 }
 
 fn get_node_path(node: Node) -> Vec<String> {
@@ -202,9 +325,9 @@ fn get_node_path(node: Node) -> Vec<String> {
 
 #[cfg(test)]
 mod high_light_test {
-    use serde_json::json;
-    use anyhow::Result;
     use crate::components::highlight_value::HighlightKind;
+    use anyhow::Result;
+    use serde_json::json;
 
     #[test]
     fn test_process_json() -> Result<()> {
@@ -215,7 +338,7 @@ mod high_light_test {
         let mut processor = super::HighlightProcessor::new(json);
         let x = processor.process()?;
         assert_eq!(
-r#"{
+            r#"{
   "tags": [
     "1",
     2,
@@ -226,15 +349,12 @@ r#"{
         for highlight_text in processor.fragments {
             let mut has_highlight = true;
             match highlight_text.kind {
-                HighlightKind::String => {string.push_str("\x1b[33m")}
-                HighlightKind::Number => {string.push_str("\x1b[34m")}
-                HighlightKind::Boolean |
-                HighlightKind::Keyword |
+                HighlightKind::String => { string.push_str("\x1b[33m") }
+                HighlightKind::Number => { string.push_str("\x1b[34m") }
                 HighlightKind::Constant |
-                HighlightKind::Null => {string.push_str("\x1b[3;31m")}
-                HighlightKind::Property => {string.push_str("\x1b[35m")}
-                HighlightKind::Comment => {string.push_str("\x1b[36m")}
-                _ => { has_highlight = false}
+                HighlightKind::Property => { string.push_str("\x1b[35m") }
+                HighlightKind::Comment => { string.push_str("\x1b[36m") }
+                _ => { has_highlight = false }
             }
             string.push_str(highlight_text.text.as_str());
             if has_highlight {
@@ -254,5 +374,4 @@ r#"{
         assert_eq!(string, result);
         Ok(())
     }
-
 }

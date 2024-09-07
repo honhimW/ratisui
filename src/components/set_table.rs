@@ -13,26 +13,24 @@
 //! [examples]: https://github.com/ratatui/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui/ratatui/blob/main/examples/README.md
 
-use std::borrow::Cow;
 use crate::app::{Listenable, Renderable};
 use crate::components::raw_value::raw_value_to_highlight_text;
 use anyhow::Result;
 use itertools::Itertools;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Constraint::{Length, Min};
-use ratatui::style::Styled;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEventKind},
-    layout::{Constraint, Layout, Margin, Rect},
+    layout::{Margin, Rect},
     style::{self, Color, Style, Stylize},
     text::{Line, Text},
     widgets::{
-        Block,
-        BorderType, Cell, HighlightSpacing, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
-        StatefulWidget, Table, TableState,
+        Cell, HighlightSpacing, Row, Scrollbar, ScrollbarOrientation, ScrollbarState
+        , Table, TableState,
     }
     , Frame,
 };
+use std::borrow::Cow;
 use std::cmp;
 use style::palette::tailwind;
 use unicode_width::UnicodeWidthStr;

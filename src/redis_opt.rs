@@ -1,34 +1,18 @@
+use crate::configuration::{to_protocol_version, Database};
 use anyhow::{anyhow, Context, Result};
-use redis::cluster::{ClusterClient, ClusterConnection};
-use redis::ConnectionAddr::{Tcp, TcpTls};
-use redis::{AsyncCommands, AsyncIter, Client, Cmd, Commands, Connection, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, Iter, ProtocolVersion, RedisConnectionInfo, RedisResult, ScanOptions, ToRedisArgs, Value};
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::{RwLock, RwLockReadGuard};
-use deadpool_redis::{Pool, Runtime};
 use deadpool_redis::redis::cmd;
+use deadpool_redis::{Pool, Runtime};
 use log::info;
 use once_cell::sync::Lazy;
 use redis::aio::ConnectionManager;
-use crate::configuration::{to_protocol_version, Database};
+use redis::cluster::ClusterClient;
+use redis::ConnectionAddr::{Tcp, TcpTls};
+use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value};
+use std::collections::HashMap;
+use std::future::Future;
+use std::sync::RwLock;
 
 pub static REDIS_OPERATIONS: Lazy<RwLock<Option<RedisOperations>>> = Lazy::new(|| RwLock::new(None));
-pub static POOL: Lazy<RwLock<Option<Pool>>> = Lazy::new(|| RwLock::new(None));
-pub static CLUSTER_POOL: Lazy<RwLock<Option<deadpool_redis::cluster::Pool>>> = Lazy::new(|| RwLock::new(None));
-
-pub fn redis_opt<F, R>(opt: F) -> Result<R>
-where
-    F: FnOnce(&RedisOperations) -> Result<R>,
-{
-    let x = redis_operations();
-    if let Some(c) = x {
-        opt(&c)
-    } else {
-        Err(anyhow!(""))
-    }
-}
 
 pub async fn async_redis_opt<F, FUT, R>(opt: F) -> Result<R>
 where
@@ -132,29 +116,11 @@ impl RedisOperations {
         }
     }
 
-    pub async fn get_connection_manager(&self) -> Result<ConnectionManager> {
-        Ok(self.client.get_connection_manager().await?)
+    pub fn get_database(&self) -> Database {
+        self.database.clone()
     }
 
-    pub fn get_connection(&self) -> Result<Connection> {
-        Ok(self.client.get_connection()?)
-    }
-
-    pub fn get_cluster_connection(&self) -> Result<ClusterConnection> {
-        self.assert_cluster()?;
-        let cluster_client = self.cluster_client.as_ref().unwrap();
-        Ok(cluster_client.get_connection()?)
-    }
-
-    fn assert_cluster(&self) -> Result<()> {
-        if self.is_cluster() {
-            Ok(())
-        } else {
-            Err(anyhow!("Not in cluster mode"))
-        }
-    }
-
-    fn is_cluster(&self) -> bool {
+    pub fn is_cluster(&self) -> bool {
         self.cluster_client.is_some()
     }
 
@@ -223,7 +189,7 @@ impl RedisOperations {
             let mut cluster_client_infos: Vec<ConnectionInfo> = Vec::new();
             let mut node_holders: HashMap<String, NodeClientHolder> = HashMap::new();
             let connection_info = self.client.get_connection_info();
-            for (host, port, id) in redis_nodes.clone() {
+            for (host, port, _) in redis_nodes.clone() {
                 cluster_client_infos.push(ConnectionInfo {
                     addr: Tcp(host.clone(), port.clone()),
                     redis: connection_info.redis.clone(),
@@ -257,17 +223,17 @@ impl RedisOperations {
 
             self.nodes = node_holders;
             let mut cluster_urls = vec![];
-            for (host, port, id) in redis_nodes.clone() {
+            for (host, port, _) in redis_nodes.clone() {
                 let addr: ConnectionAddr;
                 if self.database.use_tls {
-                    addr = ConnectionAddr::TcpTls {
+                    addr = TcpTls {
                         host,
                         port,
                         insecure: true,
                         tls_params: None,
                     };
                 } else {
-                    addr = ConnectionAddr::Tcp(host, port);
+                    addr = Tcp(host, port);
                 }
                 let info = ConnectionInfo {
                     addr,
@@ -314,7 +280,7 @@ impl RedisOperations {
     pub async fn scan(&self, pattern: String, count: usize) -> Result<Vec<String>> {
         if self.is_cluster() {
             let mut all_node_keys = Vec::new();
-            for (k, v) in &self.nodes {
+            for (_, v) in &self.nodes {
                 if v.is_master {
                     let mut connection = v.pool.get().await?;
                     let mut iter: AsyncIter<String> = connection.scan_options(ScanOptions::default().with_pattern(pattern.clone()).with_count(count)).await?;
@@ -495,26 +461,26 @@ impl RedisOperations {
         }
     }
 
-    pub async fn sscan<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<Vec<String>> {
-        if self.is_cluster() {
-            let pool = &self.cluster_pool.clone().context("should be cluster")?;
-            let mut connection = pool.get().await?;
-            let mut iter: AsyncIter<String> = connection.sscan(key).await?;
-            let mut vec = vec![];
-            while let Some(item) = iter.next_item().await {
-                vec.push(item);
-            }
-            Ok(vec)
-        } else {
-            let mut connection = self.pool.get().await?;
-            let mut iter: AsyncIter<String> = connection.sscan(key).await?;
-            let mut vec = vec![];
-            while let Some(item) = iter.next_item().await {
-                vec.push(item);
-            }
-            Ok(vec)
-        }
-    }
+    // pub async fn sscan<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<Vec<String>> {
+    //     if self.is_cluster() {
+    //         let pool = &self.cluster_pool.clone().context("should be cluster")?;
+    //         let mut connection = pool.get().await?;
+    //         let mut iter: AsyncIter<String> = connection.sscan(key).await?;
+    //         let mut vec = vec![];
+    //         while let Some(item) = iter.next_item().await {
+    //             vec.push(item);
+    //         }
+    //         Ok(vec)
+    //     } else {
+    //         let mut connection = self.pool.get().await?;
+    //         let mut iter: AsyncIter<String> = connection.sscan(key).await?;
+    //         let mut vec = vec![];
+    //         while let Some(item) = iter.next_item().await {
+    //             vec.push(item);
+    //         }
+    //         Ok(vec)
+    //     }
+    // }
 
     pub async fn mem_usage<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<i64> {
         if self.is_cluster() {
@@ -544,14 +510,28 @@ impl RedisOperations {
             }
         }
     }
+
+    pub async fn del<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<()> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            connection.del(key).await?;
+            Ok(())
+        } else {
+            let mut connection = self.pool.get().await?;
+            connection.del(key).await?;
+            Ok(())
+        }
+    }
+
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::configuration::Protocol;
     use crate::redis_opt::{async_redis_opt, build_client, switch_client, Database, RedisOperations};
     use anyhow::Result;
-    use redis::{Commands, ProtocolVersion};
-    use crate::configuration::Protocol;
+    use redis::Commands;
 
     #[test]
     fn test_get_server_info() -> Result<()> {

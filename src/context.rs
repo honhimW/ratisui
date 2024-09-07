@@ -1,19 +1,25 @@
-use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
+use crate::app::{centered_rect, AppEvent, Listenable, Renderable, TabImplementation};
 use crate::tabs::explorer::ExplorerTab;
+use crate::tabs::logger::LoggerTab;
 use crate::tabs::profiler::ProfilerTab;
 use anyhow::Result;
 use ratatui::crossterm::event;
-use ratatui::crossterm::event::KeyEvent;
-use ratatui::layout::Constraint::{Length, Min};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::layout::Constraint::{Fill, Length, Max, Min};
 use ratatui::layout::{Alignment, Layout, Rect};
 use ratatui::prelude::{Color, Span, Style, Stylize, Text};
 use ratatui::style::palette::tailwind;
-use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
+use ratatui::widgets::{Block, Borders, Paragraph, Tabs, Wrap};
 use ratatui::{symbols, Frame};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
-use crate::tabs::logger::LoggerTab;
+use tui_textarea::TextArea;
+use tui_widgets::prompts::TextPrompt;
+use crate::components::popup::Popup;
+use crate::key_utils::none_match;
+use crate::redis_opt::redis_operations;
 
 pub struct Context {
+    show_server_switcher: bool,
     current_tab: CurrentTab,
     current_tab_index: usize,
     explorer_tab: ExplorerTab,
@@ -32,6 +38,7 @@ enum CurrentTab {
 impl Context {
     pub fn new() -> Self {
         Self {
+            show_server_switcher: false,
             current_tab: CurrentTab::Explorer,
             current_tab_index: 0,
             explorer_tab: ExplorerTab::new(),
@@ -39,10 +46,6 @@ impl Context {
             logger_tab: LoggerTab::new(),
             fps: 0.0,
         }
-    }
-
-    pub fn start(&self) -> Result<()> {
-        Ok(())
     }
 
     pub fn get_current_tab(&self) -> &dyn TabImplementation {
@@ -139,9 +142,32 @@ impl Context {
             command_text.push_span(command_icon);
             command_text.push_span(command_desc);
         }
-        let paragraph = Paragraph::new(command_text).alignment(Alignment::Right);
+        let paragraph = Paragraph::new(command_text)
+            .alignment(Alignment::Right)
+            .wrap(Wrap { trim: true });
         frame.render_widget(paragraph, area);
         Ok(())
+    }
+
+    fn render_server_switcher(&mut self, frame: &mut Frame, area: Rect) {
+        if self.show_server_switcher {
+            let popup_area = centered_rect(60, 30, area);
+            let mut text_area = TextArea::default();
+            if let Some(op) = redis_operations() {
+                let database = op.get_database();
+
+            }
+
+            text_area.set_placeholder_text("");
+            let delete_popup = Popup::new(&text_area)
+                .borders(Borders::ALL)
+                .border_set(symbols::border::DOUBLE)
+                .style(Style::default());
+            let mut delete_popup = delete_popup;
+            // delete_popup.render_frame(frame, popup_area);
+            frame.render_widget(delete_popup, popup_area);
+
+        }
     }
 }
 
@@ -150,8 +176,11 @@ impl Renderable for Context {
     where
         Self: Sized,
     {
-        let vertical = Layout::vertical([Length(1), Length(1), Min(0), Length(1)]);
-        let [header_area, separator_area, inner_area, footer_area] = vertical.areas(rect);
+        let vertical = Layout::vertical([Length(1), Length(1), Min(0)]);
+        let [header_area, separator_area, rest_area] = vertical.areas(rect);
+
+        let vertical = Layout::vertical([Fill(1), Max(1)]);
+        let [inner_area, footer_area] = vertical.areas(rest_area);
 
         let horizontal = Layout::horizontal([Min(0), Length(15), Length(5)]);
         let [tabs_area, title_area, fps_area] = horizontal.areas(header_area);
@@ -162,7 +191,7 @@ impl Renderable for Context {
         self.render_separator(frame, separator_area)?;
         self.render_selected_tab(frame, inner_area)?;
         self.render_footer(frame, footer_area)?;
-
+        self.render_server_switcher(frame, rect);
         Ok(())
     }
 
@@ -178,7 +207,8 @@ impl Renderable for Context {
                 self.logger_tab.footer_elements()
             }
         };
-        footer_elements.push(("c", "Connection"));
+        footer_elements.push(("s", "Server"));
+        footer_elements.push(("^F5", "Reload"));
         footer_elements.push(("^c", "Quit"));
         footer_elements.push(("^h", "Help"));
         footer_elements
@@ -187,14 +217,22 @@ impl Renderable for Context {
 
 impl Listenable for Context {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
-        let mut current_tab = self.get_current_tab_as_mut();
+        if none_match(&key_event, KeyCode::Char('s')) {
+            self.show_server_switcher = true;
+            return Ok(true);
+        }
+        if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('h') {
+            // TODO show help
+        }
+
+        let current_tab = self.get_current_tab_as_mut();
         if current_tab.handle_key_event(key_event)? {
             return Ok(true);
         }
 
         match key_event.code {
-            event::KeyCode::Tab => self.next_tab(),
-            event::KeyCode::BackTab => self.prev_tab(),
+            KeyCode::Tab => self.next_tab(),
+            KeyCode::BackTab => self.prev_tab(),
             _ => {}
         }
         Ok(true)
