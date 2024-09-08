@@ -1,5 +1,13 @@
+use ratatui::crossterm::event::KeyEvent;
+use ratatui::{layout, Frame};
+use ratatui::layout::{Layout, Rect};
 use crate::configuration::Databases;
 use tui_textarea::TextArea;
+use crate::app::{AppEvent, Listenable, Renderable};
+use anyhow::Result;
+use ratatui::layout::Constraint::{Length, Min};
+use crate::components::popup::Popup;
+use crate::redis_opt::redis_operations;
 
 pub struct Servers {
     databases: Databases,
@@ -24,5 +32,29 @@ impl Servers {
             db_state: Default::default(),
             protocol_state: Default::default(),
         }
+    }
+}
+
+impl Renderable for Servers {
+    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
+        let layout = Layout::vertical([
+            Length(1),
+            Length(1),
+            Length(1),
+            Length(1),
+            Length(1),
+            Length(1),
+        ]);
+        Ok(())
+    }
+
+    fn footer_elements(&self) -> Vec<(&str, &str)> {
+        todo!()
+    }
+}
+
+impl Listenable for Servers {
+    fn handle_key_event(&mut self, _key_event: KeyEvent) -> Result<bool> {
+        todo!()
     }
 }
