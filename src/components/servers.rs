@@ -25,12 +25,15 @@ use ratatui::{crossterm::event::{KeyCode, KeyEventKind}, layout::{Margin, Rect},
 }, Frame};
 use std::borrow::Cow;
 use std::cmp;
+use std::string::ToString;
+use log::info;
 use ratatui::buffer::Buffer;
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Widget};
 use style::palette::tailwind;
 use tui_textarea::TextArea;
 use unicode_width::UnicodeWidthStr;
-use crate::configuration::Databases;
+use crate::configuration::{Database, Databases, Protocol};
+use crate::redis_opt::{redis_operations, switch_client};
 
 const PALETTES: [tailwind::Palette; 4] = [
     tailwind::BLUE,
@@ -72,24 +75,35 @@ pub struct Servers {
 }
 
 pub struct Data {
+    pub selected: String,
     pub name: String,
     pub location: String,
+    pub db: String,
     pub username: String,
     pub use_tls: String,
-    pub db: String,
     pub protocol: String,
+    pub database: Database,
 }
 
 impl Data {
-    const fn ref_array(&self) -> [&String; 5] {
-        [&self.location, &self.username, &self.use_tls, &self.db, &self.protocol]
+    const fn ref_array(&self) -> [&String; 7] {
+        [&self.selected, &self.name, &self.location, &self.db, &self.username, &self.use_tls, &self.protocol]
+    }
+
+    fn selected(&self) -> &str {
+        &self.selected
     }
 
     fn name(&self) -> &str {
         &self.name
     }
+
     fn location(&self) -> &str {
         &self.location
+    }
+
+    fn db(&self) -> &str {
+        &self.db
     }
 
     fn username(&self) -> &str {
@@ -100,10 +114,6 @@ impl Data {
         &self.use_tls
     }
 
-    fn db(&self) -> &str {
-        &self.db
-    }
-
     fn protocol(&self) -> &str {
         &self.protocol
     }
@@ -112,8 +122,8 @@ impl Data {
 pub struct ServerList {
     state: TableState,
     items: Vec<Data>,
-    longest_item_lens: (u16, u16, u16, u16, u16, u16),
-    column_styles: [Style; 6],
+    longest_item_lens: (u16, u16, u16, u16, u16, u16, u16),
+    column_styles: [Style; 7],
     scroll_state: ScrollbarState,
     colors: TableColors,
     color_index: usize,
@@ -123,21 +133,33 @@ pub struct ServerList {
 impl ServerList {
     pub fn new(databases: &Databases) -> Self {
         let mut vec = vec![];
+        let server_name = redis_operations().map(|ops| {ops.name}).unwrap_or("".to_string());
         for (name, database) in databases.databases.iter() {
+
             let data = Data {
+                selected: if &server_name == name {
+                    "*".to_string()
+                } else {
+                    "".to_string()
+                },
                 name: name.to_string(),
                 location: format!("{}:{}", database.host, database.port),
                 username: database.clone().username.unwrap_or(String::new()),
                 use_tls: database.use_tls.to_string(),
                 db: database.db.to_string(),
                 protocol: database.protocol.to_string(),
+                database: database.clone(),
             };
             vec.push(data);
         }
+        vec.sort_by(|x, x1| {
+            x.name.cmp(&x1.name)
+        });
         Self {
             state: TableState::default().with_selected(0),
             longest_item_lens: constraint_len_calculator(&vec),
             column_styles: [
+                Style::default(),
                 Style::default().fg(tailwind::AMBER.c400),
                 Style::default().fg(tailwind::CYAN.c500),
                 Style::default().fg(tailwind::BLUE.c600),
@@ -191,6 +213,28 @@ impl ServerList {
         self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
     }
 
+    pub fn switch(&mut self) -> Result<()> {
+        if let Some(selected) = self.state.selected() {
+            let item = self.items.get(selected).clone();
+            let mut selected_name: Option<String> = None;
+            if let Some(data) = item {
+                switch_client(data.name.clone(), &data.database)?;
+                selected_name = Some(data.name.clone());
+            }
+            if let Some(name) = selected_name {
+                info!("name: {}", name);
+                self.items.iter_mut().for_each(|x| {
+                    if x.name == name {
+                        x.selected = "*".to_string();
+                    } else {
+                        x.selected = "".to_string();
+                    }
+                });
+            }
+        }
+        Ok(())
+    }
+
     pub fn next_color(&mut self) {
         self.color_index = (self.color_index + 1) % PALETTES.len();
     }
@@ -213,7 +257,7 @@ impl ServerList {
             .bg(self.colors.selected_bg)
             ;
 
-        let header = ["Name", "Location", "DB", "Username", "TLS", "Protocol"]
+        let header = ["", "Name", "Location", "DB", "Username", "TLS", "Protocol"]
             .into_iter()
             .map(|title| {
                 Cell::from(Text::raw(title))
@@ -225,8 +269,7 @@ impl ServerList {
             ;
 
         let rows = self.items.iter().enumerate().map(|(i, data)| {
-            let item = [&data.name, &data.location, &data.db, &data.username, &data.use_tls, &data.protocol];
-
+            let item = data.ref_array();
             item.into_iter().enumerate()
                 .map(|(idx, content)| {
                     Cell::from(Text::raw(content).style(self.column_styles[idx]))
@@ -235,23 +278,25 @@ impl ServerList {
                 .style(Style::new().fg(self.colors.row_fg))
                 .height(1)
         }).collect_vec();
-        let bar = " ➤ ";
+        let bar = "➤ ";
         let t = Table::new(
             rows,
             [
                 // + 1 is for padding.
-                Length(cmp::max(self.longest_item_lens.0, 4) + 1),
-                Length(cmp::max(self.longest_item_lens.1, 8) + 1),
-                Length(cmp::max(self.longest_item_lens.2, 2) + 1),
-                Length(cmp::max(self.longest_item_lens.3, 8) + 1),
-                Length(cmp::max(self.longest_item_lens.4, 3) + 1),
-                Length(cmp::max(self.longest_item_lens.5, 8) + 1),
+                Length(self.longest_item_lens.0),
+                Length(cmp::max(self.longest_item_lens.1, 4) + 1),
+                Length(cmp::max(self.longest_item_lens.2, 8) + 1),
+                Length(cmp::max(self.longest_item_lens.3, 2) + 1),
+                Length(cmp::max(self.longest_item_lens.4, 8) + 1),
+                Length(cmp::max(self.longest_item_lens.5, 3) + 1),
+                Length(cmp::max(self.longest_item_lens.6, 8) + 1),
             ],
         )
             .header(header)
             .highlight_style(selected_style)
             .highlight_symbol(Text::raw(bar))
             .bg(self.colors.buffer_bg)
+            .column_spacing(1)
             .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut self.state);
     }
@@ -291,8 +336,10 @@ impl Renderable for ServerList {
         let mut elements = vec![];
         elements.push(("↑/j", "Up"));
         elements.push(("↓/k", "Down"));
-        // elements.push(("←/h", "Close"));
-        // elements.push(("→/l", "Open"));
+        elements.push(("Enter", "Choose"));
+        elements.push(("c", "Create"));
+        elements.push(("e", "Edit"));
+        elements.push(("Esc", "Close"));
         elements
     }
 }
@@ -310,8 +357,10 @@ impl Listenable for ServerList {
                     self.previous();
                     true
                 }
-                // KeyCode::Char('l') | KeyCode::Right => self.next_color(),
-                // KeyCode::Char('h') | KeyCode::Left => self.previous_color(),
+                KeyCode::Enter => {
+                    self.switch()?;
+                    true
+                },
                 _ => { false }
             };
             return Ok(accepted);
@@ -320,7 +369,7 @@ impl Listenable for ServerList {
     }
 }
 
-fn constraint_len_calculator(items: &[Data]) -> (u16, u16, u16, u16, u16, u16) {
+fn constraint_len_calculator(items: &[Data]) -> (u16, u16, u16, u16, u16, u16, u16) {
     let name_len = items
         .iter()
         .map(Data::name)
@@ -360,6 +409,7 @@ fn constraint_len_calculator(items: &[Data]) -> (u16, u16, u16, u16, u16, u16) {
 
     #[allow(clippy::cast_possible_truncation)]
     (
+        1,
         name_len as u16, location_len as u16, db_len as u16,
         username_len as u16, use_tls_len as u16, protocol_len as u16,
     )

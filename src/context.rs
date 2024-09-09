@@ -156,7 +156,7 @@ impl Context {
 
     fn render_server_switcher(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         if self.show_server_switcher {
-            let popup_area = centered_rect(60, 30, area);
+            let popup_area = centered_rect(74, 30, area);
             self.server_list.render_frame(frame, popup_area)?;
         }
         Ok(())
@@ -188,22 +188,27 @@ impl Renderable for Context {
     }
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
-        let mut footer_elements = match self.current_tab {
-            CurrentTab::Explorer => {
-                self.explorer_tab.footer_elements()
-            }
-            CurrentTab::Profiler => {
-                self.profiler_tab.footer_elements()
-            }
-            CurrentTab::Logger => {
-                self.logger_tab.footer_elements()
-            }
-        };
-        footer_elements.push(("s", "Server"));
-        footer_elements.push(("^F5", "Reload"));
-        footer_elements.push(("^c", "Quit"));
-        footer_elements.push(("^h", "Help"));
-        footer_elements
+        let mut elements = vec![];
+        if self.show_server_switcher {
+            elements = self.server_list.footer_elements();
+        } else {
+            elements = match self.current_tab {
+                CurrentTab::Explorer => {
+                    self.explorer_tab.footer_elements()
+                }
+                CurrentTab::Profiler => {
+                    self.profiler_tab.footer_elements()
+                }
+                CurrentTab::Logger => {
+                    self.logger_tab.footer_elements()
+                }
+            };
+            elements.push(("s", "Server"));
+        }
+        elements.push(("^F5", "Reload"));
+        elements.push(("^c", "Quit"));
+        elements.push(("^h", "Help"));
+        elements
     }
 }
 

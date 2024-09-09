@@ -32,9 +32,9 @@ pub fn redis_operations() -> Option<RedisOperations> {
     guard.clone()
 }
 
-pub fn switch_client(database: &Database) -> Result<()> {
+pub fn switch_client(name: String, database: &Database) -> Result<()> {
     let client = build_client(&database)?;
-    let mut operation = RedisOperations::new(database.clone(), client);
+    let mut operation = RedisOperations::new(name, database.clone(), client);
     operation.initialize()?;
 
     let result = REDIS_OPERATIONS.write();
@@ -84,6 +84,7 @@ fn build_pool(database: &Database) -> Result<Pool> {
 
 #[derive(Clone)]
 pub struct RedisOperations {
+    pub name: String,
     database: Database,
     client: Client,
     pool: Pool,
@@ -101,11 +102,12 @@ struct NodeClientHolder {
 }
 
 impl RedisOperations {
-    fn new(database: Database, client: Client) -> Self {
+    fn new(name: String, database: Database, client: Client) -> Self {
         let info = deadpool_redis::ConnectionInfo::from(client.get_connection_info().clone());
         let config = deadpool_redis::Config::from_connection_info(info);
         let pool = config.create_pool(Some(Runtime::Tokio1)).unwrap();
         Self {
+            name,
             database,
             client,
             pool,
@@ -531,7 +533,7 @@ mod tests {
     use crate::configuration::Protocol;
     use crate::redis_opt::{async_redis_opt, build_client, switch_client, Database, RedisOperations};
     use anyhow::Result;
-    use redis::Commands;
+    use redis::{Commands, ToRedisArgs};
 
     #[test]
     fn test_get_server_info() -> Result<()> {
@@ -547,7 +549,7 @@ mod tests {
         };
 
         let client = build_client(&db)?;
-        let op = RedisOperations::new(db, client);
+        let op = RedisOperations::new("".to_string(), db, client);
         let option = op.get_server_info("redis_version");
         print!("redis_version: {:?}", option);
 
@@ -568,7 +570,7 @@ mod tests {
         };
 
         let client = build_client(&db)?;
-        let mut op = RedisOperations::new(db, client);
+        let mut op = RedisOperations::new("".to_string(), db, client);
         op.initialize()?;
         assert!(op.is_cluster());
         let vec = op.scan("*".to_string(), 100).await?;
@@ -592,7 +594,7 @@ mod tests {
             protocol: Protocol::RESP3,
         };
 
-        switch_client(&db)?;
+        switch_client("".to_string(), &db)?;
         let string1 = async_redis_opt(|op| async move {
             let string = op.key_type("json").await?;
             Ok(string)

@@ -9,6 +9,7 @@ mod tui;
 mod tabs;
 mod components;
 mod key_utils;
+mod bus;
 
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
 use crate::components::fps::FpsCalculator;
@@ -45,7 +46,7 @@ async fn main() -> Result<()> {
 
     if let Some(db) = default_db {
         if let Some(database) = db_config.databases.get(&db) {
-            match switch_client(database) {
+            match switch_client(db.clone(), database) {
                 Ok(_) => {
                     info!("Successfully connected to default database '{db}'");
                     info!("{database}");
