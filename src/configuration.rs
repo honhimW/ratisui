@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use anyhow::{Context, Result};
 use log::debug;
 use redis::ProtocolVersion;
+use strum::Display;
 
 pub fn load_app_configuration() -> Result<Configuration> {
     let mut configuration = Configuration::default();
@@ -131,7 +132,7 @@ impl Display for Database {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Display)]
 pub enum Protocol {
     RESP2,
     RESP3,

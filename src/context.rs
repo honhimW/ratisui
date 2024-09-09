@@ -1,22 +1,23 @@
 use crate::app::{centered_rect, AppEvent, Listenable, Renderable, TabImplementation};
+use crate::components::popup::{Popup, RenderAblePopup};
+use crate::key_utils::none_match;
+use crate::redis_opt::redis_operations;
 use crate::tabs::explorer::ExplorerTab;
 use crate::tabs::logger::LoggerTab;
 use crate::tabs::profiler::ProfilerTab;
 use anyhow::Result;
-use ratatui::crossterm::event;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Max, Min};
 use ratatui::layout::{Alignment, Layout, Rect};
 use ratatui::prelude::{Color, Span, Style, Stylize, Text};
 use ratatui::style::palette::tailwind;
+use ratatui::widgets::block::Position;
 use ratatui::widgets::{Block, Borders, Paragraph, Tabs, Wrap};
 use ratatui::{symbols, Frame};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 use tui_textarea::TextArea;
-use tui_widgets::prompts::TextPrompt;
-use crate::components::popup::Popup;
-use crate::key_utils::none_match;
-use crate::redis_opt::redis_operations;
+use crate::components::servers::ServerList;
+use crate::configuration::Databases;
 
 pub struct Context {
     show_server_switcher: bool,
@@ -25,6 +26,8 @@ pub struct Context {
     explorer_tab: ExplorerTab,
     profiler_tab: ProfilerTab,
     logger_tab: LoggerTab,
+    databases: Databases,
+    server_list: ServerList,
     pub fps: f32,
 }
 
@@ -36,7 +39,7 @@ enum CurrentTab {
 }
 
 impl Context {
-    pub fn new() -> Self {
+    pub fn new(databases: Databases) -> Self {
         Self {
             show_server_switcher: false,
             current_tab: CurrentTab::Explorer,
@@ -44,6 +47,8 @@ impl Context {
             explorer_tab: ExplorerTab::new(),
             profiler_tab: ProfilerTab::default(),
             logger_tab: LoggerTab::new(),
+            server_list: ServerList::new(&databases),
+            databases,
             fps: 0.0,
         }
     }
@@ -149,25 +154,12 @@ impl Context {
         Ok(())
     }
 
-    fn render_server_switcher(&mut self, frame: &mut Frame, area: Rect) {
+    fn render_server_switcher(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         if self.show_server_switcher {
             let popup_area = centered_rect(60, 30, area);
-            let mut text_area = TextArea::default();
-            if let Some(op) = redis_operations() {
-                let database = op.get_database();
-
-            }
-
-            text_area.set_placeholder_text("");
-            let delete_popup = Popup::new(&text_area)
-                .borders(Borders::ALL)
-                .border_set(symbols::border::DOUBLE)
-                .style(Style::default());
-            let mut delete_popup = delete_popup;
-            // delete_popup.render_frame(frame, popup_area);
-            frame.render_widget(delete_popup, popup_area);
-
+            self.server_list.render_frame(frame, popup_area)?;
         }
+        Ok(())
     }
 }
 
@@ -191,7 +183,7 @@ impl Renderable for Context {
         self.render_separator(frame, separator_area)?;
         self.render_selected_tab(frame, inner_area)?;
         self.render_footer(frame, footer_area)?;
-        self.render_server_switcher(frame, rect);
+        self.render_server_switcher(frame, rect)?;
         Ok(())
     }
 
@@ -217,6 +209,16 @@ impl Renderable for Context {
 
 impl Listenable for Context {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        if self.show_server_switcher {
+            if none_match(&key_event, KeyCode::Esc) {
+                self.show_server_switcher = false;
+                return Ok(true);
+            }
+            if self.server_list.handle_key_event(key_event)? {
+                return Ok(true);
+            }
+        }
+
         if none_match(&key_event, KeyCode::Char('s')) {
             self.show_server_switcher = true;
             return Ok(true);

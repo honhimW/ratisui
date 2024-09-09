@@ -6,6 +6,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::palette::tailwind;
 use ratatui::text::Line;
 use ratatui::Frame;
+use crate::configuration::Databases;
 
 pub struct App {
     pub state: AppState,
@@ -52,9 +53,9 @@ pub trait Renderable {
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(databases: Databases) -> Self {
         Self {
-            context: context::Context::new(),
+            context: context::Context::new(databases),
             state: AppState::Preparing,
             input: Input::new(),
        }

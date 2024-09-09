@@ -19,19 +19,14 @@ use anyhow::Result;
 use itertools::Itertools;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Constraint::{Length, Min};
-use ratatui::{
-    crossterm::event::{KeyCode, KeyEventKind},
-    layout::{Margin, Rect},
-    style::{self, Color, Style, Stylize},
-    text::{Line, Text},
-    widgets::{
-        Cell, HighlightSpacing, Row, Scrollbar, ScrollbarOrientation, ScrollbarState
-        , Table, TableState,
-    }
-    , Frame,
-};
+use ratatui::{crossterm::event::{KeyCode, KeyEventKind}, layout::{Margin, Rect}, style::{self, Color, Style, Stylize}, symbols, text::{Line, Text}, widgets::{
+    Cell, HighlightSpacing, Row, Scrollbar, ScrollbarOrientation, ScrollbarState
+    , Table, TableState,
+}, Frame};
 use std::borrow::Cow;
 use std::cmp;
+use ratatui::buffer::Buffer;
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Widget};
 use style::palette::tailwind;
 use tui_textarea::TextArea;
 use unicode_width::UnicodeWidthStr;
@@ -48,30 +43,25 @@ const ITEM_HEIGHT: usize = 4;
 
 struct TableColors {
     buffer_bg: Color,
-    header_bg: Color,
     header_fg: Color,
+    header_bg: Color,
+    selected_bg: Color,
     row_fg: Color,
-    selected_style_bg: Color,
-    normal_row_color: Color,
-    alt_row_color: Color,
 }
 
 impl TableColors {
     fn new(color: &tailwind::Palette) -> Self {
         Self {
             buffer_bg: Color::default(),
-            header_bg: color.c900,
             header_fg: color.c200,
+            header_bg: color.c900,
+            selected_bg: color.c950,
             row_fg: color.c200,
-            selected_style_bg: color.c900,
-            normal_row_color: Color::default(),
-            alt_row_color: color.c950,
         }
     }
 }
 
 pub struct Servers {
-    databases: Databases,
     host_state: TextArea<'static>,
     port_state: TextArea<'static>,
     username_state: TextArea<'static>,
@@ -82,6 +72,7 @@ pub struct Servers {
 }
 
 pub struct Data {
+    pub name: String,
     pub location: String,
     pub username: String,
     pub use_tls: String,
@@ -94,6 +85,9 @@ impl Data {
         [&self.location, &self.username, &self.use_tls, &self.db, &self.protocol]
     }
 
+    fn name(&self) -> &str {
+        &self.name
+    }
     fn location(&self) -> &str {
         &self.location
     }
@@ -113,38 +107,57 @@ impl Data {
     fn protocol(&self) -> &str {
         &self.protocol
     }
-
 }
 
-pub struct ListValue {
-    item_values: Vec<String>,
+pub struct ServerList {
     state: TableState,
     items: Vec<Data>,
-    longest_item_lens: (u16, u16),
+    longest_item_lens: (u16, u16, u16, u16, u16, u16),
+    column_styles: [Style; 6],
     scroll_state: ScrollbarState,
     colors: TableColors,
     color_index: usize,
+    servers: Servers,
 }
 
-impl ListValue {
-    pub fn new(data: Vec<String>) -> Self {
+impl ServerList {
+    pub fn new(databases: &Databases) -> Self {
         let mut vec = vec![];
-        for (idx, string) in data.iter().enumerate() {
+        for (name, database) in databases.databases.iter() {
             let data = Data {
-                location: idx.to_string(),
-                port: string.clone().replace("\n", "\\n"),
-                origin_value: string.clone(),
+                name: name.to_string(),
+                location: format!("{}:{}", database.host, database.port),
+                username: database.clone().username.unwrap_or(String::new()),
+                use_tls: database.use_tls.to_string(),
+                db: database.db.to_string(),
+                protocol: database.protocol.to_string(),
             };
             vec.push(data);
         }
         Self {
-            item_values: data,
             state: TableState::default().with_selected(0),
             longest_item_lens: constraint_len_calculator(&vec),
+            column_styles: [
+                Style::default().fg(tailwind::AMBER.c400),
+                Style::default().fg(tailwind::CYAN.c500),
+                Style::default().fg(tailwind::BLUE.c600),
+                Style::default().fg(tailwind::AMBER.c400),
+                Style::default().fg(tailwind::ROSE.c600),
+                Style::default().fg(tailwind::EMERALD.c600),
+            ],
             scroll_state: ScrollbarState::new((vec.len() - 1) * ITEM_HEIGHT),
             colors: TableColors::new(&tailwind::GRAY),
             color_index: 3,
             items: vec,
+            servers: Servers {
+                host_state: TextArea::default(),
+                port_state: TextArea::default(),
+                username_state: TextArea::default(),
+                password_state: TextArea::default(),
+                use_tls_state: TextArea::default(),
+                db_state: TextArea::default(),
+                protocol_state: TextArea::default(),
+            },
         }
     }
 
@@ -197,78 +210,47 @@ impl ListValue {
             .fg(self.colors.header_fg)
             .bg(self.colors.header_bg);
         let selected_style = Style::default()
-            // .add_modifier(Modifier::REVERSED)
-            // .bg(self.colors.selected_style_bg)
+            .bg(self.colors.selected_bg)
             ;
 
-        let header = ["Index", "Value"]
+        let header = ["Name", "Location", "DB", "Username", "TLS", "Protocol"]
             .into_iter()
             .map(|title| {
-                Cell::from(Text::from(format!("\n{title}\n")))
+                Cell::from(Text::raw(title))
             })
             .map(Cell::from)
             .collect::<Row>()
             .style(header_style)
-            .height(3)
+            .height(1)
             ;
 
-
-        let selected_idx = self.state.selected().unwrap_or(0);
-        let mut selected_height = 5;
         let rows = self.items.iter().enumerate().map(|(i, data)| {
-            let color = match i % 2 {
-                0 => self.colors.normal_row_color,
-                _ => self.colors.alt_row_color,
-            };
-            let item;
-            let height: u16;
-            if selected_idx == i {
-                item = [&data.location, &data.origin_value];
-                let lines_count = data.origin_value.lines().count();
-                let max = cmp::min(lines_count, 20);
-                height = cmp::max(max as u16, 5);
-                selected_height = height.clone();
-            } else {
-                item = [&data.location, &data.port];
-                height = 3;
-            }
+            let item = [&data.name, &data.location, &data.db, &data.username, &data.use_tls, &data.protocol];
 
-            item.into_iter()
-                .map(|content| {
-                    let mut text = Text::default();
-                    text.push_line(Line::default());
-                    let highlight_text = raw_value_to_highlight_text(Cow::from(content), false);
-                    for line in highlight_text.lines {
-                        text.push_line(line);
-                    }
-                    text.push_line(Line::default());
-                    Cell::from(text)
+            item.into_iter().enumerate()
+                .map(|(idx, content)| {
+                    Cell::from(Text::raw(content).style(self.column_styles[idx]))
                 })
                 .collect::<Row>()
-                .style(Style::new().fg(self.colors.row_fg).bg(color))
-                .height(height)
+                .style(Style::new().fg(self.colors.row_fg))
+                .height(1)
         }).collect_vec();
-        // let bar = " ➤ ";
-        let bar = " █ ";
-        let mut lines: Vec<Line> = vec![];
-        lines.push("".into());
-        for _ in 0..selected_height.saturating_sub(2) {
-            lines.push(bar.into());
-        }
-        lines.push("".into());
-        let heilight_symbol = Text::from(lines);
+        let bar = " ➤ ";
         let t = Table::new(
             rows,
             [
                 // + 1 is for padding.
-                Length(cmp::max(self.longest_item_lens.0, 5) + 1),
-                // Min(self.longest_item_lens.1 + 1),
-                Min(1 + 1),
+                Length(cmp::max(self.longest_item_lens.0, 4) + 1),
+                Length(cmp::max(self.longest_item_lens.1, 8) + 1),
+                Length(cmp::max(self.longest_item_lens.2, 2) + 1),
+                Length(cmp::max(self.longest_item_lens.3, 8) + 1),
+                Length(cmp::max(self.longest_item_lens.4, 3) + 1),
+                Length(cmp::max(self.longest_item_lens.5, 8) + 1),
             ],
         )
             .header(header)
             .highlight_style(selected_style)
-            .highlight_symbol(heilight_symbol)
+            .highlight_symbol(Text::raw(bar))
             .bg(self.colors.buffer_bg)
             .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut self.state);
@@ -287,14 +269,21 @@ impl ListValue {
             &mut self.scroll_state,
         );
     }
-
 }
 
-impl Renderable for ListValue {
+impl Renderable for ServerList {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        self.render_table(frame, rect);
-        self.render_scrollbar(frame, rect);
-
+        frame.render_widget(Clear::default(), rect);
+        let block = Block::bordered()
+            .title("Servers")
+            .border_set(symbols::border::DOUBLE)
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            ;
+        let inner_block = block.inner(rect);
+        frame.render_widget(block, rect);
+        self.render_table(frame, inner_block);
+        self.render_scrollbar(frame, inner_block);
         Ok(())
     }
 
@@ -308,7 +297,7 @@ impl Renderable for ListValue {
     }
 }
 
-impl Listenable for ListValue {
+impl Listenable for ServerList {
     fn handle_key_event(&mut self, _key_event: KeyEvent) -> Result<bool> {
         if _key_event.kind == KeyEventKind::Press {
             let accepted = match _key_event.code {
@@ -316,14 +305,14 @@ impl Listenable for ListValue {
                 KeyCode::Char('j') | KeyCode::Down => {
                     self.next();
                     true
-                },
+                }
                 KeyCode::Char('k') | KeyCode::Up => {
                     self.previous();
                     true
-                },
+                }
                 // KeyCode::Char('l') | KeyCode::Right => self.next_color(),
                 // KeyCode::Char('h') | KeyCode::Left => self.previous_color(),
-                _ => {false},
+                _ => { false }
             };
             return Ok(accepted);
         }
@@ -331,21 +320,47 @@ impl Listenable for ListValue {
     }
 }
 
-fn constraint_len_calculator(items: &[Data]) -> (u16, u16) {
-    let index_len = items
+fn constraint_len_calculator(items: &[Data]) -> (u16, u16, u16, u16, u16, u16) {
+    let name_len = items
         .iter()
-        .map(Data::host)
+        .map(Data::name)
         .map(UnicodeWidthStr::width)
         .max()
         .unwrap_or(0);
-    let value_len = items
+    let location_len = items
         .iter()
-        .map(Data::port)
-        .flat_map(str::lines)
+        .map(Data::location)
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let db_len = items
+        .iter()
+        .map(Data::db)
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let username_len = items
+        .iter()
+        .map(Data::username)
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let use_tls_len = items
+        .iter()
+        .map(Data::use_tls)
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let protocol_len = items
+        .iter()
+        .map(Data::protocol)
         .map(UnicodeWidthStr::width)
         .max()
         .unwrap_or(0);
 
     #[allow(clippy::cast_possible_truncation)]
-    (index_len as u16, value_len as u16)
+    (
+        name_len as u16, location_len as u16, db_len as u16,
+        username_len as u16, use_tls_len as u16, protocol_len as u16,
+    )
 }

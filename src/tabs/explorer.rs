@@ -16,11 +16,12 @@ use ratatui::prelude::{Line, Style, Stylize, Text};
 use ratatui::style::palette::tailwind;
 use ratatui::style::{Color, Modifier};
 use ratatui::text::Span;
-use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
+use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
 use ratatui::{symbols, Frame};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Not;
+use ratatui::widgets::block::Position;
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
@@ -387,14 +388,23 @@ impl ExplorerTab {
     fn render_delete_popup(&mut self, frame: &mut Frame, area: Rect) {
         if let Some(redis_key) = &self.selected_key {
             let popup_area = centered_rect(30, 15, area);
-            let string = String::from(format!("Delete {} ?", redis_key.name));
-            let paragraph = Paragraph::new(Text::raw(string))
+            let mut text = Text::default();
+            text.push_line(Line::raw(redis_key.name.clone())
+                .alignment(Alignment::Center)
+                .underlined());
+            text.push_line(Line::default());
+            text.push_line(Line::raw("Will be deleted. Are you sure?")
+                .alignment(Alignment::Center)
+                .bold());
+            let paragraph = Paragraph::new(text)
                 .alignment(Alignment::Center);
             let delete_popup = Popup::new(paragraph)
+                .title(String::from(" [Enter] Confirm | [Esc] Cancel "))
+                .title_position(Position::Bottom)
                 .borders(Borders::ALL)
                 .border_set(symbols::border::DOUBLE)
                 .style(Style::default()
-                    .bg(self.palette().c700));
+                    .bg(self.palette().c900));
             frame.render_widget(delete_popup, popup_area);
         }
     }
@@ -572,7 +582,6 @@ impl ExplorerTab {
 
         match key_event.code {
             KeyCode::Enter => {
-                // TODO delete
                 if let Some(redis_key) = &self.selected_key {
                     let key_name = redis_key.name.clone();
                     tokio::spawn(async move {
@@ -580,7 +589,7 @@ impl ExplorerTab {
                         Ok::<(), Error>(())
                     });
                     let key_name = redis_key.name.as_str();
-                    self.tree_items.retain_mut(|item| item.identifier().eq(key_name));
+                    self.tree_items.retain_mut(|item| item.identifier().ne(key_name));
                 }
                 self.show_delete_popup = false;
             }

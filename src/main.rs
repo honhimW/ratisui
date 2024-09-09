@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
 
     let db_config = load_database_configuration()?;
 
-    let mut default_db = db_config.default_database;
+    let mut default_db = db_config.default_database.clone();
 
     if arguments.target.is_some() {
         default_db = arguments.target;
@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    render(App::new(), app_config).await?;
+    render(App::new(db_config), app_config).await?;
 
     if let Err(e) = tui::restore() {
         eprintln!(
