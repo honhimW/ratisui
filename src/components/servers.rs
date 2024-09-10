@@ -35,6 +35,7 @@ use style::palette::tailwind;
 use tui_textarea::TextArea;
 use unicode_width::UnicodeWidthStr;
 use crate::bus::{publish_msg, Message};
+use crate::components::database_editor::Form;
 use crate::components::popup::Popup;
 use crate::configuration::{Database, Databases, Protocol};
 use crate::redis_opt::{redis_operations, switch_client};
@@ -66,16 +67,6 @@ impl TableColors {
             row_fg: color.c200,
         }
     }
-}
-
-pub struct Servers {
-    host_state: TextArea<'static>,
-    port_state: TextArea<'static>,
-    username_state: TextArea<'static>,
-    password_state: TextArea<'static>,
-    use_tls_state: TextArea<'static>,
-    db_state: TextArea<'static>,
-    protocol_state: TextArea<'static>,
 }
 
 pub struct Data {
@@ -134,7 +125,7 @@ pub struct ServerList {
     scroll_state: ScrollbarState,
     colors: TableColors,
     color_index: usize,
-    servers: Servers,
+    form: Form,
 }
 
 impl ServerList {
@@ -182,7 +173,7 @@ impl ServerList {
             colors: TableColors::new(&tailwind::GRAY),
             color_index: 3,
             items: vec,
-            servers: Servers {
+            form: Form {
                 host_state: TextArea::default(),
                 port_state: TextArea::default(),
                 username_state: TextArea::default(),
@@ -379,6 +370,58 @@ impl ServerList {
 
         Ok(true)
     }
+
+    fn handle_create_popup_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        if key_event.kind != KeyEventKind::Press || key_event.modifiers != KeyModifiers::NONE {
+            return Ok(true);
+        }
+
+        match key_event.code {
+            KeyCode::Enter => {
+                if let Some(selected) = self.state.selected() {
+                    let item = self.items.get(selected).clone();
+                    if let Some(data) = item {
+                        if data.selected == "*" {
+                            let _ = publish_msg(Message::warning("Cannot delete selected server".to_string()));
+                        } else {
+                            self.items.remove(selected);
+                        }
+                    }
+                }
+                self.show_create_popup = false;
+            }
+            KeyCode::Esc => {
+                self.show_create_popup = false;
+            }
+            _ => {},
+        }
+
+        Ok(true)
+    }
+
+    fn handle_edit_popup_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        if key_event.kind != KeyEventKind::Press || key_event.modifiers != KeyModifiers::NONE {
+            return Ok(true);
+        }
+
+        match key_event.code {
+            KeyCode::Enter => {
+                if let Some(selected) = self.state.selected() {
+                    let item = self.items.get(selected).clone();
+                    if let Some(data) = item {
+
+                    }
+                }
+                self.show_edit_popup = false;
+            }
+            KeyCode::Esc => {
+                self.show_edit_popup = false;
+            }
+            _ => {},
+        }
+
+        Ok(true)
+    }
 }
 
 impl Renderable for ServerList {
@@ -420,6 +463,12 @@ impl Listenable for ServerList {
         if key_event.kind == KeyEventKind::Press {
             if self.show_delete_popup {
                 return self.handle_delete_popup_key_event(key_event);
+            }
+            if self.show_create_popup {
+                return self.handle_create_popup_key_event(key_event);
+            }
+            if self.show_edit_popup {
+                return self.handle_edit_popup_key_event(key_event);
             }
 
             let accepted = match key_event.code {

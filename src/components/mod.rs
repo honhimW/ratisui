@@ -7,3 +7,4 @@ pub mod raw_value;
 pub mod fps;
 pub mod popup;
 pub mod servers;
+mod database_editor;
