@@ -1,5 +1,4 @@
 use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
-use async_trait::async_trait;
 use log::{debug, error, info, trace, warn, LevelFilter};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
@@ -76,7 +75,6 @@ impl Renderable for LoggerTab {
     }
 }
 
-#[async_trait]
 impl Listenable for LoggerTab {
     fn handle_key_event(&mut self, _key_event: KeyEvent) -> anyhow::Result<bool> {
         if _key_event.modifiers == KeyModifiers::NONE && _key_event.kind == KeyEventKind::Press {

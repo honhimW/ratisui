@@ -1,4 +1,5 @@
-use crate::app::{centered_rect, AppEvent, Listenable, Renderable, TabImplementation};
+use std::time::Instant;
+use crate::app::{centered_rect, top_right_rect, AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::popup::{Popup, RenderAblePopup};
 use crate::key_utils::none_match;
 use crate::redis_opt::redis_operations;
@@ -12,10 +13,11 @@ use ratatui::layout::{Alignment, Layout, Rect};
 use ratatui::prelude::{Color, Span, Style, Stylize, Text};
 use ratatui::style::palette::tailwind;
 use ratatui::widgets::block::Position;
-use ratatui::widgets::{Block, Borders, Paragraph, Tabs, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 use ratatui::{symbols, Frame};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 use tui_textarea::TextArea;
+use crate::bus::{try_take_msg, Kind, Message};
 use crate::components::servers::ServerList;
 use crate::configuration::Databases;
 
@@ -28,6 +30,7 @@ pub struct Context {
     logger_tab: LoggerTab,
     databases: Databases,
     server_list: ServerList,
+    pub toast: Option<Message>,
     pub fps: f32,
 }
 
@@ -49,6 +52,7 @@ impl Context {
             logger_tab: LoggerTab::new(),
             server_list: ServerList::new(&databases),
             databases,
+            toast: None,
             fps: 0.0,
         }
     }
@@ -161,6 +165,24 @@ impl Context {
         }
         Ok(())
     }
+
+    fn render_toast(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        if let Some(ref toast) = self.toast {
+            frame.render_widget(Clear::default(), area);
+            let bg_color = match toast.kind {
+                Kind::Error => tailwind::RED.c700,
+                Kind::Warning => tailwind::YELLOW.c700,
+                Kind::Info => tailwind::GREEN.c700,
+            };
+            let paragraph = Paragraph::new(Text::raw(toast.msg.clone()))
+                .wrap(Wrap { trim: true })
+                .block(Block::bordered()
+                    .title(toast.title.clone().unwrap_or(String::new())))
+                .bg(bg_color);
+            frame.render_widget(paragraph, area);
+        }
+        Ok(())
+    }
 }
 
 impl Renderable for Context {
@@ -184,6 +206,16 @@ impl Renderable for Context {
         self.render_selected_tab(frame, inner_area)?;
         self.render_footer(frame, footer_area)?;
         self.render_server_switcher(frame, rect)?;
+        if let Some(ref toast) = self.toast {
+            if toast.expired_at < Instant::now() {
+                self.toast = None;
+            } else {
+                let top = Layout::vertical([Length(5), Fill(0)]).split(rect)[0];
+                let top_right_area = Layout::horizontal([Fill(0), Length(35)]).split(top)[1];
+                self.render_toast(frame, top_right_area)?;
+            }
+        }
+        
         Ok(())
     }
 
@@ -215,19 +247,15 @@ impl Renderable for Context {
 impl Listenable for Context {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         if self.show_server_switcher {
+            if self.server_list.handle_key_event(key_event)? {
+                return Ok(true);
+            }
             if none_match(&key_event, KeyCode::Esc) {
                 self.show_server_switcher = false;
                 return Ok(true);
             }
-            if self.server_list.handle_key_event(key_event)? {
-                return Ok(true);
-            }
         }
 
-        if none_match(&key_event, KeyCode::Char('s')) {
-            self.show_server_switcher = true;
-            return Ok(true);
-        }
         if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('h') {
             // TODO show help
         }
@@ -241,6 +269,10 @@ impl Listenable for Context {
             KeyCode::Tab => self.next_tab(),
             KeyCode::BackTab => self.prev_tab(),
             _ => {}
+        }
+        if none_match(&key_event, KeyCode::Char('s')) {
+            self.show_server_switcher = true;
+            return Ok(true);
         }
         Ok(true)
     }

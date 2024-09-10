@@ -568,6 +568,12 @@ impl ExplorerTab {
             KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
                 self.filter_text_area.select_all();
             }
+            KeyEvent { code: KeyCode::Char('z'), modifiers: KeyModifiers::CONTROL, .. } => {
+                self.filter_text_area.undo();
+            }
+            KeyEvent { code: KeyCode::Char('y'), modifiers: KeyModifiers::CONTROL, .. } => {
+                self.filter_text_area.redo();
+            }
             input => {
                 self.filter_text_area.input(input);
             }
@@ -985,6 +991,14 @@ impl Listenable for ExplorerTab {
 
     fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
         if _app_event == AppEvent::Init {
+            if let Some(first_line) = self.get_filter_text() {
+                self.do_scan(first_line.clone())?;
+            }
+        }
+        if _app_event == AppEvent::Reset {
+            self.show_delete_popup = false;
+            self.show_filter = false;
+            self.filter_text_area = TextArea::default();
             if let Some(first_line) = self.get_filter_text() {
                 self.do_scan(first_line.clone())?;
             }

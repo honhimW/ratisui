@@ -13,11 +13,11 @@
 //! [examples]: https://github.com/ratatui/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui/ratatui/blob/main/examples/README.md
 
-use crate::app::{Listenable, Renderable};
+use crate::app::{centered_rect, Listenable, Renderable};
 use crate::components::raw_value::raw_value_to_highlight_text;
-use anyhow::Result;
+use anyhow::{Error, Result};
 use itertools::Itertools;
-use ratatui::crossterm::event::KeyEvent;
+use ratatui::crossterm::event::{KeyEvent, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::{crossterm::event::{KeyCode, KeyEventKind}, layout::{Margin, Rect}, style::{self, Color, Style, Stylize}, symbols, text::{Line, Text}, widgets::{
     Cell, HighlightSpacing, Row, Scrollbar, ScrollbarOrientation, ScrollbarState
@@ -28,10 +28,14 @@ use std::cmp;
 use std::string::ToString;
 use log::info;
 use ratatui::buffer::Buffer;
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Widget};
+use ratatui::layout::Alignment;
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Widget};
+use ratatui::widgets::block::Position;
 use style::palette::tailwind;
 use tui_textarea::TextArea;
 use unicode_width::UnicodeWidthStr;
+use crate::bus::{publish_msg, Message};
+use crate::components::popup::Popup;
 use crate::configuration::{Database, Databases, Protocol};
 use crate::redis_opt::{redis_operations, switch_client};
 
@@ -120,6 +124,9 @@ impl Data {
 }
 
 pub struct ServerList {
+    show_delete_popup: bool,
+    show_create_popup: bool,
+    show_edit_popup: bool,
     state: TableState,
     items: Vec<Data>,
     longest_item_lens: (u16, u16, u16, u16, u16, u16, u16),
@@ -155,8 +162,12 @@ impl ServerList {
         vec.sort_by(|x, x1| {
             x.name.cmp(&x1.name)
         });
+        let default_selected = vec.iter().position(|data| data.selected == "*").unwrap_or(0);
         Self {
-            state: TableState::default().with_selected(0),
+            show_delete_popup: false,
+            show_create_popup: false,
+            show_edit_popup: false,
+            state: TableState::default().with_selected(default_selected),
             longest_item_lens: constraint_len_calculator(&vec),
             column_styles: [
                 Style::default(),
@@ -314,6 +325,60 @@ impl ServerList {
             &mut self.scroll_state,
         );
     }
+
+    fn render_delete_popup(&mut self, frame: &mut Frame, area: Rect) {
+        if let Some(selected) = self.state.selected() {
+            let item = self.items.get(selected).clone();
+            if let Some(data) = item {
+                let popup_area = centered_rect(30, 15, area);
+                let mut text = Text::default();
+                text.push_line(Line::raw(data.name.clone())
+                    .alignment(Alignment::Center)
+                    .underlined());
+                text.push_line(Line::default());
+                text.push_line(Line::raw("Will be deleted. Are you sure?")
+                    .alignment(Alignment::Center)
+                    .bold());
+                let paragraph = Paragraph::new(text)
+                    .alignment(Alignment::Center);
+                let delete_popup = Popup::new(paragraph)
+                    .title(String::from(" [Enter] Confirm | [Esc] Cancel "))
+                    .title_position(Position::Bottom)
+                    .borders(Borders::ALL)
+                    .border_set(symbols::border::DOUBLE)
+                    .style(Style::default());
+                frame.render_widget(delete_popup, popup_area);
+            }
+        }
+    }
+
+    fn handle_delete_popup_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        if key_event.kind != KeyEventKind::Press || key_event.modifiers != KeyModifiers::NONE {
+            return Ok(true);
+        }
+
+        match key_event.code {
+            KeyCode::Enter => {
+                if let Some(selected) = self.state.selected() {
+                    let item = self.items.get(selected).clone();
+                    if let Some(data) = item {
+                        if data.selected == "*" {
+                            let _ = publish_msg(Message::warning("Cannot delete selected server".to_string()));
+                        } else {
+                            self.items.remove(selected);
+                        }
+                    }
+                }
+                self.show_delete_popup = false;
+            }
+            KeyCode::Esc => {
+                self.show_delete_popup = false;
+            }
+            _ => {},
+        }
+
+        Ok(true)
+    }
 }
 
 impl Renderable for ServerList {
@@ -329,6 +394,11 @@ impl Renderable for ServerList {
         frame.render_widget(block, rect);
         self.render_table(frame, inner_block);
         self.render_scrollbar(frame, inner_block);
+
+        if self.show_delete_popup {
+            self.render_delete_popup(frame, frame.area());
+        }
+
         Ok(())
     }
 
@@ -338,6 +408,7 @@ impl Renderable for ServerList {
         elements.push(("↓/k", "Down"));
         elements.push(("Enter", "Choose"));
         elements.push(("c", "Create"));
+        elements.push(("d", "Delete"));
         elements.push(("e", "Edit"));
         elements.push(("Esc", "Close"));
         elements
@@ -345,10 +416,13 @@ impl Renderable for ServerList {
 }
 
 impl Listenable for ServerList {
-    fn handle_key_event(&mut self, _key_event: KeyEvent) -> Result<bool> {
-        if _key_event.kind == KeyEventKind::Press {
-            let accepted = match _key_event.code {
-                KeyCode::Esc => true,
+    fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        if key_event.kind == KeyEventKind::Press {
+            if self.show_delete_popup {
+                return self.handle_delete_popup_key_event(key_event);
+            }
+
+            let accepted = match key_event.code {
                 KeyCode::Char('j') | KeyCode::Down => {
                     self.next();
                     true
@@ -359,6 +433,18 @@ impl Listenable for ServerList {
                 }
                 KeyCode::Enter => {
                     self.switch()?;
+                    true
+                },
+                KeyCode::Char('d') => {
+                    self.show_delete_popup = true;
+                    true
+                },
+                KeyCode::Char('c') => {
+                    self.show_create_popup = true;
+                    true
+                },
+                KeyCode::Char('e') => {
+                    self.show_edit_popup = true;
                     true
                 },
                 _ => { false }

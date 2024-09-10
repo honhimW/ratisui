@@ -3,7 +3,6 @@ use anyhow::{anyhow, Context, Result};
 use deadpool_redis::redis::cmd;
 use deadpool_redis::{Pool, Runtime};
 use log::info;
-use once_cell::sync::Lazy;
 use redis::aio::ConnectionManager;
 use redis::cluster::ClusterClient;
 use redis::ConnectionAddr::{Tcp, TcpTls};
@@ -11,8 +10,13 @@ use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInf
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::RwLock;
+use lazy_static::lazy_static;
 
-pub static REDIS_OPERATIONS: Lazy<RwLock<Option<RedisOperations>>> = Lazy::new(|| RwLock::new(None));
+lazy_static! {
+    static ref REDIS_OPERATIONS: RwLock<Option<RedisOperations>> = RwLock::new(None);
+}
+
+// pub static REDIS_OPERATIONS: Lazy<RwLock<Option<RedisOperations>>> = Lazy::new(|| RwLock::new(None));
 
 pub async fn async_redis_opt<F, FUT, R>(opt: F) -> Result<R>
 where
@@ -94,7 +98,7 @@ pub struct RedisOperations {
     cluster_pool: Option<deadpool_redis::cluster::Pool>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct NodeClientHolder {
     node_client: Client,
     pool: Pool,
@@ -131,7 +135,7 @@ impl RedisOperations {
             info!("Cluster mode");
             info!("Cluster nodes: {}", self.nodes.len());
             for (s, node) in self.nodes.iter() {
-                info!("{s}: {} {}", node.node_client.get_connection_info().addr, node.is_master);
+                info!("{s} - location: {} - master: {}", node.node_client.get_connection_info().addr, node.is_master);
             }
         } else {
             info!("Standalone mode: {}", self.client.get_connection_info().addr);
@@ -167,24 +171,26 @@ impl RedisOperations {
                 if let Value::Array { 0: item, .. } = slot {
                     // let start = item.get(0).context("start slot should exist")?;
                     // let stop = item.get(1).context("stop slot should exist")?;
-                    let nodes = item.get(2).context("node(s) should exist")?;
-                    if let Value::Array { 0: item, .. } = nodes {
-                        let host = item.get(0).context("host should exist")?;
-                        let port = item.get(1).context("port should exist")?;
-                        let id = item.get(2).context("id should exist")?;
-                        let mut _host = "".to_string();
-                        let mut _port = 0;
-                        let mut _id = "".to_string();
-                        if let Value::BulkString(host) = host {
-                            _host = String::from_utf8(host.clone())?;
+                    for i in 2..item.len() {
+                        let nodes = item.get(i).context("node(s) should exist")?;
+                        if let Value::Array { 0: item, .. } = nodes {
+                            let host = item.get(0).context("host should exist")?;
+                            let port = item.get(1).context("port should exist")?;
+                            let id = item.get(2).context("id should exist")?;
+                            let mut _host = "".to_string();
+                            let mut _port = 0;
+                            let mut _id = "".to_string();
+                            if let Value::BulkString(host) = host {
+                                _host = String::from_utf8(host.clone())?;
+                            }
+                            if let Value::Int(port) = port {
+                                _port = *port as u16;
+                            }
+                            if let Value::BulkString(id) = id {
+                                _id = String::from_utf8(id.clone())?;
+                            }
+                            redis_nodes.push((_host, _port, _id));
                         }
-                        if let Value::Int(port) = port {
-                            _port = *port as u16;
-                        }
-                        if let Value::BulkString(id) = id {
-                            _id = String::from_utf8(id.clone())?;
-                        }
-                        redis_nodes.push((_host, _port, _id));
                     }
                 }
             }
@@ -222,7 +228,6 @@ impl RedisOperations {
                     is_master: *is_master,
                 });
             }
-
             self.nodes = node_holders;
             let mut cluster_urls = vec![];
             for (host, port, _) in redis_nodes.clone() {
@@ -525,7 +530,6 @@ impl RedisOperations {
             Ok(())
         }
     }
-
 }
 
 #[cfg(test)]

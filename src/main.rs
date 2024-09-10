@@ -17,12 +17,13 @@ use crate::configuration::{load_app_configuration, load_database_configuration, 
 use crate::input::InputEvent;
 use crate::redis_opt::{switch_client};
 use anyhow::{anyhow, Result};
-use log::{info, warn};
+use log::{error, info, warn};
 use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::cmp;
 use std::time::Duration;
 use tokio::time::{interval};
 use crate::app::AppState::Closed;
+use crate::bus::{publish_msg, try_take_msg, Message};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -87,7 +88,15 @@ async fn render(mut app: App, config: Configuration) -> Result<()> {
             } else {
                 app.context.fps = 0.0;
             }
-            let _ = app.context.render_frame(frame, frame.area());
+
+            if let Ok(msg) = try_take_msg() {
+                app.context.toast = Some(msg);
+            }
+            let render_result = app.context.render_frame(frame, frame.area());
+            if let Err(e) = render_result {
+                error!("Render error: {:?}", e);
+                let _ = publish_msg(Message::error(format!("{}", e)).title(String::from("Render Error")));
+            }
         });
 
         if let Err(e) = render_result {
@@ -114,7 +123,11 @@ async fn render(mut app: App, config: Configuration) -> Result<()> {
                                 } else if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::F(5) {
                                     app.context.on_app_event(AppEvent::Reset)?
                                 } else {
-                                    let _ = app.context.handle_key_event(key_event);
+                                    let handle_result = app.context.handle_key_event(key_event);
+                                    if let Err(e) = handle_result {
+                                        error!("Handle key event error: {:?}", e);
+                                        let _ = publish_msg(Message::error(format!("{}", e)).title(String::from("Handle Error")));
+                                    }
                                 }
                             }
                         }

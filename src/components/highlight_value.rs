@@ -76,7 +76,7 @@ pub enum ContentType {
 impl HighlightProcessor {
     pub fn new(source: String) -> Self {
         Self {
-            source,
+            source: source.replace("\t", "    "), // \t Tab characters may cause some content to remain on the frame.
             fragments: Vec::new(),
             content_type: None,
             tree: None,

@@ -1,45 +1,76 @@
-use lazy_static::lazy_static;
-use tokio::sync::{broadcast, RwLock};
+use std::time::Instant;
 use anyhow::{Context, Result};
+use crossbeam_channel::{Receiver, Sender};
+use lazy_static::lazy_static;
 
 lazy_static! {
-    static ref TOAST_CHANNEL: RwLock<Channel> = {
-        let (tx, rx) = broadcast::channel(16);
-        RwLock::new(Channel { tx, rx })
+    static ref TOAST_CHANNEL: Channel = {
+        let (tx, rx) = crossbeam_channel::bounded(4);
+        Channel { tx, rx }
     };
 }
 
 pub struct Channel {
-    pub tx: broadcast::Sender<Message>,
-    pub rx: broadcast::Receiver<Message>,
+    pub tx: Sender<Message>,
+    pub rx: Receiver<Message>,
 }
 
 #[derive(Clone)]
-pub enum Message {
-    Error(String),
-    Warning(String),
-    Info(String),
+pub struct Message {
+    pub kind: Kind,
+    pub title: Option<String>,
+    pub msg: String,
+    pub expired_at: Instant,
 }
 
-async fn publish_event(event: Message) -> Result<()> {
-    TOAST_CHANNEL.read().await.send(event).context("Publishing failed")?;
+#[derive(Clone)]
+pub enum Kind {
+    Error,
+    Warning,
+    Info,
+}
+
+impl Message {
+    pub fn info(msg: String) -> Self {
+        Self::with_default(Kind::Info, msg)
+    }
+
+    pub fn error(msg: String) -> Self {
+        Self::with_default(Kind::Error, msg)
+    }
+
+    pub fn warning(msg: String) -> Self {
+        Self::with_default(Kind::Warning, msg)
+    }
+
+    fn with_default(kind: Kind, msg: String) -> Self {
+        Self {
+            kind,
+            title: None,
+            msg,
+            expired_at: Instant::now() + std::time::Duration::from_secs(4),
+        }
+    }
+
+    pub fn title(mut self, title: String) -> Self {
+        self.title = Some(title);
+        self
+    }
+}
+
+pub fn publish_msg(event: Message) -> Result<()> {
+    TOAST_CHANNEL.tx.send(event).context("Publishing failed")?;
     Ok(())
 }
 
-async fn subscribe_event() -> broadcast::Receiver<Message> {
-    TOAST_CHANNEL.read().await.tx.subscribe()
+pub fn try_take_msg() -> Result<Message> {
+    TOAST_CHANNEL.rx.try_recv().context("Taking failed")
 }
 
-fn toast(event: Message) -> Result<()> {
-    tokio::spawn(async move {
-        publish_event(event).await?;
-    });
-    Ok(())
+pub fn get_sender() -> Result<Sender<Message>> {
+    Ok(TOAST_CHANNEL.tx.clone())
 }
 
-fn sub() -> Message {
-    let handle = tokio::task::spawn_blocking(subscribe_event);
-    let place = tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(async { handle.await })
-    });
+pub fn get_receiver() -> Result<Receiver<Message>> {
+    Ok(TOAST_CHANNEL.rx.clone())
 }

@@ -1,5 +1,4 @@
 use crate::app::{Listenable, Renderable, TabImplementation};
-use async_trait::async_trait;
 use ratatui::layout::Rect;
 use ratatui::prelude::{Line, Stylize};
 use ratatui::style::palette::tailwind;
@@ -40,7 +39,6 @@ impl Renderable for ProfilerTab {
     }
 }
 
-#[async_trait]
 impl Listenable for ProfilerTab {
 
 }
