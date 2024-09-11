@@ -100,11 +100,11 @@ impl Listenable for LoggerTab {
     fn on_app_event(&mut self, _app_event: AppEvent) -> anyhow::Result<()> {
         match _app_event {
             AppEvent::Init => {
-                error!("Error Message");
-                warn!("Warning Message");
-                info!("Info Message");
-                debug!("Debug Message");
-                trace!("Trace Message");
+                // error!("Error Message");
+                // warn!("Warning Message");
+                // info!("Info Message");
+                // debug!("Debug Message");
+                // trace!("Trace Message");
             }
             _ => {}
         }

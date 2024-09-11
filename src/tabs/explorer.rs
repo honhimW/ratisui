@@ -553,7 +553,6 @@ impl ExplorerTab {
                 }
             }
             KeyEvent { code: KeyCode::Enter, .. } => {
-                // TODO perform scan keys, or scan after input changed, enter will refresh keys
                 if let Some(first_line) = self.get_filter_text() {
                     self.do_scan(first_line.clone())?;
                 }

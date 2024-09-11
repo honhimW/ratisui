@@ -1,13 +1,13 @@
+use anyhow::{Context, Result};
+use log::debug;
+use redis::ProtocolVersion;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
-use serde::{Deserialize, Serialize};
-use anyhow::{Context, Result};
-use log::debug;
-use redis::ProtocolVersion;
-use strum::Display;
+use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
 
 pub fn load_app_configuration() -> Result<Configuration> {
     let mut configuration = Configuration::default();
@@ -132,7 +132,7 @@ impl Display for Database {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Display)]
+#[derive(Serialize, Deserialize, Debug, Clone, Display, EnumCount, EnumIter)]
 pub enum Protocol {
     RESP2,
     RESP3,
