@@ -6,10 +6,11 @@ use ratatui::layout::Constraint::{Fill, Length, Percentage};
 use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::style::palette::tailwind;
 use ratatui::text::Span;
-use ratatui::widgets::{Block, Clear};
+use ratatui::widgets::{Block, BorderType, Clear};
 use strum::{EnumCount, EnumIter, EnumString, IntoEnumIterator, ToString};
 use tui_textarea::TextArea;
 use crate::app::{centered_rect, Listenable, Renderable};
+use crate::components::servers::Data;
 use crate::configuration::{Database, Protocol};
 use crate::tabs::explorer::FilterMod;
 
@@ -87,6 +88,20 @@ impl Default for Form {
 }
 
 impl Form {
+
+    pub fn from_data(data: &Data) -> Self {
+        let mut form = Self::default();
+        form.name_text_area.insert_str(data.name.clone());
+        form.host_text_area.insert_str(data.database.host.clone());
+        form.port_text_area.insert_str(data.database.port.to_string());
+        form.enabled_authentication = data.database.password.is_some();
+        form.username_text_area.insert_str(data.database.username.clone().unwrap_or_default());
+        form.password_text_area.insert_str(data.database.password.clone().unwrap_or_default());
+        form.use_tls = data.database.use_tls;
+        form.db_text_area.insert_str(data.db.clone());
+        form.protocol = data.database.protocol.clone();
+        form
+    }
 
     pub fn title(mut self, title: String) -> Self {
         self.title = title;
@@ -243,9 +258,11 @@ impl Renderable for Form {
         // let area = centered_rect(50, 70, rect);
         frame.render_widget(Clear::default(), area);
         let block = Block::bordered()
-            .title(self.title.clone());
+            .title(self.title.clone())
+            .border_type(BorderType::Rounded);
         let block_inner_area = block
             .inner(area);
+        let block_inner_area = Layout::horizontal([Length(1), Fill(0), Length(1)]).split(block_inner_area)[1];
         if !self.enabled_authentication {
             let vertical = Layout::vertical([
                 Length(1), // name

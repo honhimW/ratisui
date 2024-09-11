@@ -342,7 +342,7 @@ impl ServerList {
     }
 
     fn render_edit_popup(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        self.create_form.render_frame(frame, area)?;
+        self.edit_form.render_frame(frame, area)?;
         Ok(())
     }
 
@@ -402,9 +402,26 @@ impl ServerList {
     fn handle_edit_popup_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Esc {
             self.show_edit_popup = false;
-        } else if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Esc {
-
-            self.show_edit_popup = false;
+        } else if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Enter {
+            let database = self.edit_form.to_database();
+            if let Some(idx) = self.state.selected() {
+                if let Some(current_data) = self.items.get(idx) {
+                    let data = Data {
+                        selected: current_data.selected.clone(),
+                        name: self.edit_form.get_name(),
+                        location: format!("{}:{}", database.host, database.port),
+                        db: database.db.to_string(),
+                        username: database.username.clone().unwrap_or(String::new()),
+                        use_tls: database.use_tls.to_string(),
+                        protocol: database.protocol.to_string(),
+                        database,
+                    };
+                    self.valid(&data)?;
+                    self.items[idx] = data;
+                    self.edit_form = Form::default().title("Edit".to_string());
+                    self.show_edit_popup = false;
+                }
+            }
         } else {
             let result = self.edit_form.handle_key_event(key_event)?;
             if result {}
@@ -504,6 +521,11 @@ impl Listenable for ServerList {
                 }
                 KeyCode::Char('e') => {
                     self.show_edit_popup = true;
+                    if let Some(idx) = self.state.selected() {
+                        if let Some(data) = self.items.get(idx) {
+                            self.edit_form = Form::from_data(data).title("Edit".to_string());
+                        }
+                    }
                     true
                 }
                 _ => { false }
