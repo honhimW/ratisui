@@ -169,7 +169,7 @@ impl ServerList {
                 Style::default().fg(tailwind::ROSE.c600),
                 Style::default().fg(tailwind::EMERALD.c600),
             ],
-            scroll_state: ScrollbarState::new((vec.len() - 1) * ITEM_HEIGHT),
+            scroll_state: ScrollbarState::new((vec.len().saturating_sub(1)) * ITEM_HEIGHT),
             colors: TableColors::new(&tailwind::GRAY),
             color_index: 3,
             items: vec,
