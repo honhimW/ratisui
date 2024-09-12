@@ -136,10 +136,10 @@ impl ServerList {
         for (name, database) in databases.databases.iter() {
             let data = Data {
                 selected: if &server_name == name {
-                    "*".to_string()
+                    "*"
                 } else {
-                    "".to_string()
-                },
+                    ""
+                }.into(),
                 name: name.to_string(),
                 location: format!("{}:{}", database.host, database.port),
                 username: database.clone().username.unwrap_or(String::new()),
@@ -173,8 +173,8 @@ impl ServerList {
             colors: TableColors::new(&tailwind::GRAY),
             color_index: 3,
             items: vec,
-            create_form: Form::default().title("New".to_string()),
-            edit_form: Form::default().title("Edit".to_string()),
+            create_form: Form::default().title("New"),
+            edit_form: Form::default().title("Edit"),
         }
     }
 
@@ -357,7 +357,7 @@ impl ServerList {
                     let item = self.items.get(selected).clone();
                     if let Some(data) = item {
                         if data.selected == "*" {
-                            let _ = publish_msg(Message::warning("Cannot delete selected server".to_string()));
+                            let _ = publish_msg(Message::warning("Cannot delete selected server"));
                         } else {
                             self.items.remove(selected);
                         }
@@ -391,7 +391,7 @@ impl ServerList {
             };
             self.valid_create(&data)?;
             self.items.push(data);
-            self.create_form = Form::default().title("New".to_string());
+            self.create_form = Form::default().title("New");
             self.show_create_popup = false;
         } else {
             self.create_form.handle_key_event(key_event)?;
@@ -421,7 +421,7 @@ impl ServerList {
                         switch_client(data.name.clone(), &data.database)?;
                     }
                     self.items[idx] = data;
-                    self.edit_form = Form::default().title("Edit".to_string());
+                    self.edit_form = Form::default().title("Edit");
                     self.show_edit_popup = false;
                 }
             }
@@ -533,7 +533,7 @@ impl Listenable for ServerList {
                     self.show_edit_popup = true;
                     if let Some(idx) = self.state.selected() {
                         if let Some(data) = self.items.get(idx) {
-                            self.edit_form = Form::from_data(data).title("Edit".to_string());
+                            self.edit_form = Form::from_data(data).title("Edit");
                         }
                     }
                     true

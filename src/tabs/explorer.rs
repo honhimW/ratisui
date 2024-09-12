@@ -299,7 +299,7 @@ impl ExplorerTab {
                 let duration = chronoutil::RelativeDuration::seconds(redis_key.ttl.unwrap_or(0) as i64).format_to_iso8601();
                 Span::raw(format!("  TTL: {}", duration))
             } else {
-                Span::raw("  TTL: No Limit".to_string())
+                Span::raw("  TTL: No Limit")
             };
 
             let mut line = Line::default();
@@ -834,7 +834,7 @@ impl TabImplementation for ExplorerTab {
     }
 
     fn title(&self) -> Line<'static> {
-        "  Explorer  ".to_string()
+        "  Explorer  "
             .fg(tailwind::SLATE.c200)
             .bg(self.palette().c900)
             .into()
