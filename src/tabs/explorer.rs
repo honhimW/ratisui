@@ -660,8 +660,10 @@ impl ExplorerTab {
                                 Ok::<(), Error>(())
                             });
                         }
+                        self.selected_key = None;
                     }
                 }
+                self.show_rename = false;
             }
             KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
             KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {

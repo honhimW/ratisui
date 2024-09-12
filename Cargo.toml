@@ -33,7 +33,6 @@ redis = { version = "0.26.1", features = [
 ] }
 strum = "0.26.3"
 throbber-widgets-tui = "0.6.0"
-tui-widgets = "0.3.0"
 tui-tree-widget = "0.22.0"
 uuid = { version = "1.10.0", features = ["v4"] }
 toml = "0.8.19"
