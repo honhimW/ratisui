@@ -5,7 +5,7 @@ use crate::components::popup::Popup;
 use crate::components::raw_value::raw_value_to_highlight_text;
 use crate::components::set_table::SetValue;
 use crate::components::zset_table::ZSetValue;
-use crate::redis_opt::async_redis_opt;
+use crate::redis_opt::{async_redis_opt, spawn_redis_opt};
 use crate::tabs::explorer::CurrentScreen::{KeysTree, ValuesViewer};
 use anyhow::{Context, Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -498,11 +498,23 @@ impl ExplorerTab {
         let sender = self.data_sender.clone();
         let pattern_clone = pattern.clone();
         let size_clone = self.scan_size.clone();
-        tokio::spawn(async move {
-            let data = Self::do_scan_keys(pattern_clone, size_clone).await?;
+        spawn_redis_opt(move |operations| async move {
+            let mut data = Data::default();
+            let keys = operations.scan(pattern, size_clone as usize).await;
+            if let Ok(keys) = keys {
+                let vec = keys.iter()
+                    .map(|s| RedisKey::new(s, "unknown"))
+                    .collect::<Vec<RedisKey>>();
+                data.scan_keys_result = (true, vec);
+            }
             sender.send(data.clone())?;
             Ok::<(), Error>(())
-        });
+        })?;
+        // tokio::spawn(async move {
+        //     let data = Self::do_scan_keys(pattern_clone, size_clone).await?;
+        //     sender.send(data.clone())?;
+        //     Ok::<(), Error>(())
+        // });
         Ok(())
     }
 

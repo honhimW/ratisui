@@ -1,5 +1,5 @@
 use crate::configuration::{to_protocol_version, Database};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use deadpool_redis::redis::cmd;
 use deadpool_redis::{Pool, Runtime};
 use log::info;
@@ -13,6 +13,33 @@ use std::sync::RwLock;
 use once_cell::sync::Lazy;
 
 pub static REDIS_OPERATIONS: Lazy<RwLock<Option<RedisOperations>>> = Lazy::new(|| RwLock::new(None));
+
+/// ```
+/// let sender = sender.clone();
+/// let key_to_get = key.clone();
+/// spawn_redis_opt(move |operations| async move {
+///     let data: String = operations.get(key_to_get).await?;
+///     sender.send(data.clone())?;
+///     Ok::<(), Error>(())
+/// })?;
+/// ```
+
+pub fn spawn_redis_opt<F, FUT, R>(opt: F) -> Result<()>
+where
+    F: FnOnce(RedisOperations) -> FUT + Send + 'static,
+    FUT: Future<Output=Result<R>> + Send + 'static,
+{
+    let x = redis_operations();
+    if let Some(c) = x {
+        tokio::spawn(async move {
+            opt(c.clone()).await?;
+            Ok::<(), Error>(())
+        });
+        Ok(())
+    } else {
+        Err(anyhow!(""))
+    }
+}
 
 pub async fn async_redis_opt<F, FUT, R>(opt: F) -> Result<R>
 where
