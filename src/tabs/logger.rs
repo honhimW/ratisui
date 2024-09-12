@@ -28,7 +28,7 @@ impl TabImplementation for LoggerTab {
     }
 
     fn title(&self) -> Line<'static> {
-        "  Logger  ".to_string()
+        "  Logger  "
             .fg(tailwind::SLATE.c200)
             .bg(self.palette().c900)
             .into()

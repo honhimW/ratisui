@@ -16,7 +16,7 @@ impl TabImplementation for ProfilerTab {
     }
 
     fn title(&self) -> Line<'static> {
-        "  Profiler  ".to_string()
+        "  Profiler  "
             .fg(tailwind::SLATE.c200)
             .bg(self.palette().c900)
             .into()

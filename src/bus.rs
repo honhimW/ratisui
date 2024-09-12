@@ -1,14 +1,12 @@
 use std::time::Instant;
 use anyhow::{Context, Result};
 use crossbeam_channel::{Receiver, Sender};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
-lazy_static! {
-    static ref TOAST_CHANNEL: Channel = {
-        let (tx, rx) = crossbeam_channel::bounded(4);
-        Channel { tx, rx }
-    };
-}
+static TOAST_CHANNEL: Lazy<Channel> = Lazy::new(|| {
+    let (tx, rx) = crossbeam_channel::bounded(4);
+    Channel { tx, rx }
+});
 
 pub struct Channel {
     pub tx: Sender<Message>,
@@ -31,29 +29,29 @@ pub enum Kind {
 }
 
 impl Message {
-    pub fn info(msg: String) -> Self {
+    pub fn info(msg: impl Into<String>) -> Self {
         Self::with_default(Kind::Info, msg)
     }
 
-    pub fn error(msg: String) -> Self {
+    pub fn error(msg: impl Into<String>) -> Self {
         Self::with_default(Kind::Error, msg)
     }
 
-    pub fn warning(msg: String) -> Self {
+    pub fn warning(msg: impl Into<String>) -> Self {
         Self::with_default(Kind::Warning, msg)
     }
 
-    fn with_default(kind: Kind, msg: String) -> Self {
+    fn with_default(kind: Kind, msg: impl Into<String>) -> Self {
         Self {
             kind,
             title: None,
-            msg,
+            msg: msg.into(),
             expired_at: Instant::now() + std::time::Duration::from_secs(4),
         }
     }
 
-    pub fn title(mut self, title: String) -> Self {
-        self.title = Some(title);
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
         self
     }
 }

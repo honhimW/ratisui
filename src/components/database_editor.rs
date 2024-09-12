@@ -1,17 +1,17 @@
-use lazy_static::lazy_static;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::Frame;
-use ratatui::layout::{Layout, Rect};
-use ratatui::layout::Constraint::{Fill, Length, Percentage};
-use ratatui::style::{Modifier, Style, Stylize};
-use ratatui::style::palette::tailwind;
-use ratatui::text::Span;
-use ratatui::widgets::{Block, Clear};
-use strum::{EnumCount, EnumIter, EnumString, IntoEnumIterator, ToString};
-use tui_textarea::TextArea;
-use crate::app::{centered_rect, Listenable, Renderable};
+use crate::app::{Listenable, Renderable};
+use crate::components::servers::Data;
 use crate::configuration::{Database, Protocol};
-use crate::tabs::explorer::FilterMod;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::layout::Constraint::{Fill, Length, Percentage};
+use ratatui::layout::{Layout, Rect};
+use ratatui::style::palette::tailwind;
+use ratatui::style::{Style, Stylize};
+use ratatui::text::Span;
+use ratatui::widgets::{Block, BorderType, Clear};
+use ratatui::Frame;
+use strum::{EnumCount, EnumIter, IntoEnumIterator, ToString};
+use tui_textarea::TextArea;
+use uuid::Uuid;
 
 pub struct Form {
     title: String,
@@ -31,7 +31,7 @@ pub struct Form {
 #[derive(Default, Eq, PartialEq, EnumCount, EnumIter, ToString)]
 enum Editing {
     #[default]
-    #[strum(serialize = "Name")]
+    #[strum(serialize = "Name(*)")]
     Name,
     #[strum(serialize = "Host")]
     Host,
@@ -52,7 +52,7 @@ enum Editing {
 }
 
 fn cursor_style() -> Style {
-    Style::default().rapid_blink().underlined()
+    Style::default().rapid_blink().reversed()
 }
 
 impl Default for Form {
@@ -71,25 +71,47 @@ impl Default for Form {
             db_text_area: TextArea::default(),
             protocol: Protocol::RESP3,
         };
+        form.name_text_area.set_placeholder_text("must not be blank");
+        form.name_text_area.set_placeholder_style(Style::default().fg(tailwind::RED.c700).dim());
         form.host_text_area.set_placeholder_text("127.0.0.1");
         form.port_text_area.set_placeholder_text("6379");
         form.username_text_area.set_placeholder_text("");
         form.password_text_area.set_placeholder_text("");
         form.db_text_area.set_placeholder_text("0");
-        form.name_text_area.set_cursor_style(cursor_style());
+        form.name_text_area.set_cursor_style(Style::default());
         form.host_text_area.set_cursor_style(Style::default());
         form.port_text_area.set_cursor_style(Style::default());
         form.username_text_area.set_cursor_style(Style::default());
         form.password_text_area.set_cursor_style(Style::default());
         form.db_text_area.set_cursor_style(Style::default());
+
+        form.name_text_area.insert_str(Uuid::new_v4().to_string());
+        form.name_text_area.select_all();
+        form.password_text_area.set_mask_char('•');
+
         form
     }
 }
 
 impl Form {
 
-    pub fn title(mut self, title: String) -> Self {
-        self.title = title;
+    pub fn from_data(data: &Data) -> Self {
+        let mut form = Self::default();
+        form.name_text_area.delete_line_by_head();
+        form.name_text_area.insert_str(data.name.clone());
+        form.host_text_area.insert_str(data.database.host.clone());
+        form.port_text_area.insert_str(data.database.port.to_string());
+        form.enabled_authentication = data.database.password.is_some();
+        form.username_text_area.insert_str(data.database.username.clone().unwrap_or_default());
+        form.password_text_area.insert_str(data.database.password.clone().unwrap_or_default());
+        form.use_tls = data.database.use_tls;
+        form.db_text_area.insert_str(data.db.clone());
+        form.protocol = data.database.protocol.clone();
+        form
+    }
+
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = title.into();
         self
     }
 
@@ -162,6 +184,14 @@ impl Form {
         self.username_text_area.set_cursor_style(Style::default());
         self.password_text_area.set_cursor_style(Style::default());
         self.db_text_area.set_cursor_style(Style::default());
+
+        self.name_text_area.cancel_selection();
+        self.host_text_area.cancel_selection();
+        self.port_text_area.cancel_selection();
+        self.username_text_area.cancel_selection();
+        self.password_text_area.cancel_selection();
+        self.db_text_area.cancel_selection();
+
         match self.current() {
             Editing::Name => self.name_text_area.set_cursor_style(cursor_style()),
             Editing::Host => self.host_text_area.set_cursor_style(cursor_style()),
@@ -173,64 +203,92 @@ impl Form {
         }
     }
 
-    fn render_name(&self, frame: &mut Frame, rect: Rect) {
+    fn render_name(&mut self, frame: &mut Frame, rect: Rect) {
         let horizontal = Layout::horizontal([Length(18), Fill(0)]);
         let rc = horizontal.split(rect);
-        frame.render_widget(self.span(Editing::Name), rc[0]);
-        frame.render_widget(&self.name_text_area, rc[1]);
+        let key = self.span(Editing::Name);
+        self.name_text_area.set_style(key.style);
+        let value = &self.name_text_area;
+        frame.render_widget(key, rc[0]);
+        frame.render_widget(value, rc[1]);
     }
 
-    fn render_host_port(&self, frame: &mut Frame, rect: Rect) {
+    fn render_host_port(&mut self, frame: &mut Frame, rect: Rect) {
         let horizontal = Layout::horizontal([Percentage(65), Percentage(35)]);
         let rc = horizontal.split(rect);
         let host_area = Layout::horizontal([Length(18), Fill(0)]).split(rc[0]);
         let port_area = Layout::horizontal([Length(5), Fill(0)]).split(rc[1]);
-        frame.render_widget(self.span(Editing::Host), host_area[0]);
-        frame.render_widget(&self.host_text_area, host_area[1]);
-        frame.render_widget(self.span(Editing::Port), port_area[0]);
-        frame.render_widget(&self.port_text_area, port_area[1]);
+        {
+            let key = self.span(Editing::Host);
+            self.host_text_area.set_style(key.style);
+            let value = &self.host_text_area;
+            frame.render_widget(key, host_area[0]);
+            frame.render_widget(value, host_area[1]);
+        }
+        {
+            let key = self.span(Editing::Port);
+            self.port_text_area.set_style(key.style);
+            let value = &self.port_text_area;
+            frame.render_widget(key, port_area[0]);
+            frame.render_widget(value, port_area[1]);
+        }
     }
 
-    fn render_enabled_auth(&self, frame: &mut Frame, rect: Rect) {
+    fn render_enabled_auth(&mut self, frame: &mut Frame, rect: Rect) {
         let horizontal = Layout::horizontal([Length(18), Fill(0)]);
         let rc = horizontal.split(rect);
-        frame.render_widget(self.span(Editing::EnabledAuthentication), rc[0]);
-        frame.render_widget(Span::raw(if self.enabled_authentication { "◄ Username & Password ►" } else { "◄ None ►" }), rc[1]);
+        let key = self.span(Editing::EnabledAuthentication);
+        let value = Span::raw(if self.enabled_authentication { "◄ Username & Password ►" } else { "◄ None ►" }).style(key.style);
+        frame.render_widget(key, rc[0]);
+        frame.render_widget(value, rc[1]);
     }
 
-    fn render_username(&self, frame: &mut Frame, rect: Rect) {
+    fn render_username(&mut self, frame: &mut Frame, rect: Rect) {
         let horizontal = Layout::horizontal([Length(18), Fill(0)]);
         let rc = horizontal.split(rect);
-        frame.render_widget(self.span(Editing::Username), rc[0]);
-        frame.render_widget(&self.username_text_area, rc[1]);
+        let key = self.span(Editing::Username);
+        self.username_text_area.set_style(key.style);
+        let value = &self.username_text_area;
+        frame.render_widget(key, rc[0]);
+        frame.render_widget(value, rc[1]);
     }
 
-    fn render_password(&self, frame: &mut Frame, rect: Rect) {
+    fn render_password(&mut self, frame: &mut Frame, rect: Rect) {
         let horizontal = Layout::horizontal([Length(18), Fill(0)]);
         let rc = horizontal.split(rect);
-        frame.render_widget(self.span(Editing::Password), rc[0]);
-        frame.render_widget(&self.password_text_area, rc[1]);
+        let key = self.span(Editing::Password);
+        self.password_text_area.set_style(key.style);
+        let value = &self.password_text_area;
+        frame.render_widget(key, rc[0]);
+        frame.render_widget(value, rc[1]);
     }
 
     fn render_use_tls(&self, frame: &mut Frame, rect: Rect) {
         let horizontal = Layout::horizontal([Length(18), Fill(0)]);
         let rc = horizontal.split(rect);
-        frame.render_widget(self.span(Editing::UseTls), rc[0]);
-        frame.render_widget(Span::raw(if self.use_tls { "◄ Yes ►" } else { "◄ No ►" }), rc[1]);
+        let key = self.span(Editing::UseTls);
+        let value = Span::raw(if self.use_tls { "◄ Yes ►" } else { "◄ No ►" }).style(key.style);
+        frame.render_widget(key, rc[0]);
+        frame.render_widget(value, rc[1]);
     }
 
-    fn render_db(&self, frame: &mut Frame, rect: Rect) {
+    fn render_db(&mut self, frame: &mut Frame, rect: Rect) {
         let horizontal = Layout::horizontal([Length(18), Fill(0)]);
         let rc = horizontal.split(rect);
-        frame.render_widget(self.span(Editing::Db), rc[0]);
-        frame.render_widget(&self.db_text_area, rc[1]);
+        let key = self.span(Editing::Db);
+        self.db_text_area.set_style(key.style);
+        let value = &self.db_text_area;
+        frame.render_widget(key, rc[0]);
+        frame.render_widget(value, rc[1]);
     }
 
     fn render_protocol(&self, frame: &mut Frame, rect: Rect) {
         let horizontal = Layout::horizontal([Length(18), Fill(0)]);
         let rc = horizontal.split(rect);
-        frame.render_widget(self.span(Editing::Protocol), rc[0]);
-        frame.render_widget(Span::raw(format!("◄ {} ►", self.protocol.to_string())), rc[1]);
+        let key = self.span(Editing::Protocol);
+        let value = Span::raw(format!("◄ {} ►", self.protocol.to_string())).style(key.style);
+        frame.render_widget(key, rc[0]);
+        frame.render_widget(value, rc[1]);
     }
 
 }
@@ -243,9 +301,11 @@ impl Renderable for Form {
         // let area = centered_rect(50, 70, rect);
         frame.render_widget(Clear::default(), area);
         let block = Block::bordered()
-            .title(self.title.clone());
+            .title(self.title.clone())
+            .border_type(BorderType::Rounded);
         let block_inner_area = block
             .inner(area);
+        let block_inner_area = Layout::horizontal([Length(1), Fill(0), Length(1)]).split(block_inner_area)[1];
         if !self.enabled_authentication {
             let vertical = Layout::vertical([
                 Length(1), // name
@@ -288,7 +348,18 @@ impl Renderable for Form {
     }
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
-        todo!()
+        let mut elements = vec![];
+        elements.push(("Tab", "Next"));
+        elements.push(("BackTab", "Prev"));
+
+        let editing = self.current();
+        if editing == Editing::Db || editing == Editing::Port {
+            elements.push(("↑", "+10"));
+            elements.push(("↓", "-10"));
+            elements.push(("→", "+1"));
+            elements.push(("←", "-1"));
+        }
+        elements
     }
 }
 
@@ -321,8 +392,11 @@ impl Listenable for Form {
         if let Some(text_area) = editor {
             match key_event {
                 KeyEvent { code: KeyCode::Esc, .. } => {
-                    if text_area.is_selecting() {
+                    return if text_area.is_selecting() {
                         text_area.cancel_selection();
+                        Ok(true)
+                    } else {
+                        Ok(false)
                     }
                 }
                 KeyEvent { code: KeyCode::Enter, .. } => {}

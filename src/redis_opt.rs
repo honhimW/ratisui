@@ -10,13 +10,9 @@ use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInf
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::RwLock;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
-lazy_static! {
-    static ref REDIS_OPERATIONS: RwLock<Option<RedisOperations>> = RwLock::new(None);
-}
-
-// pub static REDIS_OPERATIONS: Lazy<RwLock<Option<RedisOperations>>> = Lazy::new(|| RwLock::new(None));
+pub static REDIS_OPERATIONS: Lazy<RwLock<Option<RedisOperations>>> = Lazy::new(|| RwLock::new(None));
 
 pub async fn async_redis_opt<F, FUT, R>(opt: F) -> Result<R>
 where
@@ -36,8 +32,9 @@ pub fn redis_operations() -> Option<RedisOperations> {
     guard.clone()
 }
 
-pub fn switch_client(name: String, database: &Database) -> Result<()> {
+pub fn switch_client(name: impl Into<String>, database: &Database) -> Result<()> {
     let client = build_client(&database)?;
+    let name = name.into();
     let mut operation = RedisOperations::new(name, database.clone(), client);
     operation.initialize()?;
 
@@ -106,12 +103,12 @@ struct NodeClientHolder {
 }
 
 impl RedisOperations {
-    fn new(name: String, database: Database, client: Client) -> Self {
+    fn new(name: impl Into<String>, database: Database, client: Client) -> Self {
         let info = deadpool_redis::ConnectionInfo::from(client.get_connection_info().clone());
         let config = deadpool_redis::Config::from_connection_info(info);
         let pool = config.create_pool(Some(Runtime::Tokio1)).unwrap();
         Self {
-            name,
+            name: name.into(),
             database,
             client,
             pool,
@@ -145,7 +142,20 @@ impl RedisOperations {
     fn initialize(&mut self) -> Result<()> {
         let mut connection = self.client.get_connection()?;
         let value = connection.req_command(&Cmd::new().arg("INFO").arg("SERVER"))?;
-        if let Value::VerbatimString { text, .. } = value {
+        if let Value::VerbatimString { text, .. } = value { // RESP3
+            self.server_info = Some(text);
+            let redis_mode = self.get_server_info("redis_mode").context("there will always contain redis_mode property")?;
+            if redis_mode == "cluster" {
+                self.initialize_cluster()?;
+            } else {
+                let config = deadpool_redis::Config::from_connection_info(deadpool_redis::ConnectionInfo::from(self.client.get_connection_info().clone()));
+                let pool = config.create_pool(Some(Runtime::Tokio1))?;
+                self.pool = pool;
+            }
+            self.print();
+            Ok(())
+        } else if let Value::BulkString { 0: text, .. } = value {  // RESP2
+            let text = String::from_utf8(text)?;
             self.server_info = Some(text);
             let redis_mode = self.get_server_info("redis_mode").context("there will always contain redis_mode property")?;
             if redis_mode == "cluster" {
@@ -284,13 +294,14 @@ impl RedisOperations {
         None
     }
 
-    pub async fn scan(&self, pattern: String, count: usize) -> Result<Vec<String>> {
+    pub async fn scan(&self, pattern: impl Into<String>, count: usize) -> Result<Vec<String>> {
+        let pattern = &pattern.into();
         if self.is_cluster() {
             let mut all_node_keys = Vec::new();
             for (_, v) in &self.nodes {
                 if v.is_master {
                     let mut connection = v.pool.get().await?;
-                    let mut iter: AsyncIter<String> = connection.scan_options(ScanOptions::default().with_pattern(pattern.clone()).with_count(count)).await?;
+                    let mut iter: AsyncIter<String> = connection.scan_options(ScanOptions::default().with_pattern(pattern).with_count(count)).await?;
                     let mut vec: Vec<String> = vec![];
                     while let Some(item) = iter.next_item().await {
                         vec.push(item);
@@ -530,6 +541,20 @@ impl RedisOperations {
             Ok(())
         }
     }
+
+    pub async fn rename_nx<K: ToRedisArgs + Send + Sync>(&self, old_key: K, new_key: K) -> Result<()> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            connection.rename_nx(old_key, new_key).await?;
+            Ok(())
+        } else {
+            let mut connection = self.pool.get().await?;
+            connection.rename_nx(old_key, new_key).await?;
+            Ok(())
+        }
+    }
+
 }
 
 #[cfg(test)]
@@ -553,7 +578,7 @@ mod tests {
         };
 
         let client = build_client(&db)?;
-        let op = RedisOperations::new("".to_string(), db, client);
+        let op = RedisOperations::new("", db, client);
         let option = op.get_server_info("redis_version");
         print!("redis_version: {:?}", option);
 
@@ -574,10 +599,10 @@ mod tests {
         };
 
         let client = build_client(&db)?;
-        let mut op = RedisOperations::new("".to_string(), db, client);
+        let mut op = RedisOperations::new("", db, client);
         op.initialize()?;
         assert!(op.is_cluster());
-        let vec = op.scan("*".to_string(), 100).await?;
+        let vec = op.scan("*", 100).await?;
         vec.iter().for_each(|item| {
             println!("{}", item);
         });
@@ -598,7 +623,7 @@ mod tests {
             protocol: Protocol::RESP3,
         };
 
-        switch_client("".to_string(), &db)?;
+        switch_client("", &db)?;
         let string1 = async_redis_opt(|op| async move {
             let string = op.key_type("json").await?;
             Ok(string)

@@ -1,15 +1,14 @@
-use std::fmt::{Display, Formatter};
-use log::info;
+use crate::app::Renderable;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::{Alignment, Widget};
 use ratatui::style::Style;
 use ratatui::symbols::border::Set;
-use ratatui::widgets::{Block, Borders, Clear, WidgetRef};
-use ratatui::{symbols, Frame};
 use ratatui::text::Text;
 use ratatui::widgets::block::Position;
-use crate::app::Renderable;
+use ratatui::widgets::{Block, Borders, Clear};
+use ratatui::{symbols, Frame};
+use std::fmt::{Display, Formatter};
 
 pub struct Popup<W: Widget> {
     pub title_position: Position,
@@ -273,11 +272,10 @@ impl<W: Renderable> Renderable for RenderAblePopup<W> {
 
 #[cfg(test)]
 mod test {
+    use crate::components::popup::Popup;
     use ratatui::symbols;
-    use ratatui::text::Text;
     use ratatui::widgets::block::Position;
     use tui_textarea::TextArea;
-    use crate::components::popup::Popup;
 
     #[test]
     fn test() {

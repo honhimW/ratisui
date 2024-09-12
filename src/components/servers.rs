@@ -136,10 +136,10 @@ impl ServerList {
         for (name, database) in databases.databases.iter() {
             let data = Data {
                 selected: if &server_name == name {
-                    "*".to_string()
+                    "*"
                 } else {
-                    "".to_string()
-                },
+                    ""
+                }.into(),
                 name: name.to_string(),
                 location: format!("{}:{}", database.host, database.port),
                 username: database.clone().username.unwrap_or(String::new()),
@@ -173,8 +173,8 @@ impl ServerList {
             colors: TableColors::new(&tailwind::GRAY),
             color_index: 3,
             items: vec,
-            create_form: Form::default().title("New".to_string()),
-            edit_form: Form::default().title("Edit".to_string()),
+            create_form: Form::default().title("New"),
+            edit_form: Form::default().title("Edit"),
         }
     }
 
@@ -342,7 +342,7 @@ impl ServerList {
     }
 
     fn render_edit_popup(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        self.create_form.render_frame(frame, area)?;
+        self.edit_form.render_frame(frame, area)?;
         Ok(())
     }
 
@@ -357,7 +357,7 @@ impl ServerList {
                     let item = self.items.get(selected).clone();
                     if let Some(data) = item {
                         if data.selected == "*" {
-                            let _ = publish_msg(Message::warning("Cannot delete selected server".to_string()));
+                            let _ = publish_msg(Message::warning("Cannot delete selected server"));
                         } else {
                             self.items.remove(selected);
                         }
@@ -375,9 +375,7 @@ impl ServerList {
     }
 
     fn handle_create_popup_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
-        if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Esc {
-            self.show_create_popup = false;
-        } else if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Enter {
+        if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Enter {
             let database = self.create_form.to_database();
             let data = Data {
                 selected: "".to_string(),
@@ -389,12 +387,16 @@ impl ServerList {
                 protocol: database.protocol.to_string(),
                 database,
             };
-            self.valid(&data)?;
+            self.valid_create(&data)?;
             self.items.push(data);
-            self.create_form = Form::default().title("New".to_string());
+            self.create_form = Form::default().title("New");
             self.show_create_popup = false;
         } else {
-            self.create_form.handle_key_event(key_event)?;
+            if !self.create_form.handle_key_event(key_event)? {
+                if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Esc {
+                    self.show_create_popup = false;
+                }
+            }
         }
         Ok(true)
     }
@@ -402,9 +404,29 @@ impl ServerList {
     fn handle_edit_popup_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Esc {
             self.show_edit_popup = false;
-        } else if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Esc {
-
-            self.show_edit_popup = false;
+        } else if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Enter {
+            let database = self.edit_form.to_database();
+            if let Some(idx) = self.state.selected() {
+                if let Some(current_data) = self.items.get(idx) {
+                    let data = Data {
+                        selected: current_data.selected.clone(),
+                        name: self.edit_form.get_name(),
+                        location: format!("{}:{}", database.host, database.port),
+                        db: database.db.to_string(),
+                        username: database.username.clone().unwrap_or(String::new()),
+                        use_tls: database.use_tls.to_string(),
+                        protocol: database.protocol.to_string(),
+                        database,
+                    };
+                    self.valid_edit(&data)?;
+                    if data.selected == "*" {
+                        switch_client(data.name.clone(), &data.database)?;
+                    }
+                    self.items[idx] = data;
+                    self.edit_form = Form::default().title("Edit");
+                    self.show_edit_popup = false;
+                }
+            }
         } else {
             let result = self.edit_form.handle_key_event(key_event)?;
             if result {}
@@ -412,7 +434,7 @@ impl ServerList {
         Ok(true)
     }
 
-    fn valid(&self, data: &Data) -> Result<()> {
+    fn valid_create(&self, data: &Data) -> Result<()> {
         if data.name.is_empty() {
             return Err(anyhow!("Profile name must not be blank"));
         } else {
@@ -421,6 +443,13 @@ impl ServerList {
                     return Err(anyhow!("Profile [{}] already exists", data.name));
                 }
             }
+        }
+        Ok(())
+    }
+
+    fn valid_edit(&self, data: &Data) -> Result<()> {
+        if data.name.is_empty() {
+            return Err(anyhow!("Profile name must not be blank"));
         }
         Ok(())
     }
@@ -457,6 +486,22 @@ impl Renderable for ServerList {
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
         let mut elements = vec![];
+        if self.show_delete_popup {
+            elements.push(("Enter", "Confirm"));
+            elements.push(("Esc", "Close"));
+            return elements;
+        } else if self.show_create_popup {
+            elements = self.create_form.footer_elements();
+            elements.push(("Enter", "Create"));
+            elements.push(("Esc", "Close"));
+            return elements;
+        } else if self.show_edit_popup {
+            elements = self.edit_form.footer_elements();
+            elements.push(("Enter", "Update"));
+            elements.push(("Esc", "Close"));
+            return elements;
+        }
+
         elements.push(("↑/j", "Up"));
         elements.push(("↓/k", "Down"));
         elements.push(("Enter", "Choose"));
@@ -504,6 +549,11 @@ impl Listenable for ServerList {
                 }
                 KeyCode::Char('e') => {
                     self.show_edit_popup = true;
+                    if let Some(idx) = self.state.selected() {
+                        if let Some(data) = self.items.get(idx) {
+                            self.edit_form = Form::from_data(data).title("Edit");
+                        }
+                    }
                     true
                 }
                 _ => { false }

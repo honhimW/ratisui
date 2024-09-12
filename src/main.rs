@@ -95,7 +95,7 @@ async fn render(mut app: App, config: Configuration) -> Result<()> {
             let render_result = app.context.render_frame(frame, frame.area());
             if let Err(e) = render_result {
                 error!("Render error: {:?}", e);
-                let _ = publish_msg(Message::error(format!("{}", e)).title(String::from("Render Error")));
+                let _ = publish_msg(Message::error(format!("{}", e)).title("Render Error"));
             }
         });
 
@@ -126,7 +126,7 @@ async fn render(mut app: App, config: Configuration) -> Result<()> {
                                     let handle_result = app.context.handle_key_event(key_event);
                                     if let Err(e) = handle_result {
                                         error!("Handle key event error: {:?}", e);
-                                        let _ = publish_msg(Message::error(format!("{}", e)).title(String::from("Handle Error")));
+                                        let _ = publish_msg(Message::error(format!("{}", e)).title("Handle Error"));
                                     }
                                 }
                             }
