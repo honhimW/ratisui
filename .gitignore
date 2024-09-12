@@ -32,6 +32,3 @@ bin/
 
 ### Mac OS ###
 .DS_Store
-
-### test ###
-./examples/test_*

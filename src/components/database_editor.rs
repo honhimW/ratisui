@@ -1,7 +1,6 @@
-use lazy_static::lazy_static;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::Frame;
-use ratatui::layout::{Layout, Rect};
+use ratatui::layout::{Alignment, Layout, Rect};
 use ratatui::layout::Constraint::{Fill, Length, Percentage};
 use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::style::palette::tailwind;

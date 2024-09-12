@@ -10,13 +10,9 @@ use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInf
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::RwLock;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
-lazy_static! {
-    static ref REDIS_OPERATIONS: RwLock<Option<RedisOperations>> = RwLock::new(None);
-}
-
-// pub static REDIS_OPERATIONS: Lazy<RwLock<Option<RedisOperations>>> = Lazy::new(|| RwLock::new(None));
+pub static REDIS_OPERATIONS: Lazy<RwLock<Option<RedisOperations>>> = Lazy::new(|| RwLock::new(None));
 
 pub async fn async_redis_opt<F, FUT, R>(opt: F) -> Result<R>
 where
@@ -145,7 +141,20 @@ impl RedisOperations {
     fn initialize(&mut self) -> Result<()> {
         let mut connection = self.client.get_connection()?;
         let value = connection.req_command(&Cmd::new().arg("INFO").arg("SERVER"))?;
-        if let Value::VerbatimString { text, .. } = value {
+        if let Value::VerbatimString { text, .. } = value { // RESP3
+            self.server_info = Some(text);
+            let redis_mode = self.get_server_info("redis_mode").context("there will always contain redis_mode property")?;
+            if redis_mode == "cluster" {
+                self.initialize_cluster()?;
+            } else {
+                let config = deadpool_redis::Config::from_connection_info(deadpool_redis::ConnectionInfo::from(self.client.get_connection_info().clone()));
+                let pool = config.create_pool(Some(Runtime::Tokio1))?;
+                self.pool = pool;
+            }
+            self.print();
+            Ok(())
+        } else if let Value::BulkString { 0: text, .. } = value {  // RESP2
+            let text = String::from_utf8(text)?;
             self.server_info = Some(text);
             let redis_mode = self.get_server_info("redis_mode").context("there will always contain redis_mode property")?;
             if redis_mode == "cluster" {

@@ -389,7 +389,7 @@ impl ServerList {
                 protocol: database.protocol.to_string(),
                 database,
             };
-            self.valid(&data)?;
+            self.valid_create(&data)?;
             self.items.push(data);
             self.create_form = Form::default().title("New".to_string());
             self.show_create_popup = false;
@@ -416,7 +416,10 @@ impl ServerList {
                         protocol: database.protocol.to_string(),
                         database,
                     };
-                    self.valid(&data)?;
+                    self.valid_edit(&data)?;
+                    if data.selected == "*" {
+                        switch_client(data.name.clone(), &data.database)?;
+                    }
                     self.items[idx] = data;
                     self.edit_form = Form::default().title("Edit".to_string());
                     self.show_edit_popup = false;
@@ -429,7 +432,7 @@ impl ServerList {
         Ok(true)
     }
 
-    fn valid(&self, data: &Data) -> Result<()> {
+    fn valid_create(&self, data: &Data) -> Result<()> {
         if data.name.is_empty() {
             return Err(anyhow!("Profile name must not be blank"));
         } else {
@@ -438,6 +441,13 @@ impl ServerList {
                     return Err(anyhow!("Profile [{}] already exists", data.name));
                 }
             }
+        }
+        Ok(())
+    }
+
+    fn valid_edit(&self, data: &Data) -> Result<()> {
+        if data.name.is_empty() {
+            return Err(anyhow!("Profile name must not be blank"));
         }
         Ok(())
     }

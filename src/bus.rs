@@ -1,14 +1,12 @@
 use std::time::Instant;
 use anyhow::{Context, Result};
 use crossbeam_channel::{Receiver, Sender};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
-lazy_static! {
-    static ref TOAST_CHANNEL: Channel = {
-        let (tx, rx) = crossbeam_channel::bounded(4);
-        Channel { tx, rx }
-    };
-}
+static TOAST_CHANNEL: Lazy<Channel> = Lazy::new(|| {
+    let (tx, rx) = crossbeam_channel::bounded(4);
+    Channel { tx, rx }
+});
 
 pub struct Channel {
     pub tx: Sender<Message>,
