@@ -9,7 +9,7 @@ use crate::redis_opt::async_redis_opt;
 use crate::tabs::explorer::CurrentScreen::{KeysTree, ValuesViewer};
 use anyhow::{Context, Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::prelude::{Line, Style, Stylize, Text};
@@ -21,6 +21,7 @@ use ratatui::{symbols, Frame};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Not;
+use itertools::Itertools;
 use ratatui::widgets::block::Position;
 use tokio::join;
 use tui_textarea::TextArea;
@@ -29,10 +30,14 @@ use tui_tree_widget::{Tree, TreeItem, TreeState};
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
     show_filter: bool,
+    show_create: bool,
+    show_rename: bool,
     show_delete_popup: bool,
     filter_mod: FilterMod,
     scan_size: u16,
     filter_text_area: TextArea<'static>,
+    create_key_text_area: TextArea<'static>,
+    rename_key_text_area: TextArea<'static>,
     scan_keys_result: Vec<RedisKey>,
     tree_state: TreeState<String>,
     tree_items: Vec<TreeItem<'static, String>>,
@@ -181,13 +186,31 @@ impl RedisKey {
 impl ExplorerTab {
     pub fn new() -> Self {
         let (tx, rx) = unbounded();
+        let mut filter_text_area = TextArea::default();
+        let mut create_key_text_area = TextArea::default();
+        let mut rename_key_text_area = TextArea::default();
+        filter_text_area.set_cursor_line_style(Style::default());
+        create_key_text_area.set_cursor_line_style(Style::default());
+        create_key_text_area.set_block(
+            Block::bordered()
+                .title("Create Key")
+        );
+        rename_key_text_area.set_cursor_line_style(Style::default());
+        rename_key_text_area.set_block(
+            Block::bordered()
+                .title("Rename Key")
+        );
         Self {
             current_screen: KeysTree,
             show_filter: false,
+            show_create: false,
+            show_rename: false,
             show_delete_popup: false,
             filter_mod: FilterMod::Fuzzy,
             scan_size: 2_000,
-            filter_text_area: TextArea::default(),
+            filter_text_area,
+            create_key_text_area,
+            rename_key_text_area,
             scan_keys_result: vec![],
             tree_state: Default::default(),
             tree_items: vec![],
@@ -255,6 +278,12 @@ impl ExplorerTab {
             let vertical = Layout::vertical([Min(0), Length(3), Length(1)]).split(area);
             let horizontal = Layout::horizontal([Length(1), Min(0), Length(1)]).split(vertical[1]);
             self.render_filter_input(frame, horizontal[1])?;
+        }
+
+        if self.show_rename {
+            let vertical = Layout::vertical([Min(0), Length(3), Length(1)]).split(area);
+            let horizontal = Layout::horizontal([Length(1), Min(0), Length(1)]).split(vertical[1]);
+            self.render_rename_key_input(frame, horizontal[1])?;
         }
 
         Ok(())
@@ -371,7 +400,6 @@ impl ExplorerTab {
     }
 
     fn render_filter_input(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        self.filter_text_area.set_cursor_line_style(Style::default());
         match self.filter_mod {
             FilterMod::Fuzzy => { self.filter_text_area.set_placeholder_text(" Fuzzy "); }
             FilterMod::Pattern => { self.filter_text_area.set_placeholder_text(" Pattern "); }
@@ -381,7 +409,17 @@ impl ExplorerTab {
                 .border_style(self.border_color(KeysTree))
                 .title(format!("Scan Keys ({})", self.scan_keys_result.len()))
         );
-        frame.render_widget(&self.filter_text_area.clone(), area);
+        frame.render_widget(&self.filter_text_area, area);
+        Ok(())
+    }
+
+    fn render_create_key_input(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        frame.render_widget(&self.create_key_text_area, area);
+        Ok(())
+    }
+
+    fn render_rename_key_input(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        frame.render_widget(&self.rename_key_text_area, area);
         Ok(())
     }
 
@@ -554,7 +592,7 @@ impl ExplorerTab {
             }
             KeyEvent { code: KeyCode::Enter, .. } => {
                 if let Some(first_line) = self.get_filter_text() {
-                    self.do_scan(first_line.clone())?;
+                    self.do_scan(first_line)?;
                 }
             }
             KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
@@ -575,6 +613,68 @@ impl ExplorerTab {
             }
             input => {
                 self.filter_text_area.input(input);
+            }
+        }
+        Ok(true)
+    }
+
+    fn handle_rename_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        if key_event.kind != KeyEventKind::Press {
+            return Ok(true);
+        }
+        match key_event {
+            KeyEvent { code: KeyCode::Esc, .. } => {
+                if self.rename_key_text_area.is_selecting() {
+                    self.rename_key_text_area.cancel_selection();
+                } else {
+                    self.show_rename = false;
+                }
+            }
+            KeyEvent { code: KeyCode::Enter, .. } => {
+                if let Some(first_line) = self.rename_key_text_area.lines().get(0).cloned() {
+                    if let Some(redis_key) = &mut self.selected_key {
+                        let key_name = redis_key.name.clone();
+                        let new_key_name = first_line.trim().to_string();
+                        if let Some(filter_text) = self.get_filter_text() {
+                            let pattern = match self.filter_mod {
+                                FilterMod::Fuzzy => {
+                                    let mut matcher = filter_text.clone();
+                                    if matcher.is_empty() {
+                                        matcher = "*".to_string();
+                                    } else {
+                                        matcher = format!("*{}*", matcher);
+                                    }
+                                    matcher
+                                }
+                                FilterMod::Pattern => {
+                                    filter_text.clone()
+                                }
+                            };
+                            let sender = self.data_sender.clone();
+                            let pattern_clone = pattern.clone();
+                            let size_clone = self.scan_size.clone();
+                            tokio::spawn(async move {
+                                Self::do_rename_key(key_name, new_key_name).await?;
+                                let data = Self::do_scan_keys(pattern_clone, size_clone).await?;
+                                sender.send(data.clone())?;
+                                Ok::<(), Error>(())
+                            });
+                        }
+                    }
+                }
+            }
+            KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
+            KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
+                self.rename_key_text_area.select_all();
+            }
+            KeyEvent { code: KeyCode::Char('z'), modifiers: KeyModifiers::CONTROL, .. } => {
+                self.rename_key_text_area.undo();
+            }
+            KeyEvent { code: KeyCode::Char('y'), modifiers: KeyModifiers::CONTROL, .. } => {
+                self.rename_key_text_area.redo();
+            }
+            input => {
+                self.rename_key_text_area.input(input);
             }
         }
         Ok(true)
@@ -812,6 +912,15 @@ impl ExplorerTab {
         Ok(())
     }
 
+    async fn do_rename_key(old_key_name: impl Into<String>, new_key_name: impl Into<String>) -> Result<()> {
+        let old = old_key_name.into();
+        let new = new_key_name.into();
+        async_redis_opt(|op| async move {
+            Ok(op.rename_nx(old, new).await?)
+        }).await?;
+        Ok(())
+    }
+
 }
 
 fn bytes_to_string(bytes: Vec<u8>) -> Result<String> {
@@ -876,6 +985,7 @@ impl Renderable for ExplorerTab {
         } else {
             if self.current_screen == KeysTree {
                 elements.push(("/", "Scan"));
+                elements.push(("c", "Create"));
                 elements.push(("d/Del", "Delete"));
                 elements.push(("r", "Rename"));
                 elements.push(("↑/j", "Up"));
@@ -920,6 +1030,9 @@ impl Listenable for ExplorerTab {
         }
         if self.show_filter {
             return self.handle_filter_key_event(key_event);
+        }
+        if self.show_rename {
+            return self.handle_rename_key_event(key_event);
         }
 
         if ValuesViewer == self.current_screen {
@@ -966,6 +1079,26 @@ impl Listenable for ExplorerTab {
                     KeyCode::Char('d') | KeyCode::Delete => {
                         if self.selected_key.is_some() {
                             self.show_delete_popup = true;
+                        }
+                        return Ok(true);
+                    }
+                    KeyCode::Char('c') => {
+                        self.show_create = true;
+                        return Ok(true);
+                    }
+                    KeyCode::Char('r') => {
+                        if let Some(redis_key) = &self.selected_key {
+                            let key_name = redis_key.name.clone();
+                            {
+                                /// Clean the text area: select all and backspace
+                                self.rename_key_text_area.select_all();
+                                self.rename_key_text_area.input(tui_textarea::Input {
+                                    key: tui_textarea::Key::Backspace,
+                                    ..tui_textarea::Input::default()
+                                });
+                            }
+                            self.rename_key_text_area.insert_str(key_name);
+                            self.show_rename = true;
                         }
                         return Ok(true);
                     }

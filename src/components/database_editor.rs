@@ -1,17 +1,17 @@
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::Frame;
-use ratatui::layout::{Alignment, Layout, Rect};
-use ratatui::layout::Constraint::{Fill, Length, Percentage};
-use ratatui::style::{Modifier, Style, Stylize};
-use ratatui::style::palette::tailwind;
-use ratatui::text::Span;
-use ratatui::widgets::{Block, BorderType, Clear};
-use strum::{EnumCount, EnumIter, EnumString, IntoEnumIterator, ToString};
-use tui_textarea::TextArea;
-use crate::app::{centered_rect, Listenable, Renderable};
+use crate::app::{Listenable, Renderable};
 use crate::components::servers::Data;
 use crate::configuration::{Database, Protocol};
-use crate::tabs::explorer::FilterMod;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::layout::Constraint::{Fill, Length, Percentage};
+use ratatui::layout::{Layout, Rect};
+use ratatui::style::palette::tailwind;
+use ratatui::style::{Style, Stylize};
+use ratatui::text::Span;
+use ratatui::widgets::{Block, BorderType, Clear};
+use ratatui::Frame;
+use strum::{EnumCount, EnumIter, IntoEnumIterator, ToString};
+use tui_textarea::TextArea;
+use uuid::Uuid;
 
 pub struct Form {
     title: String,
@@ -71,18 +71,22 @@ impl Default for Form {
             db_text_area: TextArea::default(),
             protocol: Protocol::RESP3,
         };
+        form.name_text_area.set_placeholder_text("must not be blank");
+        form.name_text_area.set_placeholder_style(Style::default().fg(tailwind::RED.c700).dim());
         form.host_text_area.set_placeholder_text("127.0.0.1");
         form.port_text_area.set_placeholder_text("6379");
         form.username_text_area.set_placeholder_text("");
         form.password_text_area.set_placeholder_text("");
         form.db_text_area.set_placeholder_text("0");
-        form.name_text_area.set_cursor_style(cursor_style());
+        form.name_text_area.set_cursor_style(Style::default());
         form.host_text_area.set_cursor_style(Style::default());
         form.port_text_area.set_cursor_style(Style::default());
         form.username_text_area.set_cursor_style(Style::default());
         form.password_text_area.set_cursor_style(Style::default());
         form.db_text_area.set_cursor_style(Style::default());
 
+        form.name_text_area.insert_str(Uuid::new_v4().to_string());
+        form.name_text_area.select_all();
         form.password_text_area.set_mask_char('•');
 
         form
@@ -93,6 +97,7 @@ impl Form {
 
     pub fn from_data(data: &Data) -> Self {
         let mut form = Self::default();
+        form.name_text_area.delete_line_by_head();
         form.name_text_area.insert_str(data.name.clone());
         form.host_text_area.insert_str(data.database.host.clone());
         form.port_text_area.insert_str(data.database.port.to_string());
@@ -179,6 +184,14 @@ impl Form {
         self.username_text_area.set_cursor_style(Style::default());
         self.password_text_area.set_cursor_style(Style::default());
         self.db_text_area.set_cursor_style(Style::default());
+
+        self.name_text_area.cancel_selection();
+        self.host_text_area.cancel_selection();
+        self.port_text_area.cancel_selection();
+        self.username_text_area.cancel_selection();
+        self.password_text_area.cancel_selection();
+        self.db_text_area.cancel_selection();
+
         match self.current() {
             Editing::Name => self.name_text_area.set_cursor_style(cursor_style()),
             Editing::Host => self.host_text_area.set_cursor_style(cursor_style()),
@@ -335,7 +348,18 @@ impl Renderable for Form {
     }
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
-        todo!()
+        let mut elements = vec![];
+        elements.push(("Tab", "Next"));
+        elements.push(("BackTab", "Prev"));
+
+        let editing = self.current();
+        if editing == Editing::Db || editing == Editing::Port {
+            elements.push(("↑", "+10"));
+            elements.push(("↓", "-10"));
+            elements.push(("→", "+1"));
+            elements.push(("←", "-1"));
+        }
+        elements
     }
 }
 
@@ -368,8 +392,11 @@ impl Listenable for Form {
         if let Some(text_area) = editor {
             match key_event {
                 KeyEvent { code: KeyCode::Esc, .. } => {
-                    if text_area.is_selecting() {
+                    return if text_area.is_selecting() {
                         text_area.cancel_selection();
+                        Ok(true)
+                    } else {
+                        Ok(false)
                     }
                 }
                 KeyEvent { code: KeyCode::Enter, .. } => {}

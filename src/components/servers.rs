@@ -375,9 +375,7 @@ impl ServerList {
     }
 
     fn handle_create_popup_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
-        if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Esc {
-            self.show_create_popup = false;
-        } else if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Enter {
+        if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Enter {
             let database = self.create_form.to_database();
             let data = Data {
                 selected: "".to_string(),
@@ -394,7 +392,11 @@ impl ServerList {
             self.create_form = Form::default().title("New");
             self.show_create_popup = false;
         } else {
-            self.create_form.handle_key_event(key_event)?;
+            if !self.create_form.handle_key_event(key_event)? {
+                if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Esc {
+                    self.show_create_popup = false;
+                }
+            }
         }
         Ok(true)
     }
@@ -484,6 +486,22 @@ impl Renderable for ServerList {
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
         let mut elements = vec![];
+        if self.show_delete_popup {
+            elements.push(("Enter", "Confirm"));
+            elements.push(("Esc", "Close"));
+            return elements;
+        } else if self.show_create_popup {
+            elements = self.create_form.footer_elements();
+            elements.push(("Enter", "Create"));
+            elements.push(("Esc", "Close"));
+            return elements;
+        } else if self.show_edit_popup {
+            elements = self.edit_form.footer_elements();
+            elements.push(("Enter", "Update"));
+            elements.push(("Esc", "Close"));
+            return elements;
+        }
+
         elements.push(("↑/j", "Up"));
         elements.push(("↓/k", "Down"));
         elements.push(("Enter", "Choose"));

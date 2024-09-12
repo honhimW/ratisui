@@ -541,6 +541,20 @@ impl RedisOperations {
             Ok(())
         }
     }
+
+    pub async fn rename_nx<K: ToRedisArgs + Send + Sync>(&self, old_key: K, new_key: K) -> Result<()> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            connection.rename_nx(old_key, new_key).await?;
+            Ok(())
+        } else {
+            let mut connection = self.pool.get().await?;
+            connection.rename_nx(old_key, new_key).await?;
+            Ok(())
+        }
+    }
+
 }
 
 #[cfg(test)]

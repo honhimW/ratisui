@@ -15,6 +15,7 @@ use ratatui::style::palette::tailwind;
 use ratatui::widgets::block::Position;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 use ratatui::{symbols, Frame};
+use ratatui::text::Line;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 use tui_textarea::TextArea;
 use crate::bus::{try_take_msg, Kind, Message};
@@ -153,7 +154,7 @@ impl Context {
         }
         let paragraph = Paragraph::new(command_text)
             .alignment(Alignment::Right)
-            .wrap(Wrap { trim: true });
+            .wrap(Wrap { trim: false });
         frame.render_widget(paragraph, area);
         Ok(())
     }
@@ -174,9 +175,15 @@ impl Context {
                 Kind::Warning => tailwind::YELLOW.c700,
                 Kind::Info => tailwind::GREEN.c700,
             };
-            let paragraph = Paragraph::new(Text::raw(toast.msg.clone()))
+            let mut text = Text::default();
+            text.push_line(Line::default());
+            text.push_line(Line::raw(toast.msg.clone()));
+            let paragraph = Paragraph::new(text)
                 .wrap(Wrap { trim: true })
                 .block(Block::bordered()
+                    .borders(Borders::from_bits_retain(0b1011))
+                    .border_set(symbols::border::EMPTY)
+                    .title_style(Style::default().bold())
                     .title(toast.title.clone().unwrap_or(String::new())))
                 .bg(bg_color);
             frame.render_widget(paragraph, area);
@@ -210,7 +217,7 @@ impl Renderable for Context {
             if toast.expired_at < Instant::now() {
                 self.toast = None;
             } else {
-                let top = Layout::vertical([Length(5), Fill(0)]).split(rect)[0];
+                let top = Layout::vertical([Length(4), Fill(0)]).split(rect)[0];
                 let top_right_area = Layout::horizontal([Fill(0), Length(35)]).split(top)[1];
                 self.render_toast(frame, top_right_area)?;
             }
