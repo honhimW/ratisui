@@ -24,8 +24,7 @@ jobs:
         prerelease: false
     - name: Set output
       id: set_output
-      run: echo "upload_url=${{ steps.create_release.outputs.upload_url }}" >> $GITHUB_ENV
-
+      run: echo "upload_url=${{ steps.create_release.outputs.upload_url }}" >> "$GITHUB_OUTPUT"
 
   build:
     runs-on: ${{ matrix.os }}
