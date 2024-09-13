@@ -6,6 +6,8 @@ on:
 jobs:
   create_release:
     runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.set_output.outputs.upload_url }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -21,8 +23,9 @@ jobs:
         draft: false
         prerelease: false
     - name: Set output
-      run: echo "::set-output name=upload_url::${{ steps.create_release.outputs.upload_url }}"
       id: set_output
+      run: echo "upload_url=${{ steps.create_release.outputs.upload_url }}" >> $GITHUB_ENV
+
 
   build:
     runs-on: ${{ matrix.os }}
