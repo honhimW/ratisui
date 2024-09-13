@@ -1,7 +1,7 @@
 use std::time::Instant;
 use crate::app::{centered_rect, top_right_rect, AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::popup::{Popup, RenderAblePopup};
-use crate::key_utils::none_match;
+use crate::utils::none_match;
 use crate::redis_opt::redis_operations;
 use crate::tabs::explorer::ExplorerTab;
 use crate::tabs::logger::LoggerTab;
@@ -172,19 +172,18 @@ impl Context {
             frame.render_widget(Clear::default(), area);
             let bg_color = match toast.kind {
                 Kind::Error => tailwind::RED.c700,
-                Kind::Warning => tailwind::YELLOW.c700,
+                Kind::Warn => tailwind::YELLOW.c700,
                 Kind::Info => tailwind::GREEN.c700,
             };
             let mut text = Text::default();
-            text.push_line(Line::default());
-            text.push_line(Line::raw(toast.msg.clone()));
+            text.push_line(Line::raw(format!("  {}", toast.msg.clone())));
             let paragraph = Paragraph::new(text)
-                .wrap(Wrap { trim: true })
+                .wrap(Wrap { trim: false })
                 .block(Block::bordered()
                     .borders(Borders::from_bits_retain(0b1011))
                     .border_set(symbols::border::EMPTY)
                     .title_style(Style::default().bold())
-                    .title(toast.title.clone().unwrap_or(String::new())))
+                    .title(toast.title.clone().unwrap_or(toast.kind.to_string())))
                 .bg(bg_color);
             frame.render_widget(paragraph, area);
         }

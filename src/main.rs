@@ -8,7 +8,7 @@ mod redis_opt;
 mod tui;
 mod tabs;
 mod components;
-mod key_utils;
+mod utils;
 mod bus;
 
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
