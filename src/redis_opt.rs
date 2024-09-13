@@ -441,6 +441,32 @@ impl RedisOperations {
         }
     }
 
+    pub async fn expire<K: ToRedisArgs + Send + Sync>(&self, key: K, seconds: i64) -> Result<()> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            connection.expire(key, seconds).await?;
+            Ok(())
+        } else {
+            let mut connection = self.pool.get().await?;
+            connection.expire(key, seconds).await?;
+            Ok(())
+        }
+    }
+
+    pub async fn persist<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<()> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            connection.persist(key).await?;
+            Ok(())
+        } else {
+            let mut connection = self.pool.get().await?;
+            connection.persist(key).await?;
+            Ok(())
+        }
+    }
+
     pub async fn strlen<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<usize> {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
@@ -578,6 +604,112 @@ impl RedisOperations {
         } else {
             let mut connection = self.pool.get().await?;
             connection.rename_nx(old_key, new_key).await?;
+            Ok(())
+        }
+    }
+
+    pub async fn exists<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<bool> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let exists: bool = connection.exists(key).await?;
+            Ok(exists)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let exists: bool = connection.exists(key).await?;
+            Ok(exists)
+        }
+    }
+
+    pub async fn set_nx<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, value: V) -> Result<()> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            connection.set_nx(key, value).await?;
+            Ok(())
+        } else {
+            let mut connection = self.pool.get().await?;
+            connection.set_nx(key, value).await?;
+            Ok(())
+        }
+    }
+
+    pub async fn hset_nx<K: ToRedisArgs + Send + Sync, F: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, field: F, value: V) -> Result<()> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            connection.hset_nx(key, field, value).await?;
+            Ok(())
+        } else {
+            let mut connection = self.pool.get().await?;
+            connection.hset_nx(key, field, value).await?;
+            Ok(())
+        }
+    }
+
+    /// rpushx key element [element ...]
+    /// Appends an element to a list only when the list exists.
+    pub async fn rpush<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, value: V) -> Result<()> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            connection.rpush(key, value).await?;
+            Ok(())
+        } else {
+            let mut connection = self.pool.get().await?;
+            connection.rpush(key, value).await?;
+            Ok(())
+        }
+    }
+
+    pub async fn lpush<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, value: V) -> Result<()> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            connection.lpush(key, value).await?;
+            Ok(())
+        } else {
+            let mut connection = self.pool.get().await?;
+            connection.lpush(key, value).await?;
+            Ok(())
+        }
+    }
+
+    pub async fn sadd<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, value: V) -> Result<()> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            connection.sadd(key, value).await?;
+            Ok(())
+        } else {
+            let mut connection = self.pool.get().await?;
+            connection.sadd(key, value).await?;
+            Ok(())
+        }
+    }
+
+    pub async fn zadd<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, value: V, score: f64) -> Result<()> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            connection.zadd(key, value, score).await?;
+            Ok(())
+        } else {
+            let mut connection = self.pool.get().await?;
+            connection.zadd(key, value, score).await?;
+            Ok(())
+        }
+    }
+
+    pub async fn xadd<K: ToRedisArgs + Send + Sync, F: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, field: F, value: V) -> Result<()> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            connection.xadd(key, "*", &[(field, value)]).await?;
+            Ok(())
+        } else {
+            let mut connection = self.pool.get().await?;
+            connection.xadd(key, "*", &[(field, value)]).await?;
             Ok(())
         }
     }

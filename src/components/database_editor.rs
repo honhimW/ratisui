@@ -9,7 +9,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, BorderType, Clear};
 use ratatui::Frame;
-use strum::{EnumCount, EnumIter, IntoEnumIterator, ToString};
+use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
 use tui_textarea::TextArea;
 use uuid::Uuid;
 
@@ -28,7 +28,7 @@ pub struct Form {
     protocol: Protocol,
 }
 
-#[derive(Default, Eq, PartialEq, EnumCount, EnumIter, ToString)]
+#[derive(Default, Eq, PartialEq, EnumCount, EnumIter, Display)]
 enum Editing {
     #[default]
     #[strum(serialize = "Name(*)")]
@@ -433,7 +433,7 @@ impl Listenable for Form {
                                         }
                                     }
                                 } else {
-                                    let port = first_line.parse::<u16>().unwrap_or(6379);
+                                    let port = first_line.parse::<u16>().unwrap_or(0);
                                     let new_port = match input.code {
                                         KeyCode::Char('h') | KeyCode::Left => port.saturating_sub(1).to_string(),
                                         KeyCode::Char('l') | KeyCode::Right => port.saturating_add(1).to_string(),
