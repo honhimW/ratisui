@@ -2,6 +2,17 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      major_version:
+        description: 'Major'
+        required: true
+        type: string
+        default: '0.0'
+      prerelease:
+        description: '释放预发布'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   create_release:
@@ -18,10 +29,10 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: v${{ github.run_number }}
-        release_name: Release ${{ github.run_number }}
+        tag_name: ${{ github.event.inputs.major_version }}.${{ github.run_number }}
+        release_name: v${{ github.event.inputs.major_version }}.${{ github.run_number }}
         draft: false
-        prerelease: false
+        prerelease: ${{ github.event.inputs.prerelease }}
     - name: Set output
       id: set_output
       run: echo "upload_url=${{ steps.create_release.outputs.upload_url }}" >> "$GITHUB_OUTPUT"
