@@ -50,6 +50,18 @@ jobs:
       uses: actions/checkout@v4
     - name: Build
       run: cargo build --release --verbose
+    - name: Package (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: tar -czvf ./target/release/ratisui-linux-amd64.tar.gz LICENSE README.md -C ./target/release ratisui
+    
+    - name: Package (Mac)
+      if: matrix.os == 'macos-latest'
+      run: tar -czvf ./target/release/ratisui-mac.tar.gz LICENSE README.md -C ./target/release ratisui
+
+    - name: Package (Windows)
+      if: matrix.os == 'windows-latest'
+      run: Compress-Archive -Path '.\README.md', '.\LICENSE', '.\target\release\ratisui.exe' -DestinationPath '.\target\release\ratisui-windows-amd64.zip'
+      
     - name: Upload Release Asset (Linux)
       if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-release-asset@v1
@@ -57,8 +69,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./target/release/ratisui
-        asset_name: ratisui-linux
+        asset_path: ./target/release/ratisui-linux-amd64.tar.gz
+        asset_name: ratisui-linux-amd64.tar.gz
         asset_content_type: application/octet-stream
     - name: Upload Release Asset (Mac)
       if: matrix.os == 'macos-latest'
@@ -67,9 +79,10 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./target/release/ratisui
-        asset_name: ratisui-mac
+        asset_path: ./target/release/ratisui-mac.tar.gz
+        asset_name: ratisui-mac.tar.gz
         asset_content_type: application/octet-stream
+        
     - name: Upload Release Asset (Windows)
       if: matrix.os == 'windows-latest'
       uses: actions/upload-release-asset@v1
@@ -77,6 +90,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: .\target\release\ratisui.exe
-        asset_name: ratisui.exe
+        asset_path: .\target\release\ratisui-windows-amd64.zip
+        asset_name: ratisui-windows-amd64.zip
         asset_content_type: application/octet-stream
