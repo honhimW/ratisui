@@ -287,6 +287,7 @@ impl Listenable for Context {
         self.explorer_tab.on_app_event(app_event.clone())?;
         self.profiler_tab.on_app_event(app_event.clone())?;
         self.logger_tab.on_app_event(app_event.clone())?;
+        self.server_list.on_app_event(app_event.clone())?;
         Ok(())
     }
 }
