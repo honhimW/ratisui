@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       major_version:
-        description: 'Major'
+        description: 'Major Ver.'
         required: true
         type: string
         default: '0.0'
       prerelease:
-        description: '释放预发布'
+        description: 'Pre Release'
         required: true
         type: boolean
         default: true
