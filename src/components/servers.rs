@@ -13,12 +13,22 @@
 //! [examples]: https://github.com/ratatui/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui/ratatui/blob/main/examples/README.md
 
-use crate::app::{centered_rect, Listenable, Renderable};
+use crate::app::{centered_rect, AppEvent, Listenable, Renderable};
+use crate::bus::{publish_msg, Message};
+use crate::components::database_editor::Form;
+use crate::components::popup::Popup;
 use crate::components::raw_value::raw_value_to_highlight_text;
+use crate::configuration::{Database, Databases, Protocol, save_database_configuration};
+use crate::redis_opt::{redis_operations, switch_client};
 use anyhow::{anyhow, Error, Result};
 use itertools::Itertools;
+use log::info;
+use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyEvent, KeyModifiers};
+use ratatui::layout::Alignment;
 use ratatui::layout::Constraint::{Length, Min};
+use ratatui::widgets::block::Position;
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Widget};
 use ratatui::{crossterm::event::{KeyCode, KeyEventKind}, layout::{Margin, Rect}, style::{self, Color, Style, Stylize}, symbols, text::{Line, Text}, widgets::{
     Cell, HighlightSpacing, Row, Scrollbar, ScrollbarOrientation, ScrollbarState
     , Table, TableState,
@@ -26,19 +36,9 @@ use ratatui::{crossterm::event::{KeyCode, KeyEventKind}, layout::{Margin, Rect},
 use std::borrow::Cow;
 use std::cmp;
 use std::string::ToString;
-use log::info;
-use ratatui::buffer::Buffer;
-use ratatui::layout::Alignment;
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Widget};
-use ratatui::widgets::block::Position;
 use style::palette::tailwind;
 use tui_textarea::TextArea;
 use unicode_width::UnicodeWidthStr;
-use crate::bus::{publish_msg, Message};
-use crate::components::database_editor::Form;
-use crate::components::popup::Popup;
-use crate::configuration::{Database, Databases, Protocol};
-use crate::redis_opt::{redis_operations, switch_client};
 
 const PALETTES: [tailwind::Palette; 4] = [
     tailwind::BLUE,
@@ -69,6 +69,7 @@ impl TableColors {
     }
 }
 
+#[derive(Clone)]
 pub struct Data {
     pub selected: String,
     pub name: String,
@@ -115,6 +116,8 @@ impl Data {
 }
 
 pub struct ServerList {
+    init_database_name: Option<String>,
+    have_changed: bool,
     show_delete_popup: bool,
     show_create_popup: bool,
     show_edit_popup: bool,
@@ -154,7 +157,10 @@ impl ServerList {
             x.name.cmp(&x1.name)
         });
         let default_selected = vec.iter().position(|data| data.selected == "*").unwrap_or(0);
+        let init_database_name = vec.get(default_selected).map(|data| { data.name.clone() });
         Self {
+            init_database_name,
+            have_changed: false,
             show_delete_popup: false,
             show_create_popup: false,
             show_edit_popup: false,
@@ -359,6 +365,7 @@ impl ServerList {
                         if data.selected == "*" {
                             let _ = publish_msg(Message::warning("Cannot delete selected server"));
                         } else {
+                            self.have_changed = true;
                             self.items.remove(selected);
                         }
                     }
@@ -388,6 +395,7 @@ impl ServerList {
                 database,
             };
             self.valid_create(&data)?;
+            self.have_changed = true;
             self.items.push(data);
             self.create_form = Form::default().title("New");
             self.show_create_popup = false;
@@ -419,6 +427,7 @@ impl ServerList {
                         database,
                     };
                     self.valid_edit(&data)?;
+                    self.have_changed = true;
                     if data.selected == "*" {
                         switch_client(data.name.clone(), &data.database)?;
                     }
@@ -450,6 +459,32 @@ impl ServerList {
     fn valid_edit(&self, data: &Data) -> Result<()> {
         if data.name.is_empty() {
             return Err(anyhow!("Profile name must not be blank"));
+        }
+        Ok(())
+    }
+
+    fn selected(&self) -> Option<Data> {
+        if let Some(selected) = self.state.selected() {
+            let item = self.items.get(selected).clone();
+            if let Some(data) = item {
+                let data = data.clone();
+                return Some(data);
+            }
+        }
+        None
+    }
+
+    fn save(&self) -> Result<()> {
+        let selected_data = self.selected();
+        let selected_name = selected_data.map(|data| { data.name });
+        let default_database_changed = selected_name != self.init_database_name;
+        if self.have_changed || default_database_changed {
+            let mut databases = Databases::empty();
+            databases.default_database = selected_name;
+            for data_ref in self.items.iter() {
+                databases.databases.insert(data_ref.name.clone(), data_ref.database.clone());
+            }
+            save_database_configuration(&databases)?;
         }
         Ok(())
     }
@@ -561,6 +596,16 @@ impl Listenable for ServerList {
             return Ok(accepted);
         }
         Ok(false)
+    }
+
+    fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
+        match app_event {
+            AppEvent::Destroy => {
+                self.save()?;
+            }
+            _ => {}
+        }
+        Ok(())
     }
 }
 

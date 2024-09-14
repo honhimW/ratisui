@@ -5,7 +5,7 @@ use crate::utils::none_match;
 use crate::redis_opt::redis_operations;
 use crate::tabs::explorer::ExplorerTab;
 use crate::tabs::logger::LoggerTab;
-use crate::tabs::profiler::ProfilerTab;
+use crate::tabs::cli::CliTab;
 use anyhow::Result;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Max, Min};
@@ -27,7 +27,7 @@ pub struct Context {
     current_tab: CurrentTab,
     current_tab_index: usize,
     explorer_tab: ExplorerTab,
-    profiler_tab: ProfilerTab,
+    profiler_tab: CliTab,
     logger_tab: LoggerTab,
     databases: Databases,
     server_list: ServerList,
@@ -49,7 +49,7 @@ impl Context {
             current_tab: CurrentTab::Explorer,
             current_tab_index: 0,
             explorer_tab: ExplorerTab::new(),
-            profiler_tab: ProfilerTab::default(),
+            profiler_tab: CliTab::default(),
             logger_tab: LoggerTab::new(),
             server_list: ServerList::new(&databases),
             databases,
@@ -287,6 +287,7 @@ impl Listenable for Context {
         self.explorer_tab.on_app_event(app_event.clone())?;
         self.profiler_tab.on_app_event(app_event.clone())?;
         self.logger_tab.on_app_event(app_event.clone())?;
+        self.server_list.on_app_event(app_event.clone())?;
         Ok(())
     }
 }

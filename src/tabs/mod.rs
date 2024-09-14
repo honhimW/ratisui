@@ -1,3 +1,3 @@
 pub mod explorer;
-pub mod profiler;
+pub mod cli;
 pub mod logger;

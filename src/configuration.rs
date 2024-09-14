@@ -50,7 +50,7 @@ pub fn save_configuration(config: &Configuration) -> Result<()> {
 
 pub fn save_database_configuration(databases: &Databases) -> Result<()> {
     let db_config_path = get_file_path("databases.toml")?;
-    let toml_content = toml::to_string(&databases)?;
+    let toml_content = toml::to_string_pretty(&databases)?;
     debug!("{}", &toml_content);
     if let Ok(mut file) = File::create(&db_config_path) {
         file.write_all(toml_content.as_ref())?;
@@ -97,7 +97,7 @@ impl Configuration {
 }
 
 impl Databases {
-    fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             default_database: None,
             databases: HashMap::new(),
