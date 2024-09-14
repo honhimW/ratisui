@@ -283,10 +283,6 @@ impl ExplorerTab {
             self.render_rename_key_input(frame, horizontal[1])?;
         }
 
-        if self.show_create {
-            self.render_create_key_form(frame, frame.area())?;
-        }
-
         Ok(())
     }
 
@@ -1033,6 +1029,9 @@ impl Renderable for ExplorerTab {
 
         if self.show_delete_popup {
             self.render_delete_popup(frame, rect);
+        }
+        if self.show_create {
+            self.render_create_key_form(frame, frame.area())?;
         }
 
         Ok(())
