@@ -8,7 +8,7 @@ mod redis_opt;
 mod tui;
 mod tabs;
 mod components;
-mod key_utils;
+mod utils;
 mod bus;
 
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
@@ -24,6 +24,7 @@ use std::time::Duration;
 use tokio::time::{interval};
 use crate::app::AppState::Closed;
 use crate::bus::{publish_msg, try_take_msg, Message};
+use crate::tui::TerminalBackEnd;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -57,7 +58,9 @@ async fn main() -> Result<()> {
         }
     }
 
-    render(App::new(db_config), app_config).await?;
+    let terminal = tui::init()?;
+    let app = App::new(db_config);
+    let app_result = run(app, terminal, app_config).await;
 
     if let Err(e) = tui::restore() {
         eprintln!(
@@ -66,11 +69,14 @@ async fn main() -> Result<()> {
         );
     }
 
+    if let Err(e) = app_result {
+        eprintln!("{}", e);
+    }
+
     Ok(())
 }
 
-async fn render(mut app: App, config: Configuration) -> Result<()> {
-    let mut terminal = tui::init()?;
+async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration) -> Result<()> {
     let fps = cmp::min(config.fps.unwrap_or(30) as usize, 60);
     let delay_millis = 1000 / fps;
     let delay_duration = Duration::from_millis(delay_millis as u64);
@@ -145,44 +151,3 @@ async fn render(mut app: App, config: Configuration) -> Result<()> {
     app.state = Closed;
     Ok(())
 }
-
-// async fn handle_events(app_arc: Arc<RwLock<App>>) -> Result<()> {
-//     loop {
-//         let app_read_guard = app_arc.read().await;
-//         if !app_read_guard.health() {
-//             break;
-//         }
-//         if app_read_guard.state == AppState::Preparing {
-//             let mut context_write_guard = app_read_guard.context.write().await;
-//             context_write_guard.on_app_event(AppEvent::Init).await?;
-//             drop(context_write_guard);
-//             drop(app_read_guard);
-//             let mut app_write_guard = app_arc.write().await;
-//             app_write_guard.state = AppState::Running;
-//             continue;
-//         }
-//         let event_result = app_read_guard.input.receiver().try_recv();
-//         drop(app_read_guard);
-//         if let Ok(input_event) = event_result {
-//             if let InputEvent::Input(event) = input_event {
-//                 if let Event::Key(key_event) = event {
-//                     if key_event.kind == KeyEventKind::Press {
-//                         if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('c') {
-//                             let mut app_write_guard = app_arc.write().await;
-//                             app_write_guard.state = AppState::Closing;
-//                             drop(app_write_guard);
-//                         } else {
-//                             let app_read_guard = app_arc.read().await;
-//                             let mut context_write_guard = app_read_guard.context.write().await;
-//                             let _ = context_write_guard.handle_key_event(key_event).await?;
-//                             drop(context_write_guard);
-//                             drop(app_read_guard);
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//
-//     Ok(())
-// }

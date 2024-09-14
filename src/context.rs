@@ -1,11 +1,11 @@
 use std::time::Instant;
 use crate::app::{centered_rect, top_right_rect, AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::popup::{Popup, RenderAblePopup};
-use crate::key_utils::none_match;
+use crate::utils::none_match;
 use crate::redis_opt::redis_operations;
 use crate::tabs::explorer::ExplorerTab;
 use crate::tabs::logger::LoggerTab;
-use crate::tabs::profiler::ProfilerTab;
+use crate::tabs::cli::CliTab;
 use anyhow::Result;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Max, Min};
@@ -27,7 +27,7 @@ pub struct Context {
     current_tab: CurrentTab,
     current_tab_index: usize,
     explorer_tab: ExplorerTab,
-    profiler_tab: ProfilerTab,
+    profiler_tab: CliTab,
     logger_tab: LoggerTab,
     databases: Databases,
     server_list: ServerList,
@@ -49,7 +49,7 @@ impl Context {
             current_tab: CurrentTab::Explorer,
             current_tab_index: 0,
             explorer_tab: ExplorerTab::new(),
-            profiler_tab: ProfilerTab::default(),
+            profiler_tab: CliTab::default(),
             logger_tab: LoggerTab::new(),
             server_list: ServerList::new(&databases),
             databases,
@@ -172,19 +172,18 @@ impl Context {
             frame.render_widget(Clear::default(), area);
             let bg_color = match toast.kind {
                 Kind::Error => tailwind::RED.c700,
-                Kind::Warning => tailwind::YELLOW.c700,
+                Kind::Warn => tailwind::YELLOW.c700,
                 Kind::Info => tailwind::GREEN.c700,
             };
             let mut text = Text::default();
-            text.push_line(Line::default());
-            text.push_line(Line::raw(toast.msg.clone()));
+            text.push_line(Line::raw(format!("  {}", toast.msg.clone())));
             let paragraph = Paragraph::new(text)
-                .wrap(Wrap { trim: true })
+                .wrap(Wrap { trim: false })
                 .block(Block::bordered()
                     .borders(Borders::from_bits_retain(0b1011))
                     .border_set(symbols::border::EMPTY)
                     .title_style(Style::default().bold())
-                    .title(toast.title.clone().unwrap_or(String::new())))
+                    .title(toast.title.clone().unwrap_or(toast.kind.to_string())))
                 .bg(bg_color);
             frame.render_widget(paragraph, area);
         }
@@ -288,6 +287,7 @@ impl Listenable for Context {
         self.explorer_tab.on_app_event(app_event.clone())?;
         self.profiler_tab.on_app_event(app_event.clone())?;
         self.logger_tab.on_app_event(app_event.clone())?;
+        self.server_list.on_app_event(app_event.clone())?;
         Ok(())
     }
 }

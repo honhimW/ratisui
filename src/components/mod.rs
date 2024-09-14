@@ -8,3 +8,4 @@ pub mod fps;
 pub mod popup;
 pub mod servers;
 mod database_editor;
+pub mod create_key_editor;

@@ -2,6 +2,7 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use crossbeam_channel::{Receiver, Sender};
 use once_cell::sync::Lazy;
+use strum::Display;
 
 static TOAST_CHANNEL: Lazy<Channel> = Lazy::new(|| {
     let (tx, rx) = crossbeam_channel::bounded(4);
@@ -21,10 +22,10 @@ pub struct Message {
     pub expired_at: Instant,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Display)]
 pub enum Kind {
     Error,
-    Warning,
+    Warn,
     Info,
 }
 
@@ -38,7 +39,7 @@ impl Message {
     }
 
     pub fn warning(msg: impl Into<String>) -> Self {
-        Self::with_default(Kind::Warning, msg)
+        Self::with_default(Kind::Warn, msg)
     }
 
     fn with_default(kind: Kind, msg: impl Into<String>) -> Self {

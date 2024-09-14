@@ -7,25 +7,27 @@ use crate::components::set_table::SetValue;
 use crate::components::zset_table::ZSetValue;
 use crate::redis_opt::{async_redis_opt, spawn_redis_opt};
 use crate::tabs::explorer::CurrentScreen::{KeysTree, ValuesViewer};
-use anyhow::{Context, Error, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+use itertools::Itertools;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::prelude::{Line, Style, Stylize, Text};
 use ratatui::style::palette::tailwind;
 use ratatui::style::{Color, Modifier};
 use ratatui::text::Span;
-use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
+use ratatui::widgets::block::Position;
+use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
 use ratatui::{symbols, Frame};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Not;
-use itertools::Itertools;
-use ratatui::widgets::block::Position;
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
+use crate::components::create_key_editor::{Form, KeyType};
+use crate::utils::clean_text_area;
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
@@ -36,7 +38,7 @@ pub struct ExplorerTab {
     filter_mod: FilterMod,
     scan_size: u16,
     filter_text_area: TextArea<'static>,
-    create_key_text_area: TextArea<'static>,
+    create_key_form: Form,
     rename_key_text_area: TextArea<'static>,
     scan_keys_result: Vec<RedisKey>,
     tree_state: TreeState<String>,
@@ -187,19 +189,14 @@ impl ExplorerTab {
     pub fn new() -> Self {
         let (tx, rx) = unbounded();
         let mut filter_text_area = TextArea::default();
-        let mut create_key_text_area = TextArea::default();
         let mut rename_key_text_area = TextArea::default();
         filter_text_area.set_cursor_line_style(Style::default());
-        create_key_text_area.set_cursor_line_style(Style::default());
-        create_key_text_area.set_block(
-            Block::bordered()
-                .title("Create Key")
-        );
         rename_key_text_area.set_cursor_line_style(Style::default());
         rename_key_text_area.set_block(
             Block::bordered()
                 .title("Rename Key")
         );
+        let mut create_key_form = Form::default().title("Create Key");
         Self {
             current_screen: KeysTree,
             show_filter: false,
@@ -209,7 +206,7 @@ impl ExplorerTab {
             filter_mod: FilterMod::Fuzzy,
             scan_size: 2_000,
             filter_text_area,
-            create_key_text_area,
+            create_key_form,
             rename_key_text_area,
             scan_keys_result: vec![],
             tree_state: Default::default(),
@@ -413,9 +410,8 @@ impl ExplorerTab {
         Ok(())
     }
 
-    fn render_create_key_input(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        frame.render_widget(&self.create_key_text_area, area);
-        Ok(())
+    fn render_create_key_form(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        self.create_key_form.render_frame(frame, area)
     }
 
     fn render_rename_key_input(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
@@ -500,7 +496,7 @@ impl ExplorerTab {
         let size_clone = self.scan_size.clone();
         spawn_redis_opt(move |operations| async move {
             let mut data = Data::default();
-            let keys = operations.scan(pattern, size_clone as usize).await;
+            let keys = operations.scan(pattern_clone, size_clone as usize).await;
             if let Ok(keys) = keys {
                 let vec = keys.iter()
                     .map(|s| RedisKey::new(s, "unknown"))
@@ -508,13 +504,8 @@ impl ExplorerTab {
                 data.scan_keys_result = (true, vec);
             }
             sender.send(data.clone())?;
-            Ok::<(), Error>(())
+            Ok(())
         })?;
-        // tokio::spawn(async move {
-        //     let data = Self::do_scan_keys(pattern_clone, size_clone).await?;
-        //     sender.send(data.clone())?;
-        //     Ok::<(), Error>(())
-        // });
         Ok(())
     }
 
@@ -665,12 +656,17 @@ impl ExplorerTab {
                             let sender = self.data_sender.clone();
                             let pattern_clone = pattern.clone();
                             let size_clone = self.scan_size.clone();
-                            tokio::spawn(async move {
-                                Self::do_rename_key(key_name, new_key_name).await?;
-                                let data = Self::do_scan_keys(pattern_clone, size_clone).await?;
+                            spawn_redis_opt(move |operations| async move {
+                                operations.rename_nx(key_name, new_key_name).await?;
+                                let mut data = Data::default();
+                                let keys = operations.scan(pattern_clone, size_clone as usize).await?;
+                                let vec = keys.iter()
+                                    .map(|s| RedisKey::new(s, "unknown"))
+                                    .collect::<Vec<RedisKey>>();
+                                data.scan_keys_result = (true, vec);
                                 sender.send(data.clone())?;
-                                Ok::<(), Error>(())
-                            });
+                                Ok(())
+                            })?;
                         }
                         self.selected_key = None;
                     }
@@ -694,6 +690,88 @@ impl ExplorerTab {
         Ok(true)
     }
 
+    fn handle_create_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        match key_event {
+            KeyEvent { code: KeyCode::Esc, modifiers: KeyModifiers::NONE, .. } => {
+                if self.rename_key_text_area.is_selecting() {
+                    self.rename_key_text_area.cancel_selection();
+                } else {
+                    self.show_create = false;
+                }
+                Ok(true)
+            }
+            KeyEvent { code: KeyCode::Enter, modifiers: KeyModifiers::NONE, .. } => {
+                let key_type = self.create_key_form.get_type();
+                let key_name = self.create_key_form.get_name();
+                let ttl = self.create_key_form.get_ttl();
+                if key_name.is_empty() {
+                    return Err(anyhow!("Key name must not be blank!"));
+                }
+
+                if let Some(filter_text) = self.get_filter_text() {
+                    let pattern = match self.filter_mod {
+                        FilterMod::Fuzzy => {
+                            let mut matcher = filter_text.clone();
+                            if matcher.is_empty() {
+                                matcher = "*".to_string();
+                            } else {
+                                matcher = format!("*{}*", matcher);
+                            }
+                            matcher
+                        }
+                        FilterMod::Pattern => {
+                            filter_text.clone()
+                        }
+                    };
+                    let sender = self.data_sender.clone();
+                    let pattern_clone = pattern.clone();
+                    let size_clone = self.scan_size.clone();
+                    spawn_redis_opt(move |operations| async move {
+                        match key_type {
+                            KeyType::String => {
+                                operations.set_nx(key_name.clone(), "").await?;
+                            }
+                            KeyType::Hash => {
+                                operations.hset_nx(key_name.clone(), "", "").await?;
+                            }
+                            KeyType::List => {
+                                operations.lpush(key_name.clone(), "").await?;
+                            }
+                            KeyType::Set => {
+                                operations.sadd(key_name.clone(), "").await?;
+                            }
+                            KeyType::SortedSet => {
+                                operations.zadd(key_name.clone(), "", 0.0).await?;
+                            }
+                            KeyType::Stream => {
+                                operations.xadd(key_name.clone(), "", "").await?;
+                            }
+                        }
+
+                        if let Some(ttl) = ttl {
+                            operations.expire(key_name.clone(), ttl as i64).await?;
+                        }
+
+                        let mut data = Data::default();
+                        let keys = operations.scan(pattern_clone, size_clone as usize).await?;
+                        let vec = keys.iter()
+                            .map(|s| RedisKey::new(s, "unknown"))
+                            .collect::<Vec<RedisKey>>();
+                        data.scan_keys_result = (true, vec);
+                        sender.send(data.clone())?;
+
+                        Ok(())
+                    })?;
+                }
+                self.show_create = false;
+                Ok(true)
+            }
+            input => {
+                self.create_key_form.handle_key_event(input)
+            }
+        }
+    }
+
     fn handle_delete_popup_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         if key_event.kind != KeyEventKind::Press || key_event.modifiers != KeyModifiers::NONE {
             return Ok(true);
@@ -703,10 +781,10 @@ impl ExplorerTab {
             KeyCode::Enter => {
                 if let Some(redis_key) = &self.selected_key {
                     let key_name = redis_key.name.clone();
-                    tokio::spawn(async move {
-                        Self::do_delete_key(key_name).await?;
-                        Ok::<(), Error>(())
-                    });
+                    spawn_redis_opt(move |operations| async move {
+                        operations.del(key_name).await?;
+                        Ok(())
+                    })?;
                     let key_name = redis_key.name.as_str();
                     self.tree_items.retain_mut(|item| item.identifier().ne(key_name));
                 }
@@ -715,7 +793,7 @@ impl ExplorerTab {
             KeyCode::Esc => {
                 self.show_delete_popup = false;
             }
-            _ => {},
+            _ => {}
         }
 
         Ok(true)
@@ -749,7 +827,7 @@ impl ExplorerTab {
                     } else {
                         self.tree_state.select_first()
                     }
-                },
+                }
                 KeyCode::Up | KeyCode::Char('k') => {
                     let key_up = self.tree_state.key_up();
                     if key_up {
@@ -757,7 +835,7 @@ impl ExplorerTab {
                     } else {
                         self.tree_state.select_last()
                     }
-                },
+                }
                 KeyCode::Esc => self.tree_state.select(Vec::new()),
                 KeyCode::Home => self.tree_state.select_first(),
                 KeyCode::End => self.tree_state.select_last(),
@@ -801,20 +879,6 @@ impl ExplorerTab {
         Ok(false)
     }
 
-    async fn do_scan_keys(pattern: String, count: u16) -> Result<Data> {
-        let mut data = Data::default();
-        let keys = async_redis_opt(|op| async move {
-            Ok(op.scan(pattern, count as usize).await?)
-        }).await;
-        if let Ok(keys) = keys {
-            let vec = keys.iter()
-                .map(|s| RedisKey::new(s, "unknown"))
-                .collect::<Vec<RedisKey>>();
-            data.scan_keys_result = (true, vec);
-        }
-        Ok(data)
-    }
-
     async fn do_get_key_info(key_name: String) -> Result<Data> {
         let mut data = Data::default();
         data.key_name = key_name.clone();
@@ -842,6 +906,7 @@ impl ExplorerTab {
                     "hash" => Ok(op.hlen(key_name_clone).await?),
                     "set" => Ok(op.scard(key_name_clone).await?),
                     "zset" => Ok(op.zcard(key_name_clone).await?),
+                    "stream" => Ok(op.xlen(key_name_clone).await?),
                     _ => Ok(0)
                 }
             }).await;
@@ -878,8 +943,8 @@ impl ExplorerTab {
                     let values: Vec<Vec<u8>> = op.get_list(key_name_clone).await?;
                     let strings: Vec<String> = values.iter().map(|item| {
                         match bytes_to_string(item.clone()) {
-                            Ok(s) => {s}
-                            Err(_) => {String::new()}
+                            Ok(s) => { s }
+                            Err(_) => { String::new() }
                         }
                     }).collect();
                     data.selected_list_value = (true, Some(strings));
@@ -888,8 +953,8 @@ impl ExplorerTab {
                     let values: Vec<Vec<u8>> = op.get_set(key_name_clone).await?;
                     let strings: Vec<String> = values.iter().map(|item| {
                         match bytes_to_string(item.clone()) {
-                            Ok(s) => {s}
-                            Err(_) => {String::new()}
+                            Ok(s) => { s }
+                            Err(_) => { String::new() }
                         }
                     }).collect();
                     data.selected_set_value = (true, Some(strings));
@@ -898,8 +963,8 @@ impl ExplorerTab {
                     let values: Vec<(Vec<u8>, f64)> = op.get_zset(key_name_clone).await?;
                     let tuples: Vec<(String, f64)> = values.iter().map(|(item, score)| {
                         match bytes_to_string(item.clone()) {
-                            Ok(s) => {(s, score.clone())}
-                            Err(_) => {(String::new(), score.clone())}
+                            Ok(s) => { (s, score.clone()) }
+                            Err(_) => { (String::new(), score.clone()) }
                         }
                     }).collect();
                     data.selected_zset_value = (true, Some(tuples));
@@ -918,23 +983,6 @@ impl ExplorerTab {
             Ok(data)
         }).await
     }
-
-    async fn do_delete_key(key_name: String) -> Result<()> {
-        async_redis_opt(|op| async move {
-           Ok(op.del(key_name).await?)
-        }).await?;
-        Ok(())
-    }
-
-    async fn do_rename_key(old_key_name: impl Into<String>, new_key_name: impl Into<String>) -> Result<()> {
-        let old = old_key_name.into();
-        let new = new_key_name.into();
-        async_redis_opt(|op| async move {
-            Ok(op.rename_nx(old, new).await?)
-        }).await?;
-        Ok(())
-    }
-
 }
 
 fn bytes_to_string(bytes: Vec<u8>) -> Result<String> {
@@ -982,6 +1030,9 @@ impl Renderable for ExplorerTab {
         if self.show_delete_popup {
             self.render_delete_popup(frame, rect);
         }
+        if self.show_create {
+            self.render_create_key_form(frame, frame.area())?;
+        }
 
         Ok(())
     }
@@ -994,8 +1045,12 @@ impl Renderable for ExplorerTab {
                 FilterMod::Pattern => "Fuzzy",
             };
             elements.push(("^/", quit_desc));
-            elements.push(("Esc", "Close"));
             elements.push(("Enter", "Do Scan"));
+            elements.push(("Esc", "Close"));
+        } else if self.show_create {
+            elements = self.create_key_form.footer_elements();
+            elements.push(("Enter", "Create"));
+            elements.push(("Esc", "Close"));
         } else {
             if self.current_screen == KeysTree {
                 elements.push(("/", "Scan"));
@@ -1047,6 +1102,9 @@ impl Listenable for ExplorerTab {
         }
         if self.show_rename {
             return self.handle_rename_key_event(key_event);
+        }
+        if self.show_create {
+            return self.handle_create_key_event(key_event);
         }
 
         if ValuesViewer == self.current_screen {
@@ -1103,14 +1161,7 @@ impl Listenable for ExplorerTab {
                     KeyCode::Char('r') => {
                         if let Some(redis_key) = &self.selected_key {
                             let key_name = redis_key.name.clone();
-                            {
-                                /// Clean the text area: select all and backspace
-                                self.rename_key_text_area.select_all();
-                                self.rename_key_text_area.input(tui_textarea::Input {
-                                    key: tui_textarea::Key::Backspace,
-                                    ..tui_textarea::Input::default()
-                                });
-                            }
+                            clean_text_area(&mut self.rename_key_text_area);
                             self.rename_key_text_area.insert_str(key_name);
                             self.show_rename = true;
                         }
@@ -1138,7 +1189,7 @@ impl Listenable for ExplorerTab {
     fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
         if _app_event == AppEvent::Init {
             if let Some(first_line) = self.get_filter_text() {
-                self.do_scan(first_line.clone())?;
+                self.do_scan(first_line)?;
             }
         }
         if _app_event == AppEvent::Reset {
@@ -1146,7 +1197,7 @@ impl Listenable for ExplorerTab {
             self.show_filter = false;
             self.filter_text_area = TextArea::default();
             if let Some(first_line) = self.get_filter_text() {
-                self.do_scan(first_line.clone())?;
+                self.do_scan(first_line)?;
             }
         }
         Ok(())
