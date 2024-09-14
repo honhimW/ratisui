@@ -37,10 +37,19 @@ where
         });
         Ok(())
     } else {
-        Err(anyhow!(""))
+        Ok(())
     }
 }
 
+/// ```
+/// let value = async_redis_opt(|operations| async move {
+///     Ok(operations.get::<_, String>("key_to_get").await?)
+/// }).await?;
+/// 
+/// let value: String = async_redis_opt(|operations| async move {
+///     Ok(operations.get("key_to_get").await?)
+/// }).await?;
+/// ```
 pub async fn async_redis_opt<F, FUT, R>(opt: F) -> Result<R>
 where
     F: FnOnce(RedisOperations) -> FUT,
@@ -50,7 +59,7 @@ where
     if let Some(c) = x {
         opt(c.clone()).await
     } else {
-        Err(anyhow!(""))
+        Err(anyhow!("redis operations not initialized"))
     }
 }
 
@@ -528,6 +537,19 @@ impl RedisOperations {
         } else {
             let mut connection = self.pool.get().await?;
             let v: usize = connection.hlen(key).await?;
+            Ok(v)
+        }
+    }
+
+    pub async fn xlen<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<usize> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: usize = connection.xlen(key).await?;
+            Ok(v)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: usize = connection.xlen(key).await?;
             Ok(v)
         }
     }

@@ -910,6 +910,7 @@ impl ExplorerTab {
                     "hash" => Ok(op.hlen(key_name_clone).await?),
                     "set" => Ok(op.scard(key_name_clone).await?),
                     "zset" => Ok(op.zcard(key_name_clone).await?),
+                    "stream" => Ok(op.xlen(key_name_clone).await?),
                     _ => Ok(0)
                 }
             }).await;
@@ -1189,7 +1190,7 @@ impl Listenable for ExplorerTab {
     fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
         if _app_event == AppEvent::Init {
             if let Some(first_line) = self.get_filter_text() {
-                self.do_scan(first_line.clone())?;
+                self.do_scan(first_line)?;
             }
         }
         if _app_event == AppEvent::Reset {
@@ -1197,7 +1198,7 @@ impl Listenable for ExplorerTab {
             self.show_filter = false;
             self.filter_text_area = TextArea::default();
             if let Some(first_line) = self.get_filter_text() {
-                self.do_scan(first_line.clone())?;
+                self.do_scan(first_line)?;
             }
         }
         Ok(())
