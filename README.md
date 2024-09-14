@@ -5,6 +5,8 @@
 > Please note that the current project is still in its very early stages of development.
 > Since this is my first Rust project, it might be shit👻👻
 
+![gif](./assets/ratisui.gif)
+
 ## Quick Start
 
 > build from source
