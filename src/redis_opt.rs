@@ -37,7 +37,7 @@ where
         });
         Ok(())
     } else {
-        Err(anyhow!(""))
+        Err(anyhow!("redis operations not initialized"))
     }
 }
 
@@ -50,7 +50,7 @@ where
     if let Some(c) = x {
         opt(c.clone()).await
     } else {
-        Err(anyhow!(""))
+        Err(anyhow!("redis operations not initialized"))
     }
 }
 
