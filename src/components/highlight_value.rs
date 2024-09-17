@@ -46,7 +46,6 @@ const HIGHLIGHTS_QUERY_XML: &'static str = r#"
   "</"
   "/>"
 ] @punctuation.bracket
-
 "#;
 
 pub struct HighlightProcessor {

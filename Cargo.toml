@@ -11,7 +11,7 @@ anyhow = "1"
 log = "0.4"
 
 ratatui = { version = "0.28.1" }
-tui-textarea = { version = "0.6.1", features = ["crossterm"]}
+tui-textarea = { version = "0.6.1", features = ["crossterm"] }
 throbber-widgets-tui = "0.7"
 tui-tree-widget = "0.22.0"
 tui-logger = "0.13"
@@ -25,9 +25,12 @@ redis = { version = "0.26", features = [
     "tokio-comp",
     "tokio-rustls-comp",
     "cluster-async",
-
 ] }
-deadpool-redis = { version = "0.17", features = ["serde", "cluster"] }
+deadpool-redis = { path = "deadpool-redis", features = [
+    "serde",
+    "cluster",
+    "log",
+] }
 
 strum = "0.26.3"
 uuid = { version = "1.10.0", features = ["v4"] }
@@ -49,7 +52,7 @@ tree-sitter-html = "0.23"
 
 # git crates
 [build-dependencies]
-cc="*"
+cc = "*"
 
 [profile.release]
 lto = true

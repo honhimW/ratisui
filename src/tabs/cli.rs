@@ -15,7 +15,14 @@ use redis::Value;
 use tui_textarea::TextArea;
 
 pub struct CliTab {
+    mode: Mode,
     input_text_area: TextArea<'static>,
+}
+
+#[derive(PartialEq, Eq, Clone)]
+pub enum Mode {
+    Insert,
+    Normal,
 }
 
 impl TabImplementation for CliTab {
@@ -45,42 +52,71 @@ impl Renderable for CliTab {
 
 impl Listenable for CliTab {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
-        if key_event.kind == KeyEventKind::Press {
-            match key_event {
-                KeyEvent { code: KeyCode::Esc, .. } => {
-                    if self.input_text_area.is_selecting() {
-                        self.input_text_area.cancel_selection();
+        match self.mode {
+            Mode::Normal => {
+                if key_event.kind == KeyEventKind::Press {
+                    match key_event {
+                        KeyEvent { code: KeyCode::Esc, .. } => {
+                            if self.input_text_area.is_selecting() {
+                                self.input_text_area.cancel_selection();
+                            }
+                        }
+                        KeyEvent { code: KeyCode::Enter, .. } => {
+                            let command = self.get_command();
+                            if let Some(command) = command {
+                                spawn_redis_opt(move |operations| async move {
+                                    let x = operations.str_cmd(command).await?;
+
+                                    info!("{:?}", x);
+                                    Ok(())
+                                })?;
+                            }
+                        }
+                        KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
+                        _ => {}
                     }
                 }
-                KeyEvent { code: KeyCode::Enter, .. } => {
-                    let command = self.get_command();
-                    if let Some(command) = command {
-                        spawn_redis_opt(move |operations| async move {
-                            let x = operations.str_cmd(command).await?;
-                            info!("{:?}", x);
-                            Ok(())
-                        })?;
+            }
+            Mode::Insert => {
+                if key_event.kind == KeyEventKind::Press {
+                    match key_event {
+                        KeyEvent { code: KeyCode::Esc, .. } => {
+                            if self.input_text_area.is_selecting() {
+                                self.input_text_area.cancel_selection();
+                            }
+                        }
+                        KeyEvent { code: KeyCode::Enter, .. } => {
+                            let command = self.get_command();
+                            if let Some(command) = command {
+                                spawn_redis_opt(move |operations| async move {
+                                    let x = operations.str_cmd(command).await?;
+                                    info!("{:?}", x);
+                                    Ok(())
+                                })?;
+                            }
+                        }
+                        KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
+                        KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
+                            self.input_text_area.select_all();
+                        }
+                        KeyEvent { code: KeyCode::Char('z'), modifiers: KeyModifiers::CONTROL, .. } => {
+                            self.input_text_area.undo();
+                        }
+                        KeyEvent { code: KeyCode::Char('y'), modifiers: KeyModifiers::CONTROL, .. } => {
+                            self.input_text_area.redo();
+                        }
+                        KeyEvent { code: KeyCode::BackTab, .. } => {
+                            return Ok(false);
+                        }
+                        input => {
+                            self.input_text_area.input(input);
+                        }
                     }
-                }
-                KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
-                KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
-                    self.input_text_area.select_all();
-                }
-                KeyEvent { code: KeyCode::Char('z'), modifiers: KeyModifiers::CONTROL, .. } => {
-                    self.input_text_area.undo();
-                }
-                KeyEvent { code: KeyCode::Char('y'), modifiers: KeyModifiers::CONTROL, .. } => {
-                    self.input_text_area.redo();
-                }
-                KeyEvent { code: KeyCode::BackTab, .. } => {
-                    return Ok(false);
-                }
-                input => {
-                    self.input_text_area.input(input);
                 }
             }
         }
-        Ok(true)
+
+        Ok(false)
     }
 }
 
@@ -89,13 +125,17 @@ impl CliTab {
     pub fn new() -> Self {
         let mut text_area = TextArea::default();
         text_area.set_cursor_style(Style::default().rapid_blink().reversed());
+        text_area.set_cursor_line_style(Style::default());
         Self {
+            mode: Mode::Normal,
             input_text_area: text_area,
         }
     }
 
     fn render_input(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        frame.render_widget(&self.input_text_area, rect);
+        let horizontal = Layout::horizontal([Length(2), Min(10)]).split(rect);
+        frame.render_widget(Span::raw("> "), horizontal[0]);
+        frame.render_widget(&self.input_text_area, horizontal[1]);
         Ok(())
     }
 

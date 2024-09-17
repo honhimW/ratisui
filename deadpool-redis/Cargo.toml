@@ -1,0 +1,73 @@
+[package]
+name = "deadpool-redis"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies.deadpool]
+version = "0.12.0"
+features = ["managed"]
+default-features = false
+
+[dependencies.redis]
+version = "0.26"
+features = ["aio"]
+default-features = false
+
+[dependencies.log]
+version = "0.4"
+optional = true
+
+[dependencies.serde]
+version = "1.0"
+features = ["derive"]
+optional = true
+package = "serde"
+
+[dependencies.tokio]
+version = "1.0"
+optional = true
+default-features = false
+
+[dev-dependencies.config]
+version = "0.14"
+features = ["json"]
+
+[dev-dependencies.dotenvy]
+version = "0.15.0"
+
+[dev-dependencies.futures]
+version = "0.3.15"
+
+[dev-dependencies.redis]
+version = "0.26"
+features = ["tokio-comp"]
+default-features = false
+
+[dev-dependencies.tokio]
+version = "1.0"
+features = [
+    "macros",
+    "rt-multi-thread",
+    "sync",
+]
+
+[features]
+cluster = ["redis/cluster-async"]
+default = ["rt_tokio_1"]
+rt_async-std_1 = [
+    "deadpool/rt_async-std_1",
+    "redis/async-std-comp",
+]
+rt_tokio_1 = [
+    "deadpool/rt_tokio_1",
+    "redis/tokio-comp",
+]
+sentinel = [
+    "redis/sentinel",
+    "tokio/sync",
+]
+serde = [
+    "deadpool/serde",
+    "dep:serde",
+]
+log = ["dep:log"]
