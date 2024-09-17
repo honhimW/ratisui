@@ -1,12 +1,15 @@
 use anyhow::{Context, Result};
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use log::debug;
 use redis::ProtocolVersion;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
+use serde::de::Error;
 use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
 
 pub fn load_app_configuration() -> Result<Configuration> {
@@ -17,7 +20,7 @@ pub fn load_app_configuration() -> Result<Configuration> {
         let mut content = String::new();
         file.read_to_string(&mut content)?;
         if !content.is_empty() {
-            configuration =  toml::from_str(&content)?;
+            configuration = toml::from_str(&content)?;
         }
     }
     Ok(configuration)
@@ -110,11 +113,31 @@ pub struct Database {
     pub host: String,
     pub port: u16,
     pub username: Option<String>,
+    #[serde(default, serialize_with = "to_base64", deserialize_with = "from_base64")]
     pub password: Option<String>,
     pub use_tls: bool,
     pub use_ssh_tunnel: bool,
     pub db: u32,
     pub protocol: Protocol,
+}
+
+fn to_base64<S: Serializer>(password: &Option<String>, s: S) -> Result<S::Ok, S::Error> {
+    match password {
+        Some(p) => s.serialize_some(&BASE64_STANDARD.encode(p)),
+        None => s.serialize_none(),
+    }
+}
+
+fn from_base64<'d, S: Deserializer<'d>>(deserializer: S) -> Result<Option<String>, S::Error> {
+    let option = Option::<String>::deserialize(deserializer)?;
+    match option {
+        Some(p) => {
+            let bytes = BASE64_STANDARD.decode(p).map_err(|e| S::Error::custom("decode base64 error"))?;
+            let string = String::from_utf8(bytes).map_err(|e| S::Error::custom("decode utf-8 error"))?;
+            Ok(Some(string))
+        }
+        None => { Ok(None) }
+    }
 }
 
 impl Display for Database {

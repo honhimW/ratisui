@@ -32,6 +32,23 @@ const HIGHLIGHTS_QUERY_JSON: &'static str = r#"
 (comment) @comment
 "#;
 
+const HIGHLIGHTS_QUERY_XML: &'static str = r#"
+(tag_name) @tag
+(erroneous_end_tag_name) @tag.error
+(doctype) @constant
+(attribute_name) @attribute
+(attribute_value) @string
+(comment) @comment
+
+[
+  "<"
+  ">"
+  "</"
+  "/>"
+] @punctuation.bracket
+
+"#;
+
 pub struct HighlightProcessor {
     source: String,
     fragments: Vec<HighlightText>,
@@ -136,8 +153,7 @@ impl HighlightProcessor {
         }
 
         let mut parser = Parser::new();
-        let language = tree_sitter_json::language();
-        parser.set_language(&language)?;
+        parser.set_language(&tree_sitter_json::LANGUAGE.into())?;
 
         let tree = parser.parse(self.source.as_str(), self.tree.as_ref())
             .context("parse error")?;
@@ -155,7 +171,7 @@ impl HighlightProcessor {
         self.tree = Some(tree);
 
         let mut highlight_config = HighlightConfiguration::new(
-            language,
+            tree_sitter_json::LANGUAGE.into(),
             "json",
             HIGHLIGHTS_QUERY_JSON,
             "",
@@ -216,8 +232,7 @@ impl HighlightProcessor {
 
     fn process_xml(&mut self) -> Result<bool> {
         let mut parser = Parser::new();
-        let language = tree_sitter_xml::language_xml();
-        parser.set_language(&language)?;
+        parser.set_language(&tree_sitter_html::LANGUAGE.into())?;
 
         let tree = parser.parse(self.source.as_str(), self.tree.as_ref())
             .context("parse error")?;
@@ -235,9 +250,9 @@ impl HighlightProcessor {
         self.tree = Some(tree);
 
         let mut highlight_config = HighlightConfiguration::new(
-            language,
+            tree_sitter_html::LANGUAGE.into(),
             "xml",
-            tree_sitter_xml::XML_HIGHLIGHT_QUERY,
+            HIGHLIGHTS_QUERY_XML,
             "",
             "",
         )?;

@@ -49,7 +49,7 @@ impl Context {
             current_tab: CurrentTab::Explorer,
             current_tab_index: 0,
             explorer_tab: ExplorerTab::new(),
-            profiler_tab: CliTab::default(),
+            profiler_tab: CliTab::new(),
             logger_tab: LoggerTab::new(),
             server_list: ServerList::new(&databases),
             databases,

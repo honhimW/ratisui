@@ -3,7 +3,6 @@ use anyhow::{anyhow, Context, Error, Result};
 use deadpool_redis::redis::cmd;
 use deadpool_redis::{Pool, Runtime};
 use log::info;
-use redis::aio::ConnectionManager;
 use redis::cluster::ClusterClient;
 use redis::ConnectionAddr::{Tcp, TcpTls};
 use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value};
@@ -11,6 +10,18 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::RwLock;
 use once_cell::sync::Lazy;
+
+#[macro_export]
+macro_rules! str_cmd {
+    ($cmd:expr) => {{
+        let mut command = Cmd::new();
+        let parts: Vec<&str> = $cmd.split_whitespace().collect();
+        for arg in &parts[0..] {
+            command.arg(arg);
+        }
+        command
+    }};
+}
 
 pub static REDIS_OPERATIONS: Lazy<RwLock<Option<RedisOperations>>> = Lazy::new(|| RwLock::new(None));
 
@@ -152,6 +163,17 @@ impl RedisOperations {
             cluster_client: None,
             nodes: HashMap::new(),
             cluster_pool: None,
+        }
+    }
+
+    async fn get_connection(&self) -> Result<Box<dyn redis::aio::ConnectionLike>> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let connection = pool.get().await?;
+            Ok(Box::new(connection))
+        } else {
+            let connection = self.pool.get().await?;
+            Ok(Box::new(connection))
         }
     }
 
@@ -303,6 +325,7 @@ impl RedisOperations {
                 urls: None,
                 connections: Some(cluster_urls),
                 pool: None,
+                read_from_replicas: true,
             };
             let pool = config.create_pool(Some(Runtime::Tokio1))?;
             self.cluster_pool = Some(pool);
@@ -328,6 +351,25 @@ impl RedisOperations {
             }
         }
         None
+    }
+
+    pub async fn str_cmd(&self, cmd: impl Into<String>) -> Result<Value> {
+        let cmd = cmd.into();
+        let cmd = str_cmd!(cmd.as_str());
+        self.cmd(cmd).await
+    }
+
+    pub async fn cmd(&self, cmd: Cmd) -> Result<Value> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: Value = cmd.query_async(&mut connection).await?;
+            Ok(v)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: Value = cmd.query_async(&mut connection).await?;
+            Ok(v)
+        }
     }
 
     pub async fn scan(&self, pattern: impl Into<String>, count: usize) -> Result<Vec<String>> {
