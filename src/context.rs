@@ -27,7 +27,7 @@ pub struct Context {
     current_tab: CurrentTab,
     current_tab_index: usize,
     explorer_tab: ExplorerTab,
-    profiler_tab: CliTab,
+    cli_tab: CliTab,
     logger_tab: LoggerTab,
     databases: Databases,
     server_list: ServerList,
@@ -38,7 +38,7 @@ pub struct Context {
 #[derive(Eq, PartialEq, EnumCount, EnumIter)]
 enum CurrentTab {
     Explorer,
-    Profiler,
+    Cli,
     Logger,
 }
 
@@ -49,7 +49,7 @@ impl Context {
             current_tab: CurrentTab::Explorer,
             current_tab_index: 0,
             explorer_tab: ExplorerTab::new(),
-            profiler_tab: CliTab::new(),
+            cli_tab: CliTab::new(),
             logger_tab: LoggerTab::new(),
             server_list: ServerList::new(&databases),
             databases,
@@ -61,7 +61,7 @@ impl Context {
     pub fn get_current_tab(&self) -> &dyn TabImplementation {
         match self.current_tab {
             CurrentTab::Explorer => &self.explorer_tab,
-            CurrentTab::Profiler => &self.profiler_tab,
+            CurrentTab::Cli => &self.cli_tab,
             CurrentTab::Logger => &self.logger_tab,
         }
     }
@@ -69,7 +69,7 @@ impl Context {
     pub fn get_current_tab_as_mut(&mut self) -> &mut dyn TabImplementation {
         match self.current_tab {
             CurrentTab::Explorer => &mut self.explorer_tab,
-            CurrentTab::Profiler => &mut self.profiler_tab,
+            CurrentTab::Cli => &mut self.cli_tab,
             CurrentTab::Logger => &mut self.logger_tab,
         }
     }
@@ -77,7 +77,7 @@ impl Context {
     pub fn get_all_tabs(&self) -> Vec<&dyn TabImplementation> {
         vec![
             &self.explorer_tab,
-            &self.profiler_tab,
+            &self.cli_tab,
             &self.logger_tab,
         ]
     }
@@ -134,8 +134,8 @@ impl Context {
             CurrentTab::Explorer => {
                 self.explorer_tab.render_frame(frame, area)
             }
-            CurrentTab::Profiler => {
-                self.profiler_tab.render_frame(frame, area)
+            CurrentTab::Cli => {
+                self.cli_tab.render_frame(frame, area)
             }
             CurrentTab::Logger => {
                 self.logger_tab.render_frame(frame, area)
@@ -234,8 +234,8 @@ impl Renderable for Context {
                 CurrentTab::Explorer => {
                     self.explorer_tab.footer_elements()
                 }
-                CurrentTab::Profiler => {
-                    self.profiler_tab.footer_elements()
+                CurrentTab::Cli => {
+                    self.cli_tab.footer_elements()
                 }
                 CurrentTab::Logger => {
                     self.logger_tab.footer_elements()
@@ -285,7 +285,7 @@ impl Listenable for Context {
 
     fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
         self.explorer_tab.on_app_event(app_event.clone())?;
-        self.profiler_tab.on_app_event(app_event.clone())?;
+        self.cli_tab.on_app_event(app_event.clone())?;
         self.logger_tab.on_app_event(app_event.clone())?;
         self.server_list.on_app_event(app_event.clone())?;
         Ok(())

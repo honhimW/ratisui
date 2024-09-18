@@ -233,7 +233,13 @@ impl HighlightProcessor {
         let mut parser = Parser::new();
         parser.set_language(&tree_sitter_html::LANGUAGE.into())?;
 
-        let tree = parser.parse(self.source.as_str(), self.tree.as_ref())
+        let source = &self.source;
+        let source = if source.contains(r#"<?xml version="1.0" encoding="UTF-8"?>"#) {
+            &source.replace(r#"<?xml version="1.0" encoding="UTF-8"?>"#, r#"<!-- <?xml version="1.0" encoding="UTF-8"?> -->"#)
+        } else {
+            source
+        };
+        let tree = parser.parse(source, self.tree.as_ref())
             .context("parse error")?;
         let node = tree.root_node();
         if node.kind() != "document" || (
