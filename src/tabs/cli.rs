@@ -16,7 +16,9 @@ use ratatui::Frame;
 use redis::{Value, VerbatimFormat};
 use std::cmp;
 use std::fmt::format;
+use std::ops::Neg;
 use tui_textarea::{CursorMove, Scrolling, TextArea};
+use crate::components::console_output::{ConsoleData, Data};
 
 pub struct CliTab {
     mode: Mode,
@@ -25,6 +27,8 @@ pub struct CliTab {
     history_viewpoint: usize,
     input_text_area: TextArea<'static>,
     output_text_area: TextArea<'static>,
+    console_data: ConsoleData,
+    output_height: u16,
     data_sender: Sender<Value>,
     data_receiver: Receiver<Value>,
 }
@@ -55,8 +59,9 @@ impl Renderable for CliTab {
     {
         let total_lines = self.output_text_area.lines().len();
         let session_height = cmp::min(total_lines.saturating_add(1) as u16, rect.height);
+        self.output_height = session_height - 1;
         let vertical = Layout::vertical([Length(session_height), Fill(0)]).split(rect);
-        let vertical = Layout::vertical([Length(session_height - 1), Length(1)]).split(vertical[0]);
+        let vertical = Layout::vertical([Length(self.output_height), Length(1)]).split(vertical[0]);
         self.render_output(frame, vertical[0])?;
         self.render_input(frame, vertical[1])?;
         Ok(())
@@ -83,12 +88,26 @@ impl Listenable for CliTab {
                                 })?;
                             }
                         }
+                        KeyEvent { code: KeyCode::Home, .. } => {
+                            self.scroll_start();
+
+                        }
+                        KeyEvent { code: KeyCode::End, .. } => {
+                            self.scroll_end();
+                        }
                         KeyEvent { code: KeyCode::Up, .. } => {
-                            self.output_text_area.scroll(Scrolling::HalfPageUp);
+                            self.scroll_up();
 
                         }
                         KeyEvent { code: KeyCode::Down, .. } => {
-                            self.output_text_area.scroll(Scrolling::HalfPageDown);
+                            self.scroll_down();
+                        }
+                        KeyEvent { code: KeyCode::PageUp, .. } => {
+                            self.scroll_page_up();
+
+                        }
+                        KeyEvent { code: KeyCode::PageDown, .. } => {
+                            self.scroll_page_down();
                         }
                         _ => {}
                     }
@@ -189,6 +208,8 @@ impl CliTab {
             history_viewpoint: 0,
             input_text_area,
             output_text_area,
+            console_data: ConsoleData::new(vec![]),
+            output_height: 1,
             data_sender: tx,
             data_receiver: rx,
         }
@@ -246,10 +267,41 @@ impl CliTab {
 
     }
 
-    // fn append_output(&mut self, content: String) {
-    //     self.output_text_area.move_cursor(CursorMove::End)
-    //     self.output_text_area.scroll(Scrolling::Delta {rows: })
-    // }
+    fn scroll_start(&mut self) {
+        self.output_text_area.scroll(Scrolling::Delta {
+            rows: (self.output_text_area.lines().len() as i16).neg(),
+            cols: 0,
+        })
+    }
+
+    fn scroll_end(&mut self) {
+        self.output_text_area.scroll(Scrolling::Delta {
+            rows: self.output_text_area.lines().len().saturating_sub(self.output_height as usize) as i16,
+            cols: 0,
+        })
+    }
+
+    fn scroll_up(&mut self) {
+        self.output_text_area.scroll(Scrolling::Delta {
+            rows: -1,
+            cols: 0,
+        })
+    }
+
+    fn scroll_down(&mut self) {
+        self.output_text_area.scroll(Scrolling::Delta {
+            rows: 1,
+            cols: 0,
+        })
+    }
+
+    fn scroll_page_up(&mut self) {
+        self.output_text_area.scroll(Scrolling::PageUp)
+    }
+
+    fn scroll_page_down(&mut self) {
+        self.output_text_area.scroll(Scrolling::PageDown)
+    }
 
     fn render_input(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
         let horizontal = Layout::horizontal([Length(3), Min(10)]).split(rect);
@@ -260,11 +312,17 @@ impl CliTab {
 
     fn render_output(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
         if let Ok(v) = self.data_receiver.try_recv() {
-            self.output_text_area.insert_str(format_value(v));
+            self.output_text_area.insert_str(format_value(v.clone()));
             self.output_text_area.insert_newline();
             self.lock_input = false;
+            self.console_data.push_data(Data {
+                index: "".to_string(),
+                value: format_value(v),
+                origin_value: "".to_string(),
+            })
         }
-        frame.render_widget(&self.output_text_area, rect);
+        self.console_data.render_frame(frame, rect)?;
+        // frame.render_widget(&self.output_text_area, rect);
         Ok(())
     }
 

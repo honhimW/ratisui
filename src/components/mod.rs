@@ -9,3 +9,4 @@ pub mod popup;
 pub mod servers;
 mod database_editor;
 pub mod create_key_editor;
+pub mod console_output;
