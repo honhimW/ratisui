@@ -57,3 +57,12 @@ pub fn bytes_to_string(bytes: Vec<u8>) -> anyhow::Result<String> {
         }).collect::<String>())
     }
 }
+
+pub fn escape_string(s: impl Into<String>) -> String {
+    let s = s.into();
+    s
+        .replace("\\", "\\\\")
+        .replace("\t", "\\t")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+}

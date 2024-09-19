@@ -1,192 +1,158 @@
-//! # [Ratatui] Table example
-//!
-//! The latest version of this example is available in the [examples] folder in the repository.
-//!
-//! Please note that the examples are designed to be run against the `main` branch of the Github
-//! repository. This means that you may not be able to compile with the latest release version on
-//! crates.io, or the one that you have installed locally.
-//!
-//! See the [examples readme] for more information on finding examples that match the version of the
-//! library you are using.
-//!
-//! [Ratatui]: https://github.com/ratatui/ratatui
-//! [examples]: https://github.com/ratatui/ratatui/blob/main/examples
-//! [examples readme]: https://github.com/ratatui/ratatui/blob/main/examples/README.md
-
-use crate::app::{Listenable, Renderable};
-use crate::components::raw_value::raw_value_to_highlight_text;
-use anyhow::Result;
-use itertools::Itertools;
-use ratatui::crossterm::event::KeyEvent;
-use ratatui::layout::Constraint::{Length, Min};
-use ratatui::{
-    crossterm::event::{KeyCode, KeyEventKind},
-    layout::Rect,
-    style::{self, Style},
-    text::{Line, Text},
-    widgets::{
-        Cell, Row, ScrollbarState
-        , Table, TableState,
-    }
-    , Frame,
-};
-use std::borrow::Cow;
+use crate::components::console_output::OutputKind::{ERR, STD};
+use log::{info, warn};
+use ratatui::layout::{Position, Rect};
+use ratatui::prelude::Text;
+use ratatui::style::{Color, Style, Stylize};
+use ratatui::widgets::{Paragraph, Wrap};
+use ratatui_macros::{line, span};
 use std::cmp;
-use log::info;
-use ratatui::style::Color;
-use unicode_width::UnicodeWidthStr;
+use ratatui::text::Line;
+use strum::Display;
 
-const ITEM_HEIGHT: usize = 4;
-
-pub struct Data {
-    pub index: String,
-    pub value: String,
-    pub origin_value: String,
+pub struct ConsoleData<'a> {
+    pub lines: Vec<(OutputKind, String)>,
+    pub paragraph: Paragraph<'a>,
+    pub position: Position,
+    pub height: u16,
+    pub weight: u16,
+    pub total_lines: usize,
+    is_bottom: bool,
 }
 
-impl Data {
-    const fn ref_array(&self) -> [&String; 1] {
-        [&self.value]
-    }
-
-    fn index(&self) -> &str {
-        &self.index
-    }
-
-    fn value(&self) -> &str {
-        &self.value
-    }
-
+#[derive(Debug, Display)]
+pub enum OutputKind {
+    STD,
+    ERR,
 }
 
-pub struct ConsoleData {
-    item_values: Vec<String>,
-    state: TableState,
-    items: Vec<Data>,
-    longest_item_lens: (u16),
-    color_index: usize,
-}
-
-impl ConsoleData {
-    pub fn new(data: Vec<String>) -> Self {
-        let mut vec = vec![];
-        for (idx, string) in data.iter().enumerate() {
-            let data = Data {
-                index: idx.to_string(),
-                value: string.clone().replace("\n", "\\n"),
-                origin_value: string.clone(),
-            };
-            vec.push(data);
-        }
+impl ConsoleData<'_> {
+    pub fn default() -> Self {
         Self {
-            item_values: data,
-            state: TableState::default().with_selected(0),
-            longest_item_lens: constraint_len_calculator(&vec),
-            color_index: 3,
-            items: vec,
+            lines: vec![],
+            paragraph: Paragraph::default(),
+            position: Position::new(0, 0),
+            height: 1,
+            weight: 0,
+            total_lines: 0,
+            is_bottom: true,
         }
     }
 
-    pub fn next(&mut self, step: u16) {
-        let i = match self.state.selected() {
-            Some(i) => i.saturating_add(step as usize),
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
-
-    pub fn previous(&mut self, step: u16) {
-        let i = match self.state.selected() {
-            Some(i) => i.saturating_sub(step as usize),
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
-
-    pub fn push_data(&mut self, data: Data) {
-        self.items.push(data);
-    }
-
-    fn render_table(&mut self, frame: &mut Frame, area: Rect) {
-        let rows = self.items.iter().enumerate().map(|(i, data)| {
-            let height = data.origin_value.lines().count();
-            let mut text = Text::default();
-            let highlight_text = raw_value_to_highlight_text(Cow::from(&data.value), false);
-            for line in highlight_text.lines {
-                text.push_line(line);
-            }
-            let cell = Cell::from(text);
-            let row = Row::new(vec![cell])
-                .style(Style::default().bg(Color::Red))
-                .height(height as u16);
-            row
-        }).collect_vec();
-        let t = Table::new(rows, [Min(2)]);
-        frame.render_stateful_widget(t, area, &mut self.state);
-    }
-
-}
-
-impl Renderable for ConsoleData {
-    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        self.render_table(frame, rect);
-        Ok(())
-    }
-
-    fn footer_elements(&self) -> Vec<(&str, &str)> {
-        let mut elements = vec![];
-        elements.push(("↑/j", "Up"));
-        elements.push(("↓/k", "Down"));
-        // elements.push(("←/h", "Close"));
-        // elements.push(("→/l", "Open"));
-        elements
-    }
-}
-
-impl Listenable for ConsoleData {
-    fn handle_key_event(&mut self, _key_event: KeyEvent) -> Result<bool> {
-        if _key_event.kind == KeyEventKind::Press {
-            let accepted = match _key_event.code {
-                KeyCode::Esc => true,
-                KeyCode::Char('j') | KeyCode::Down => {
-                    self.next(1);
-                    true
-                },
-                KeyCode::Char('k') | KeyCode::Up => {
-                    self.previous(1);
-                    true
-                },
-                KeyCode::Home => {
-                    true
-                }
-                KeyCode::End => {
-                    true
-                }
-                KeyCode::PageUp => {
-                    true
-                }
-                KeyCode::PageDown => {
-                    true
-                }
-                // KeyCode::Char('l') | KeyCode::Right => self.next_color(),
-                // KeyCode::Char('h') | KeyCode::Left => self.previous_color(),
-                _ => {false},
+    pub fn build_paragraph(&mut self) {
+        info!("y: {}, max: {}, height: {}", self.position.y, self.max_offset(), self.height);
+        self.is_bottom = self.position.y >= self.max_offset().saturating_sub(self.height);
+        let mut text = Text::default();
+        for (kind, l) in self.lines.iter() {
+            warn!("{}", kind);
+            let new_line = match kind {
+                STD => line![l.clone()],
+                ERR => line![l.clone().red()],
             };
-            return Ok(accepted);
+            warn!("{:?}", &new_line);
+            text.push_line(new_line);
         }
-        Ok(false)
+        let mut paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
+        paragraph = paragraph.scroll((self.position.y, self.position.x));
+        self.paragraph = paragraph;
     }
-}
 
-fn constraint_len_calculator(items: &[Data]) -> (u16) {
-    let value_len = items
-        .iter()
-        .map(Data::value)
-        .flat_map(str::lines)
-        .map(UnicodeWidthStr::width)
-        .max()
-        .unwrap_or(0);
+    pub fn update(&mut self, area: &Rect) {
+        let Rect { height, width, .. } = area;
+        self.height = height.clone();
+        self.weight = width.clone();
+        if self.is_bottom {
+            self.scroll_end();
+        }
+    }
 
-    #[allow(clippy::cast_possible_truncation)]
-    (value_len as u16)
+    pub fn push(&mut self, line: impl Into<String>) {
+        self.lines.push((STD, line.into()));
+        self.total_lines = self.lines.len();
+    }
+
+    pub fn push_err(&mut self, line: impl Into<String>) {
+        self.lines.push((ERR, line.into()));
+        self.total_lines = self.lines.len();
+    }
+
+    pub fn extend(&mut self, lines: Vec<(OutputKind, String)>) {
+        for (kind, line) in lines {
+            match kind {
+                STD => self.push(line),
+                ERR => self.push_err(line),
+            }
+        }
+    }
+
+    fn max_offset(&self) -> u16 {
+        (self.paragraph.line_count(self.weight) as u16).saturating_sub(self.height)
+    }
+
+    pub fn scroll_start(&mut self) {
+        let mut position = self.position.clone();
+        position.y = 0;
+        self.position = position;
+        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
+        self.paragraph = current.scroll((
+            position.y,
+            position.x,
+        ));
+    }
+
+    pub fn scroll_end(&mut self) {
+        let mut position = self.position.clone();
+        position.y = self.max_offset();
+        self.position = position;
+        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
+        self.paragraph = current.scroll((
+            position.y,
+            position.x,
+        ));
+    }
+
+    pub fn scroll_up(&mut self) {
+        let mut position = self.position.clone();
+        position.y = position.y.saturating_sub(1);
+        self.position = position;
+        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
+        self.paragraph = current.scroll((
+            position.y,
+            position.x,
+        ));
+    }
+
+    pub fn scroll_down(&mut self) {
+        let mut position = self.position.clone();
+        position.y = cmp::min(position.y.saturating_add(1), self.max_offset());
+        self.position = position;
+        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
+        self.paragraph = current.scroll((
+            position.y,
+            position.x,
+        ));
+    }
+
+    pub fn scroll_page_up(&mut self) {
+        let mut position = self.position.clone();
+        position.y = position.y.saturating_sub(self.height);
+        self.position = position;
+        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
+
+        self.paragraph = current.scroll((
+            position.y,
+            position.x,
+        ));
+    }
+
+    pub fn scroll_page_down(&mut self) {
+        let mut position = self.position.clone();
+        position.y = cmp::min(position.y.saturating_add(self.height), self.max_offset());
+        self.position = position;
+        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
+
+        self.paragraph = current.scroll((
+            position.y,
+            position.x,
+        ));
+    }
 }

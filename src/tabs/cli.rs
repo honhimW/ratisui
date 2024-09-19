@@ -1,40 +1,44 @@
 use crate::app::{Listenable, Renderable, TabImplementation};
 use crate::redis_opt::spawn_redis_opt;
-use crate::utils::{bytes_to_string, is_clean_text_area};
+use crate::utils::{bytes_to_string, escape_string, is_clean_text_area};
 use anyhow::{Error, Result};
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
-use log::info;
+use log::{info, warn};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Max, Min};
-use ratatui::layout::{Layout, Rect};
+use ratatui::layout::{Layout, Position, Rect};
 use ratatui::prelude::{Line, Stylize};
 use ratatui::style::palette::tailwind;
 use ratatui::style::Style;
-use ratatui::text::Span;
-use ratatui::widgets::{Block, Cell, Row, Table};
+use ratatui::text::{Span, Text};
+use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 use ratatui::Frame;
 use redis::{Value, VerbatimFormat};
 use std::cmp;
 use std::fmt::format;
 use std::ops::Neg;
+use std::time::{Duration, Instant};
+use itertools::Itertools;
 use tui_textarea::{CursorMove, Scrolling, TextArea};
-use crate::components::console_output::{ConsoleData, Data};
+use crate::components::console_output::{ConsoleData, OutputKind};
+use ratatui_macros::{line};
+use redis::Value::ServerError;
 
 pub struct CliTab {
     mode: Mode,
     lock_input: bool,
+    lock_at: Option<Instant>,
     history: Vec<String>,
     history_viewpoint: usize,
     input_text_area: TextArea<'static>,
-    output_text_area: TextArea<'static>,
-    console_data: ConsoleData,
-    output_height: u16,
+    console_data: ConsoleData<'static>,
     data_sender: Sender<Value>,
     data_receiver: Receiver<Value>,
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(Default, PartialEq, Eq, Clone)]
 pub enum Mode {
+    #[default]
     Insert,
     Normal,
 }
@@ -57,11 +61,10 @@ impl Renderable for CliTab {
     where
         Self: Sized,
     {
-        let total_lines = self.output_text_area.lines().len();
+        let total_lines = self.console_data.paragraph.line_count(rect.width);
         let session_height = cmp::min(total_lines.saturating_add(1) as u16, rect.height);
-        self.output_height = session_height - 1;
         let vertical = Layout::vertical([Length(session_height), Fill(0)]).split(rect);
-        let vertical = Layout::vertical([Length(self.output_height), Length(1)]).split(vertical[0]);
+        let vertical = Layout::vertical([Length(session_height - 1), Length(1)]).split(vertical[0]);
         self.render_output(frame, vertical[0])?;
         self.render_input(frame, vertical[1])?;
         Ok(())
@@ -90,21 +93,18 @@ impl Listenable for CliTab {
                         }
                         KeyEvent { code: KeyCode::Home, .. } => {
                             self.scroll_start();
-
                         }
                         KeyEvent { code: KeyCode::End, .. } => {
                             self.scroll_end();
                         }
                         KeyEvent { code: KeyCode::Up, .. } => {
                             self.scroll_up();
-
                         }
                         KeyEvent { code: KeyCode::Down, .. } => {
                             self.scroll_down();
                         }
                         KeyEvent { code: KeyCode::PageUp, .. } => {
                             self.scroll_page_up();
-
                         }
                         KeyEvent { code: KeyCode::PageDown, .. } => {
                             self.scroll_page_down();
@@ -189,46 +189,37 @@ impl Listenable for CliTab {
 }
 
 impl CliTab {
-
     pub fn new() -> Self {
         let mut input_text_area = TextArea::default();
         input_text_area.set_cursor_style(Style::default().rapid_blink().reversed());
         input_text_area.set_cursor_line_style(Style::default());
 
-        let mut output_text_area = TextArea::default();
-        // output_text_area.set_cursor_style(Style::default());
-        // output_text_area.set_cursor_line_style(Style::default());
-        output_text_area.set_block(Block::bordered());
-
         let (tx, rx) = bounded(1);
         Self {
-            mode: Mode::Normal,
+            mode: Mode::default(),
             lock_input: false,
+            lock_at: None,
             history: vec![],
             history_viewpoint: 0,
             input_text_area,
-            output_text_area,
-            console_data: ConsoleData::new(vec![]),
-            output_height: 1,
+            console_data: ConsoleData::default(),
             data_sender: tx,
             data_receiver: rx,
         }
     }
 
     fn clear_output(&mut self) {
-        let mut output_text_area = TextArea::default();
-        output_text_area.set_cursor_style(Style::default());
-        output_text_area.set_cursor_line_style(Style::default());
-        output_text_area.set_block(Block::bordered());
-        self.output_text_area = output_text_area;
+        self.console_data = ConsoleData::default();
     }
 
     fn commit_command(&mut self, command: &String) {
         self.lock_input = true;
-        self.output_text_area.insert_str(format!("> {}", command));
-        self.output_text_area.insert_newline();
+        self.lock_at = Some(Instant::now());
+        self.console_data.push(format!(">_ {}", command));
         if command.is_empty() {
             self.lock_input = false;
+            self.console_data.push("");
+            self.console_data.build_paragraph();
             return;
         }
         if let Some(last_command) = self.history.last() {
@@ -253,54 +244,44 @@ impl CliTab {
         let cmd = command.clone();
         let sender = self.data_sender.clone();
         let result = spawn_redis_opt(move |operations| async move {
-            let x = operations.str_cmd(cmd).await?;
-            sender.send(x)?;
+            match operations.str_cmd(cmd).await {
+                Ok(value) => sender.send(value)?,
+                Err(e) => sender.send(Value::SimpleString(format!("#err# {}", e.to_string())))?,
+            }
             Ok(())
         });
 
         if let Err(e) = result {
             let string = format!("{}", e);
-            self.output_text_area.insert_str(string);
-            self.output_text_area.insert_newline();
+            self.console_data.push_err(string);
             self.lock_input = false;
+            self.console_data.push("");
+            self.console_data.build_paragraph();
         }
-
     }
 
     fn scroll_start(&mut self) {
-        self.output_text_area.scroll(Scrolling::Delta {
-            rows: (self.output_text_area.lines().len() as i16).neg(),
-            cols: 0,
-        })
+        self.console_data.scroll_start();
     }
 
     fn scroll_end(&mut self) {
-        self.output_text_area.scroll(Scrolling::Delta {
-            rows: self.output_text_area.lines().len().saturating_sub(self.output_height as usize) as i16,
-            cols: 0,
-        })
+        self.console_data.scroll_end();
     }
 
     fn scroll_up(&mut self) {
-        self.output_text_area.scroll(Scrolling::Delta {
-            rows: -1,
-            cols: 0,
-        })
+        self.console_data.scroll_up();
     }
 
     fn scroll_down(&mut self) {
-        self.output_text_area.scroll(Scrolling::Delta {
-            rows: 1,
-            cols: 0,
-        })
+        self.console_data.scroll_down();
     }
 
     fn scroll_page_up(&mut self) {
-        self.output_text_area.scroll(Scrolling::PageUp)
+        self.console_data.scroll_page_up();
     }
 
     fn scroll_page_down(&mut self) {
-        self.output_text_area.scroll(Scrolling::PageDown)
+        self.console_data.scroll_page_down();
     }
 
     fn render_input(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
@@ -312,104 +293,178 @@ impl CliTab {
 
     fn render_output(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
         if let Ok(v) = self.data_receiver.try_recv() {
-            self.output_text_area.insert_str(format_value(v.clone()));
-            self.output_text_area.insert_newline();
+            let lines = value_to_lines(&v, 0);
+            self.console_data.extend(lines);
+            if let Some(lock_at) = self.lock_at {
+                let elapsed = lock_at.elapsed();
+                let duration = chronoutil::RelativeDuration::from(elapsed).format_to_iso8601();
+                self.console_data.push("---");
+                self.console_data.push(format!("cost: {}", duration));
+            }
             self.lock_input = false;
-            self.console_data.push_data(Data {
-                index: "".to_string(),
-                value: format_value(v),
-                origin_value: "".to_string(),
-            })
+            self.console_data.push("");
+            self.console_data.build_paragraph();
         }
-        self.console_data.render_frame(frame, rect)?;
-        // frame.render_widget(&self.output_text_area, rect);
+        self.console_data.update(&rect);
+        frame.render_widget(&self.console_data.paragraph, rect);
         Ok(())
     }
 
     fn get_command(&self) -> Option<String> {
         self.input_text_area.lines().get(0).cloned()
     }
-
 }
 
-fn format_value(value: Value) -> String {
+fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
+    let prepend = " ".repeat(pad as usize);
+    let format = |str: &str| {
+        (OutputKind::STD, format!("{prepend}{str}"))
+    };
+    let format_err = |str: &str| {
+        (OutputKind::ERR, format!("{prepend}{str}"))
+    };
     match value {
         Value::Nil => {
-            String::from("(empty)")
+            vec![format("(empty)".as_ref())]
         }
         Value::Int(int) => {
-            int.to_string()
+            vec![format(int.to_string().as_ref())]
         }
         Value::BulkString(bulk_string) => {
-            bytes_to_string(bulk_string).unwrap_or_else(|e| e.to_string())
+            let bulk_string = bytes_to_string(bulk_string.clone()).unwrap_or_else(|e| e.to_string());
+            let bulk_string = escape_string(bulk_string);
+            let bulk_string = format!("\"{}\"", bulk_string);
+            let lines = bulk_string.lines();
+            lines.map(|line| format(line)).collect_vec()
         }
         Value::Array(array) => {
-            let mut string = String::new();
+            let mut lines = vec![];
             let mut i = 1;
             for value in array {
-                let v = format_value(value);
-                string.push_str(&format!("{})", i));
-                string.push_str(&v);
-                string.push('\n');
+                let sub_lines = value_to_lines(value, pad + 2);
+                if sub_lines.len() == 1 {
+                    if let Some((kind, first_line)) = sub_lines.get(0) {
+                        if first_line.len() > 2 {
+                            let x = &first_line[2..];
+                            match kind {
+                                OutputKind::STD => lines.push(format(&format!("{i}) {x}"))),
+                                OutputKind::ERR => lines.push(format_err(&format!("{i}) {x}"))),
+                            }
+                        } else {
+                            lines.push(format(&format!("{i}) ")));
+                        }
+                    }
+                } else {
+                    lines.push(format(&format!("{i}) ")));
+                    lines.extend(sub_lines);
+                }
                 i = i + 1;
             }
-            string
+            lines
         }
         Value::SimpleString(string) => {
-            string
+            let is_error = string.starts_with("#err#");
+            let string = escape_string(string);
+            let lines = string.lines();
+            lines.map(|line| {
+                if is_error {
+                    format_err(line[5..].as_ref())
+                } else {
+                    format(line.as_ref())
+                }
+            }).collect_vec()
         }
         Value::Okay => {
-            String::from("OK")
+            vec![format("Okay")]
         }
         Value::Map(map) => {
-            let mut string = String::new();
+            let mut lines = vec![];
             let mut i = 1;
             for (key, value) in map {
-                let k = format_value(key);
-                let v = format_value(value);
-                string.push_str(&format!("{})", i));
-                string.push_str(&k);
-                string.push('\n');
+                let k_lines = value_to_lines(key, pad + 2);
+                let v_lines = value_to_lines(value, pad + 2);
+                if k_lines.len() == 1 {
+                    if let Some((kind, first_line)) = k_lines.get(0) {
+                        let x = &first_line[2..];
+                        match kind {
+                            OutputKind::STD => lines.push(format(&format!("{i}) {x}"))),
+                            OutputKind::ERR => lines.push(format_err(&format!("{i}) {x}"))),
+                        }
+                    }
+                } else {
+                    lines.push(format(&format!("{i}) ")));
+                    lines.extend(k_lines);
+                }
                 i = i + 1;
-                string.push_str(&format!("{})", i));
-                string.push_str(&v);
-                string.push('\n');
+                if v_lines.len() == 1 {
+                    if let Some((kind, first_line)) = v_lines.get(0) {
+                        let x = &first_line[2..];
+                        match kind {
+                            OutputKind::STD => lines.push(format(&format!("{i}) {x}"))),
+                            OutputKind::ERR => lines.push(format_err(&format!("{i}) {x}"))),
+                        }
+                    }
+                } else {
+                    lines.push(format(&format!("{i}) ")));
+                    lines.extend(v_lines);
+                }
                 i = i + 1;
             }
-            string
+            lines
         }
-        Value::Attribute { attributes, data,.. } => {
-            String::from("Attribute, not supported yet")
+        Value::Attribute { attributes, data, .. } => {
+            vec![format_err("Attribute, not supported yet")]
         }
         Value::Set(set) => {
-            let mut string = String::new();
+            let mut lines = vec![];
             let mut i = 1;
             for value in set {
-                let v = format_value(value);
-                string.push_str(&format!("{})", i));
-                string.push_str(&format!("{}", v));
-                string.push('\n');
+                let sub_lines = value_to_lines(value, pad + 2);
+                if sub_lines.len() == 1 {
+                    if let Some((kind, first_line)) = sub_lines.get(0) {
+                        let x = &first_line[2..];
+                        match kind {
+                            OutputKind::STD => lines.push(format(&format!("{i}) {x}"))),
+                            OutputKind::ERR => lines.push(format_err(&format!("{i}) {x}"))),
+                        }
+                    }
+                } else {
+                    lines.push(format(&format!("{i}) ")));
+                    lines.extend(sub_lines);
+                }
                 i = i + 1;
             }
-            string
+            lines
         }
         Value::Double(double) => {
-            double.to_string()
+            vec![format(&double.to_string())]
         }
         Value::Boolean(boolean) => {
-            boolean.to_string()
+            vec![format(&boolean.to_string())]
         }
-        Value::VerbatimString { format, text,.. } => {
-            text
+        Value::VerbatimString { format: _format, text, .. } => {
+            match _format {
+                VerbatimFormat::Unknown(s) => {
+                    vec![format(format!("\"{}\"", escape_string(s)).as_ref())]
+                }
+                _ => {
+                    text.lines().map(|line| format(line.as_ref())).collect_vec()
+                }
+            }
         }
         Value::BigNumber(big_number) => {
-            big_number.to_string()
+            vec![format(&big_number.to_string())]
         }
-        Value::Push { .. } => {
-            String::new()
+        Value::Push { kind, data, .. } => {
+            let mut lines = vec![];
+            for value in data {
+                let sub_lines = value_to_lines(value, pad + 2);
+                lines.extend(sub_lines);
+            }
+            lines
         }
         Value::ServerError(e) => {
-            format!("{:?}", e)
+            vec![format_err(&format!("{:?}", e))]
         }
     }
 }

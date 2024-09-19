@@ -10,7 +10,11 @@ build = "build.rs"
 anyhow = "1"
 log = "0.4"
 
-ratatui = { version = "0.28.1" }
+ratatui = { version = "0.28.1", features = [
+    "unstable-rendered-line-info",
+    "macros",
+] }
+ratatui-macros = "0.5.0"
 tui-textarea = { version = "0.6.1", features = ["crossterm"] }
 throbber-widgets-tui = "0.7"
 tui-tree-widget = "0.22.0"

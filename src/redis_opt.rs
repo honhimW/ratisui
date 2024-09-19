@@ -17,7 +17,16 @@ macro_rules! str_cmd {
         let mut command = Cmd::new();
         let parts: Vec<&str> = $cmd.split_whitespace().collect();
         for arg in &parts[0..] {
-            command.arg(arg);
+            let mut _arg = arg.to_string();
+            let bytes = arg.as_bytes();
+            if bytes.len() >= 2 {
+                let first = bytes[0];
+                let last = bytes[bytes.len() - 1];
+                if (first == b'\'' && last == b'\'') || (first == b'"' && last == b'"') {
+                    _arg = _arg[1.._arg.len() - 1].to_string();
+                }
+            }
+            command.arg(_arg);
         }
         command
     }};
