@@ -9,22 +9,22 @@ features = ["managed"]
 default-features = false
 
 [dependencies.redis]
-version = "0.26"
+workspace = true
 features = ["aio"]
 default-features = false
 
 [dependencies.log]
-version = "0.4"
+workspace = true
 optional = true
 
 [dependencies.serde]
-version = "1.0"
+workspace = true
 features = ["derive"]
 optional = true
 package = "serde"
 
 [dependencies.tokio]
-version = "1.0"
+workspace = true
 optional = true
 default-features = false
 
@@ -39,12 +39,12 @@ version = "0.15.0"
 version = "0.3.15"
 
 [dev-dependencies.redis]
-version = "0.26"
+workspace = true
 features = ["tokio-comp"]
 default-features = false
 
 [dev-dependencies.tokio]
-version = "1.0"
+workspace = true
 features = [
     "macros",
     "rt-multi-thread",
