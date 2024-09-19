@@ -27,7 +27,7 @@ use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 use crate::components::create_key_editor::{Form, KeyType};
-use crate::utils::clean_text_area;
+use crate::utils::{bytes_to_string, clean_text_area};
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
@@ -281,10 +281,6 @@ impl ExplorerTab {
             let vertical = Layout::vertical([Min(0), Length(3), Length(1)]).split(area);
             let horizontal = Layout::horizontal([Length(1), Min(0), Length(1)]).split(vertical[1]);
             self.render_rename_key_input(frame, horizontal[1])?;
-        }
-
-        if self.show_create {
-            self.render_create_key_form(frame, frame.area())?;
         }
 
         Ok(())
@@ -989,20 +985,6 @@ impl ExplorerTab {
     }
 }
 
-fn bytes_to_string(bytes: Vec<u8>) -> Result<String> {
-    if let Ok(string) = String::from_utf8(bytes.clone()) {
-        Ok(string)
-    } else {
-        Ok(bytes.iter().map(|&b| {
-            if b.is_ascii() {
-                (b as char).to_string()
-            } else {
-                format!("\\x{:02x}", b)
-            }
-        }).collect::<String>())
-    }
-}
-
 impl TabImplementation for ExplorerTab {
     fn palette(&self) -> tailwind::Palette {
         tailwind::ROSE
@@ -1033,6 +1015,9 @@ impl Renderable for ExplorerTab {
 
         if self.show_delete_popup {
             self.render_delete_popup(frame, rect);
+        }
+        if self.show_create {
+            self.render_create_key_form(frame, frame.area())?;
         }
 
         Ok(())

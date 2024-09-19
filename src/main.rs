@@ -55,6 +55,8 @@ async fn main() -> Result<()> {
                 }
                 Err(_) => {warn!("Failed to connect to default database.");}
             };
+        } else {
+            Err(anyhow!("Unknown database '{db}'."))?;
         }
     }
 

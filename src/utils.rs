@@ -33,3 +33,36 @@ pub fn clean_text_area(text_area: &mut TextArea) {
         ..tui_textarea::Input::default()
     });
 }
+
+pub fn is_clean_text_area(text_area: &TextArea) -> bool {
+    let lines = text_area.lines();
+    if lines.len() == 1 {
+        if let Some(first_line) = lines.get(0) {
+            return first_line.is_empty();
+        }
+    }
+    false
+}
+
+pub fn bytes_to_string(bytes: Vec<u8>) -> anyhow::Result<String> {
+    if let Ok(string) = String::from_utf8(bytes.clone()) {
+        Ok(string)
+    } else {
+        Ok(bytes.iter().map(|&b| {
+            if b.is_ascii() {
+                (b as char).to_string()
+            } else {
+                format!("\\x{:02x}", b)
+            }
+        }).collect::<String>())
+    }
+}
+
+pub fn escape_string(s: impl Into<String>) -> String {
+    let s = s.into();
+    s
+        .replace("\\", "\\\\")
+        .replace("\t", "\\t")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+}
