@@ -173,6 +173,7 @@ impl managed::Manager for Manager {
     }
 }
 
+/// Pretty format human readable redis command.
 pub fn format_cmd(cmd: &Cmd) -> String {
     let mut s = String::new();
     for x in cmd.args_iter() {
