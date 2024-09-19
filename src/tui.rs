@@ -3,18 +3,18 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::Terminal;
-use std::io::{stderr, Stderr};
+use std::io::{stdout, Stdout};
 
-pub type TerminalBackEnd = Terminal<CrosstermBackend<Stderr>>;
+pub type TerminalBackEnd = Terminal<CrosstermBackend<Stdout>>;
 
 pub fn init() -> Result<TerminalBackEnd> {
     enable_raw_mode()?;
     execute!(
-        stderr(),
+        stdout(),
         EnterAlternateScreen,
         // EnableMouseCapture,
     )?;
-    let backend = CrosstermBackend::new(stderr());
+    let backend = CrosstermBackend::new(stdout());
     let terminal = Terminal::new(backend)?;
     set_panic_hook();
     Ok(terminal)
@@ -22,7 +22,7 @@ pub fn init() -> Result<TerminalBackEnd> {
 
 pub fn restore() -> Result<()> {
     execute!(
-        stderr(),
+        stdout(),
         LeaveAlternateScreen,
         // DisableMouseCapture,
     )?;
