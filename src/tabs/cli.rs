@@ -332,8 +332,8 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
         }
         Value::BulkString(bulk_string) => {
             let bulk_string = bytes_to_string(bulk_string.clone()).unwrap_or_else(|e| e.to_string());
-            let bulk_string = escape_string(bulk_string);
-            let bulk_string = format!("\"{}\"", bulk_string);
+            let bulk_string = bulk_string.replace("\t", "\\t");
+            // let bulk_string = format!("\"{}\"", bulk_string);
             let lines = bulk_string.lines();
             lines.map(|line| format(line)).collect_vec()
         }

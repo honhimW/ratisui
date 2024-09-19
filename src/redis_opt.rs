@@ -2,7 +2,7 @@ use crate::configuration::{to_protocol_version, Database};
 use anyhow::{anyhow, Context, Error, Result};
 use deadpool_redis::redis::cmd;
 use deadpool_redis::{Pool, Runtime};
-use log::info;
+use log::{info, warn};
 use redis::cluster::ClusterClient;
 use redis::ConnectionAddr::{Tcp, TcpTls};
 use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value};
@@ -373,10 +373,12 @@ impl RedisOperations {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
             let v: Value = cmd.query_async(&mut connection).await?;
+            warn!("{:?}", v);
             Ok(v)
         } else {
             let mut connection = self.pool.get().await?;
             let v: Value = cmd.query_async(&mut connection).await?;
+            warn!("{:?}", v);
             Ok(v)
         }
     }

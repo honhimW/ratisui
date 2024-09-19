@@ -1,5 +1,4 @@
 use crate::components::console_output::OutputKind::{ERR, STD};
-use log::{info, warn};
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::Text;
 use ratatui::style::{Color, Style, Stylize};
@@ -39,16 +38,13 @@ impl ConsoleData<'_> {
     }
 
     pub fn build_paragraph(&mut self) {
-        info!("y: {}, max: {}, height: {}", self.position.y, self.max_offset(), self.height);
         self.is_bottom = self.position.y >= self.max_offset().saturating_sub(self.height);
         let mut text = Text::default();
         for (kind, l) in self.lines.iter() {
-            warn!("{}", kind);
             let new_line = match kind {
                 STD => line![l.clone()],
                 ERR => line![l.clone().red()],
             };
-            warn!("{:?}", &new_line);
             text.push_line(new_line);
         }
         let mut paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
