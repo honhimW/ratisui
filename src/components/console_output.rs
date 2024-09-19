@@ -40,7 +40,7 @@ impl ConsoleData<'_> {
 
     pub fn build_paragraph(&mut self) {
         info!("y: {}, max: {}, height: {}", self.position.y, self.max_offset(), self.height);
-        self.is_bottom = self.position.y >= self.max_offset().saturating_sub(self.height);
+        self.is_bottom = self.position.y >= self.max_offset();
         let mut text = Text::default();
         for (kind, l) in self.lines.iter() {
             warn!("{}", kind);
@@ -97,6 +97,7 @@ impl ConsoleData<'_> {
             position.y,
             position.x,
         ));
+        self.is_bottom = self.position.y >= self.max_offset();
     }
 
     pub fn scroll_end(&mut self) {
@@ -108,6 +109,7 @@ impl ConsoleData<'_> {
             position.y,
             position.x,
         ));
+        self.is_bottom = self.position.y >= self.max_offset();
     }
 
     pub fn scroll_up(&mut self) {
@@ -119,6 +121,7 @@ impl ConsoleData<'_> {
             position.y,
             position.x,
         ));
+        self.is_bottom = self.position.y >= self.max_offset();
     }
 
     pub fn scroll_down(&mut self) {
@@ -130,6 +133,7 @@ impl ConsoleData<'_> {
             position.y,
             position.x,
         ));
+        self.is_bottom = self.position.y >= self.max_offset();
     }
 
     pub fn scroll_page_up(&mut self) {
@@ -142,6 +146,7 @@ impl ConsoleData<'_> {
             position.y,
             position.x,
         ));
+        self.is_bottom = self.position.y >= self.max_offset();
     }
 
     pub fn scroll_page_down(&mut self) {
@@ -154,5 +159,6 @@ impl ConsoleData<'_> {
             position.y,
             position.x,
         ));
+        self.is_bottom = self.position.y >= self.max_offset();
     }
 }
