@@ -30,6 +30,7 @@ fn main() -> Result<()> {
     }
     let table = Table::new(rows, [Min(1), Length(8)]).block(Block::bordered().border_type(BorderType::Rounded));
     loop {
+        let input = text_area.lines().get(0).unwrap();
         terminal
             .draw(|frame: &mut Frame| {
                 draw_picture(frame, &text_area, &table);
@@ -87,4 +88,13 @@ fn draw_picture(frame: &mut Frame, text_area: &TextArea, table: &Table) {
 
     frame.render_widget(table, menu_area);
     frame.render_widget(text_area, area);
+}
+
+enum CompletionItemKind {
+    String,
+    List,
+    Set,
+    SortedSet,
+    Hash,
+    Json,
 }

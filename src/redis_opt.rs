@@ -9,6 +9,8 @@ use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInf
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::RwLock;
+use crossbeam_channel::Sender;
+use futures::StreamExt;
 use once_cell::sync::Lazy;
 
 #[macro_export]
@@ -382,6 +384,33 @@ impl RedisOperations {
             Ok(v)
         }
     }
+
+    // pub async fn monitor(&self, sender: Sender<Value>) {
+    //     if self.is_cluster() {
+    //         let mut monitors = vec![];
+    //         for (_, holder) in self.nodes.iter() {
+    //             let mut monitor = holder.node_client.get_async_monitor().await?;
+    //             let _ = monitor.monitor().await?;
+    //             monitors.push(monitor);
+    //         }
+    //         loop {
+    //             for monitor in monitors.iter_mut() {
+    //                 let mut stream = monitor.on_message::<Value>();
+    //             }
+    //         }
+    //         let pool = &self.cluster_pool.clone().context("should be cluster")?;
+    //         let mut connection = pool.get().await?;
+    //
+    //         let v: Value = cmd.query_async(&mut connection).await?;
+    //         warn!("{:?}", v);
+    //         Ok(v)
+    //     } else {
+    //         let mut connection = self.pool.get().await?;
+    //         let v: Value = cmd.query_async(&mut connection).await?;
+    //         warn!("{:?}", v);
+    //         Ok(v)
+    //     }
+    // }
 
     pub async fn scan(&self, pattern: impl Into<String>, count: usize) -> Result<Vec<String>> {
         let pattern = &pattern.into();
