@@ -1,8 +1,10 @@
 use crate::app::{Listenable, Renderable, TabImplementation};
+use crate::components::console_output::{ConsoleData, OutputKind};
 use crate::redis_opt::spawn_redis_opt;
 use crate::utils::{bytes_to_string, escape_string, is_clean_text_area};
 use anyhow::{Error, Result};
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+use itertools::Itertools;
 use log::{info, warn};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Max, Min};
@@ -13,16 +15,14 @@ use ratatui::style::Style;
 use ratatui::text::{Span, Text};
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 use ratatui::Frame;
+use ratatui_macros::line;
+use redis::Value::ServerError;
 use redis::{Value, VerbatimFormat};
 use std::cmp;
 use std::fmt::format;
 use std::ops::Neg;
 use std::time::{Duration, Instant};
-use itertools::Itertools;
 use tui_textarea::{CursorMove, Scrolling, TextArea};
-use crate::components::console_output::{ConsoleData, OutputKind};
-use ratatui_macros::{line};
-use redis::Value::ServerError;
 
 pub struct CliTab {
     mode: Mode,
@@ -215,10 +215,10 @@ impl CliTab {
     fn commit_command(&mut self, command: &String) {
         self.lock_input = true;
         self.lock_at = Some(Instant::now());
-        self.console_data.push(format!(">_ {}", command));
+        self.console_data.push(OutputKind::CMD, format!(">_ {}", command));
         if command.is_empty() {
             self.lock_input = false;
-            self.console_data.push("");
+            self.console_data.push_std("");
             self.console_data.build_paragraph();
             return;
         }
@@ -246,7 +246,12 @@ impl CliTab {
         let result = spawn_redis_opt(move |operations| async move {
             match operations.str_cmd(cmd).await {
                 Ok(value) => sender.send(value)?,
-                Err(e) => sender.send(Value::SimpleString(format!("#err# {}", e.to_string())))?,
+                Err(e) => {
+                    sender.send(Value::VerbatimString {
+                        format: VerbatimFormat::Unknown(String::from("ERROR")),
+                        text: format!("{:?}", e),
+                    })?;
+                },
             }
             Ok(())
         });
@@ -255,7 +260,7 @@ impl CliTab {
             let string = format!("{}", e);
             self.console_data.push_err(string);
             self.lock_input = false;
-            self.console_data.push("");
+            self.console_data.push_std("");
             self.console_data.build_paragraph();
         }
     }
@@ -298,11 +303,11 @@ impl CliTab {
             if let Some(lock_at) = self.lock_at {
                 let elapsed = lock_at.elapsed();
                 let duration = chronoutil::RelativeDuration::from(elapsed).format_to_iso8601();
-                self.console_data.push("---");
-                self.console_data.push(format!("cost: {}", duration));
+                self.console_data.push(OutputKind::Else(Style::default().dim()), "---");
+                self.console_data.push(OutputKind::Else(Style::default().dim()), format!("cost: {}", duration));
             }
             self.lock_input = false;
-            self.console_data.push("");
+            self.console_data.push_std("");
             self.console_data.build_paragraph();
         }
         self.console_data.update(&rect);
@@ -349,6 +354,7 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
                             match kind {
                                 OutputKind::STD => lines.push(format(&format!("{i}) {x}"))),
                                 OutputKind::ERR => lines.push(format_err(&format!("{i}) {x}"))),
+                                _ => {}
                             }
                         } else {
                             lines.push(format(&format!("{i}) ")));
@@ -363,16 +369,9 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
             lines
         }
         Value::SimpleString(string) => {
-            let is_error = string.starts_with("#err#");
             let string = escape_string(string);
             let lines = string.lines();
-            lines.map(|line| {
-                if is_error {
-                    format_err(line[5..].as_ref())
-                } else {
-                    format(line.as_ref())
-                }
-            }).collect_vec()
+            lines.map(|line| format(line.as_ref())).collect_vec()
         }
         Value::Okay => {
             vec![format("Okay")]
@@ -389,6 +388,7 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
                         match kind {
                             OutputKind::STD => lines.push(format(&format!("{i}) {x}"))),
                             OutputKind::ERR => lines.push(format_err(&format!("{i}) {x}"))),
+                            _ => {}
                         }
                     }
                 } else {
@@ -402,6 +402,7 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
                         match kind {
                             OutputKind::STD => lines.push(format(&format!("{i}) {x}"))),
                             OutputKind::ERR => lines.push(format_err(&format!("{i}) {x}"))),
+                            _ => {}
                         }
                     }
                 } else {
@@ -426,6 +427,7 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
                         match kind {
                             OutputKind::STD => lines.push(format(&format!("{i}) {x}"))),
                             OutputKind::ERR => lines.push(format_err(&format!("{i}) {x}"))),
+                            _ => {}
                         }
                     }
                 } else {
@@ -445,7 +447,11 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
         Value::VerbatimString { format: _format, text, .. } => {
             match _format {
                 VerbatimFormat::Unknown(s) => {
-                    vec![format(format!("\"{}\"", escape_string(s)).as_ref())]
+                    if s == "ERROR" {
+                        text.lines().map(|line| format_err(line.as_ref())).collect_vec()
+                    } else {
+                        vec![format(format!("\"{}\"", escape_string(s)).as_ref())]
+                    }
                 }
                 _ => {
                     text.lines().map(|line| format(line.as_ref())).collect_vec()

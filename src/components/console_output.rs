@@ -5,8 +5,10 @@ use ratatui::style::{Color, Style, Stylize};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui_macros::{line, span};
 use std::cmp;
+use ratatui::style::palette::tailwind;
 use ratatui::text::Line;
 use strum::Display;
+use OutputKind::{Else, CMD};
 
 pub struct ConsoleData<'a> {
     pub lines: Vec<(OutputKind, String)>,
@@ -20,8 +22,10 @@ pub struct ConsoleData<'a> {
 
 #[derive(Debug, Display)]
 pub enum OutputKind {
+    CMD,
     STD,
     ERR,
+    Else(Style)
 }
 
 impl ConsoleData<'_> {
@@ -42,8 +46,10 @@ impl ConsoleData<'_> {
         let mut text = Text::default();
         for (kind, l) in self.lines.iter() {
             let new_line = match kind {
-                STD => line![l.clone()],
-                ERR => line![l.clone().red()],
+                CMD => line![span!(Style::default().fg(tailwind::EMERALD.c700); l.clone())],
+                STD => line![span!(l.clone())],
+                ERR => line![span!(Style::default().fg(tailwind::ROSE.c700); l.clone())],
+                Else(style) => line![span!(*style; l.clone())],
             };
             text.push_line(new_line);
         }
@@ -61,22 +67,22 @@ impl ConsoleData<'_> {
         }
     }
 
-    pub fn push(&mut self, line: impl Into<String>) {
-        self.lines.push((STD, line.into()));
+    pub fn push(&mut self, kind: OutputKind, line: impl Into<String>) {
+        self.lines.push((kind, line.into()));
         self.total_lines = self.lines.len();
     }
 
+    pub fn push_std(&mut self, line: impl Into<String>) {
+        self.push(STD, line.into());
+    }
+
     pub fn push_err(&mut self, line: impl Into<String>) {
-        self.lines.push((ERR, line.into()));
-        self.total_lines = self.lines.len();
+        self.push(ERR, line.into());
     }
 
     pub fn extend(&mut self, lines: Vec<(OutputKind, String)>) {
         for (kind, line) in lines {
-            match kind {
-                STD => self.push(line),
-                ERR => self.push_err(line),
-            }
+            self.push(kind, line);
         }
     }
 
