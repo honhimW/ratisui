@@ -20,8 +20,8 @@ async fn main() -> Result<()> {
     let _ = monitor.monitor().await?;
     println!("monitoring");
     let mut stream = monitor.on_message::<Value>();
-    let waker = futures::task::noop_waker();
-    let mut context = Context::from_waker(&waker);
+    let waker = futures::task::noop_waker_ref();
+    let mut context = Context::from_waker(waker);
     loop {
         match stream.poll_next_unpin(&mut context) {
             Poll::Ready(Some(v)) => {

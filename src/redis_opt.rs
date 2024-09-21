@@ -1,17 +1,22 @@
 use crate::configuration::{to_protocol_version, Database};
 use anyhow::{anyhow, Context, Error, Result};
+use crossbeam_channel::{Receiver, Sender};
 use deadpool_redis::redis::cmd;
 use deadpool_redis::{Pool, Runtime};
+use futures::StreamExt;
 use log::{info, warn};
+use once_cell::sync::Lazy;
+use redis::aio::Monitor;
 use redis::cluster::ClusterClient;
 use redis::ConnectionAddr::{Tcp, TcpTls};
-use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value};
+use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value, VerbatimFormat};
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::RwLock;
-use crossbeam_channel::Sender;
-use futures::StreamExt;
-use once_cell::sync::Lazy;
+use std::task::Poll;
+use std::time::{Duration, Instant};
+use tokio::sync::watch::error::RecvError;
+use tokio::time::interval;
 
 #[macro_export]
 macro_rules! str_cmd {
@@ -67,7 +72,7 @@ where
 /// let value = async_redis_opt(|operations| async move {
 ///     Ok(operations.get::<_, String>("key_to_get").await?)
 /// }).await?;
-/// 
+///
 /// let value: String = async_redis_opt(|operations| async move {
 ///     Ok(operations.get("key_to_get").await?)
 /// }).await?;
@@ -375,42 +380,95 @@ impl RedisOperations {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
             let v: Value = cmd.query_async(&mut connection).await?;
-            warn!("{:?}", v);
             Ok(v)
         } else {
             let mut connection = self.pool.get().await?;
             let v: Value = cmd.query_async(&mut connection).await?;
-            warn!("{:?}", v);
             Ok(v)
         }
     }
 
-    // pub async fn monitor(&self, sender: Sender<Value>) {
-    //     if self.is_cluster() {
-    //         let mut monitors = vec![];
-    //         for (_, holder) in self.nodes.iter() {
-    //             let mut monitor = holder.node_client.get_async_monitor().await?;
-    //             let _ = monitor.monitor().await?;
-    //             monitors.push(monitor);
-    //         }
-    //         loop {
-    //             for monitor in monitors.iter_mut() {
-    //                 let mut stream = monitor.on_message::<Value>();
-    //             }
-    //         }
-    //         let pool = &self.cluster_pool.clone().context("should be cluster")?;
-    //         let mut connection = pool.get().await?;
-    //
-    //         let v: Value = cmd.query_async(&mut connection).await?;
-    //         warn!("{:?}", v);
-    //         Ok(v)
-    //     } else {
-    //         let mut connection = self.pool.get().await?;
-    //         let v: Value = cmd.query_async(&mut connection).await?;
-    //         warn!("{:?}", v);
-    //         Ok(v)
-    //     }
-    // }
+    pub async fn monitor(&self, sender: Sender<Value>) -> Result<impl Disposable> {
+        struct DisposableMonitor(tokio::sync::watch::Sender<bool>);
+
+        impl Disposable for DisposableMonitor {
+            fn disposable(&mut self) -> Result<()> {
+                self.0.send(true)?;
+                Ok(())
+            }
+        }
+        tokio::sync::mpsc::channel::<bool>(2);
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let disposable_monitor = DisposableMonitor(tx);
+        let mut streams = vec![];
+        if self.is_cluster() {
+            for (_, holder) in self.nodes.iter() {
+                let mut monitor = holder.node_client.get_async_monitor().await?;
+                let _ = monitor.monitor().await?;
+                let stream = monitor.into_on_message::<Value>();
+                streams.push(stream);
+            }
+        } else {
+            let mut monitor = self.client.get_async_monitor().await?;
+            let _ = monitor.monitor().await?;
+            let stream = monitor.into_on_message::<Value>();
+            streams.push(stream);
+        }
+        tokio::spawn(async move {
+            let mut gap = Duration::from_secs(60);
+            let mut anchor = Instant::now();
+            let mut loop_interval = interval(Duration::from_millis(50));
+            loop {
+                loop_interval.tick().await;
+                match rx.has_changed() {
+                    Ok(has_changed) => {
+                        if has_changed {
+                            let stop = *rx.borrow();
+                            if stop {
+                                break;
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // means tx is release
+                        break;
+                    }
+                }
+                let waker = futures::task::noop_waker_ref();
+                let mut context = std::task::Context::from_waker(waker);
+                for stream in streams.iter_mut() {
+                    loop {
+                        let poll = stream.poll_next_unpin(&mut context);
+                        match poll {
+                            Poll::Ready(Some(v)) => {
+                                sender.send(v)?;
+                                anchor = Instant::now();
+                                gap = Duration::from_secs(60);
+                            }
+                            Poll::Ready(None) => {
+                                break;
+                            }
+                            Poll::Pending => {
+                                let duration = anchor.elapsed();
+                                if duration > gap {
+                                    sender.send(Value::SimpleString(format!("Pending {}s ...", duration.as_secs())))?;
+                                    gap = gap + Duration::from_secs(60);
+                                }
+                                break;
+                            }
+                        };
+                    }
+                }
+            }
+            drop(streams);
+            sender.send(Value::VerbatimString {
+                format: VerbatimFormat::Unknown("PROMPT".to_string()),
+                text: "Monitor is gracefully shut down.".to_string(),
+            })?;
+            Ok::<(), Error>(())
+        });
+        Ok(disposable_monitor)
+    }
 
     pub async fn scan(&self, pattern: impl Into<String>, count: usize) -> Result<Vec<String>> {
         let pattern = &pattern.into();
@@ -817,7 +875,10 @@ impl RedisOperations {
             Ok(())
         }
     }
+}
 
+pub trait Disposable: Send {
+    fn disposable(&mut self) -> Result<()>;
 }
 
 #[cfg(test)]
@@ -825,7 +886,7 @@ mod tests {
     use crate::configuration::Protocol;
     use crate::redis_opt::{async_redis_opt, build_client, switch_client, Database, RedisOperations};
     use anyhow::Result;
-    use redis::{Commands, ToRedisArgs};
+    use redis::Commands;
 
     #[test]
     fn test_get_server_info() -> Result<()> {

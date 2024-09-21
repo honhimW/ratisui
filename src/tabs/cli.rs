@@ -1,8 +1,8 @@
 use crate::app::{Listenable, Renderable, TabImplementation};
 use crate::components::console_output::{ConsoleData, OutputKind};
-use crate::redis_opt::spawn_redis_opt;
+use crate::redis_opt::{async_redis_opt, spawn_redis_opt, Disposable};
 use crate::utils::{bytes_to_string, escape_string, is_clean_text_area};
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result};
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use itertools::Itertools;
 use log::{info, warn};
@@ -21,7 +21,9 @@ use redis::{Value, VerbatimFormat};
 use std::cmp;
 use std::fmt::format;
 use std::ops::Neg;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
+use strum::Display;
 use tui_textarea::{CursorMove, Scrolling, TextArea};
 
 pub struct CliTab {
@@ -34,9 +36,10 @@ pub struct CliTab {
     console_data: ConsoleData<'static>,
     data_sender: Sender<Value>,
     data_receiver: Receiver<Value>,
+    disposable_monitor: Arc<Mutex<Option<Box<dyn Disposable>>>>,
 }
 
-#[derive(Default, PartialEq, Eq, Clone)]
+#[derive(Default, PartialEq, Eq, Clone, Display)]
 pub enum Mode {
     #[default]
     Insert,
@@ -62,34 +65,54 @@ impl Renderable for CliTab {
         Self: Sized,
     {
         let total_lines = self.console_data.paragraph.line_count(rect.width);
-        let session_height = cmp::min(total_lines.saturating_add(1) as u16, rect.height);
-        let vertical = Layout::vertical([Length(session_height), Fill(0)]).split(rect);
-        let vertical = Layout::vertical([Length(session_height - 1), Length(1)]).split(vertical[0]);
-        self.render_output(frame, vertical[0])?;
-        self.render_input(frame, vertical[1])?;
+        let input_height = 1u16;
+        let session_height = cmp::min(input_height.saturating_add(total_lines as u16), rect.height);
+        let vertical = Layout::vertical([Length(session_height), Fill(0), Length(1)]).split(rect);
+        let session_vertical = Layout::vertical([Length(session_height - input_height), Length(input_height)]).split(vertical[0]);
+        self.render_output(frame, session_vertical[0])?;
+        self.render_input(frame, session_vertical[1])?;
+        frame.render_widget(Span::raw(self.mode.to_string()), vertical[2]);
         Ok(())
     }
 }
 
 impl Listenable for CliTab {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        if self.is_monitoring() {
+            if key_event.kind == KeyEventKind::Press {
+                match key_event {
+                    KeyEvent { code: KeyCode::Esc, .. } => {
+                        self.stop_monitor();
+                    }
+                    KeyEvent { code: KeyCode::Home, .. } => {
+                        self.scroll_start();
+                    }
+                    KeyEvent { code: KeyCode::End, .. } => {
+                        self.scroll_end();
+                    }
+                    KeyEvent { code: KeyCode::Up, .. } => {
+                        self.scroll_up();
+                    }
+                    KeyEvent { code: KeyCode::Down, .. } => {
+                        self.scroll_down();
+                    }
+                    KeyEvent { code: KeyCode::PageUp, .. } => {
+                        self.scroll_page_up();
+                    }
+                    KeyEvent { code: KeyCode::PageDown, .. } => {
+                        self.scroll_page_down();
+                    }
+                    _ => {}
+                }
+            }
+            return Ok(true);
+        }
         match self.mode {
             Mode::Normal => {
                 if key_event.kind == KeyEventKind::Press {
                     match key_event {
                         KeyEvent { code: KeyCode::Char('i'), modifiers: KeyModifiers::NONE, .. } => {
                             self.mode = Mode::Insert;
-                        }
-                        KeyEvent { code: KeyCode::Enter, .. } => {
-                            let command = self.get_command();
-                            if let Some(command) = command {
-                                spawn_redis_opt(move |operations| async move {
-                                    let x = operations.str_cmd(command).await?;
-
-                                    info!("{:?}", x);
-                                    Ok(())
-                                })?;
-                            }
                         }
                         KeyEvent { code: KeyCode::Home, .. } => {
                             self.scroll_start();
@@ -194,7 +217,7 @@ impl CliTab {
         input_text_area.set_cursor_style(Style::default().rapid_blink().reversed());
         input_text_area.set_cursor_line_style(Style::default());
 
-        let (tx, rx) = bounded(1);
+        let (tx, rx) = unbounded();
         Self {
             mode: Mode::default(),
             lock_input: false,
@@ -205,6 +228,7 @@ impl CliTab {
             console_data: ConsoleData::default(),
             data_sender: tx,
             data_receiver: rx,
+            disposable_monitor: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -212,10 +236,30 @@ impl CliTab {
         self.console_data = ConsoleData::default();
     }
 
+    fn stop_monitor(&mut self) {
+        let arc = Arc::clone(&self.disposable_monitor);
+        let result = arc.lock();
+        if let Ok(mut monitor) = result {
+            if let Some(monitor) = monitor.as_mut() {
+                let _ = monitor.disposable();
+                // if let Some(lock_at) = self.lock_at {
+                //     let elapsed = lock_at.elapsed();
+                //     let duration = chronoutil::RelativeDuration::from(elapsed).format_to_iso8601();
+                //     self.console_data.push(OutputKind::Else(Style::default().dim()), "---");
+                //     self.console_data.push(OutputKind::Else(Style::default().dim()), format!("The monitor has been running for: {}", duration));
+                //     self.console_data.build_paragraph();
+                // }
+                self.scroll_end();
+            }
+            *monitor = None;
+        }
+    }
+
     fn commit_command(&mut self, command: &String) {
         self.lock_input = true;
         self.lock_at = Some(Instant::now());
         self.console_data.push(OutputKind::CMD, format!(">_ {}", command));
+        self.console_data.build_paragraph();
         if command.is_empty() {
             self.lock_input = false;
             self.console_data.push_std("");
@@ -235,26 +279,40 @@ impl CliTab {
         input_text_area.set_cursor_line_style(Style::default());
         self.input_text_area = input_text_area;
 
-        if "clear".eq_ignore_ascii_case(&command) {
+        if "clear".eq_ignore_ascii_case(&command.trim()) {
             self.clear_output();
             self.lock_input = false;
             return;
         }
 
-        let cmd = command.clone();
-        let sender = self.data_sender.clone();
-        let result = spawn_redis_opt(move |operations| async move {
-            match operations.str_cmd(cmd).await {
-                Ok(value) => sender.send(value)?,
-                Err(e) => {
-                    sender.send(Value::VerbatimString {
-                        format: VerbatimFormat::Unknown(String::from("ERROR")),
-                        text: format!("{:?}", e),
-                    })?;
-                },
-            }
-            Ok(())
-        });
+        let mut result = Ok(());
+        if "monitor".eq_ignore_ascii_case(&command.trim()) {
+            self.stop_monitor();
+            let arc = Arc::clone(&self.disposable_monitor);
+            let sender_clone = self.data_sender.clone();
+            result = spawn_redis_opt(move |operations| async move {
+                let x = operations.monitor(sender_clone).await?;
+                if let Ok(mut monitor) = arc.lock() {
+                    *monitor = Some(Box::new(x));
+                }
+                Ok::<(), Error>(())
+            });
+        } else {
+            let cmd = command.clone();
+            let sender = self.data_sender.clone();
+            result = spawn_redis_opt(move |operations| async move {
+                match operations.str_cmd(cmd).await {
+                    Ok(value) => sender.send(value)?,
+                    Err(e) => {
+                        sender.send(Value::VerbatimString {
+                            format: VerbatimFormat::Unknown(String::from("ERROR")),
+                            text: format!("{:?}", e),
+                        })?;
+                    },
+                }
+                Ok(())
+            });
+        }
 
         if let Err(e) = result {
             let string = format!("{}", e);
@@ -289,26 +347,58 @@ impl CliTab {
         self.console_data.scroll_page_down();
     }
 
+    fn is_monitoring(&self) -> bool {
+        let arc = Arc::clone(&self.disposable_monitor);
+        let read_result = arc.lock();
+        if let Ok(monitor) = read_result {
+            monitor.is_some()
+        } else {
+            false
+        }
+    }
+
     fn render_input(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        let horizontal = Layout::horizontal([Length(3), Min(10)]).split(rect);
+        let vertical = Layout::vertical([Length(1), Length(1)]).split(rect);
+        let horizontal = Layout::horizontal([Length(3), Min(10)]).split(vertical[0]);
         frame.render_widget(Span::raw(">_ "), horizontal[0]);
         frame.render_widget(&self.input_text_area, horizontal[1]);
         Ok(())
     }
 
     fn render_output(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        if let Ok(v) = self.data_receiver.try_recv() {
-            let lines = value_to_lines(&v, 0);
-            self.console_data.extend(lines);
-            if let Some(lock_at) = self.lock_at {
-                let elapsed = lock_at.elapsed();
-                let duration = chronoutil::RelativeDuration::from(elapsed).format_to_iso8601();
-                self.console_data.push(OutputKind::Else(Style::default().dim()), "---");
-                self.console_data.push(OutputKind::Else(Style::default().dim()), format!("cost: {}", duration));
+        if self.is_monitoring() {
+            loop {
+                match self.data_receiver.try_recv() {
+                    Ok(v) => {
+                        let lines = value_to_lines(&v, 0);
+                        self.console_data.extend(lines);
+                        self.console_data.build_paragraph();
+                    }
+                    Err(..) => {
+                        break
+                    }
+                }
             }
-            self.lock_input = false;
-            self.console_data.push_std("");
-            self.console_data.build_paragraph();
+            self.scroll_end();
+        } else {
+            loop {
+                match self.data_receiver.try_recv() {
+                    Ok(v) => {
+                        let lines = value_to_lines(&v, 0);
+                        self.console_data.extend(lines);
+                        if let Some(lock_at) = self.lock_at {
+                            let elapsed = lock_at.elapsed();
+                            let duration = chronoutil::RelativeDuration::from(elapsed).format_to_iso8601();
+                            self.console_data.push(OutputKind::Else(Style::default().dim()), "---");
+                            self.console_data.push(OutputKind::Else(Style::default().dim()), format!("cost: {}", duration));
+                        }
+                        self.lock_input = false;
+                        self.console_data.push_std("");
+                        self.console_data.build_paragraph();
+                    }
+                    Err(..) => { break; }
+                }
+            }
         }
         self.console_data.update(&rect);
         frame.render_widget(&self.console_data.paragraph, rect);
@@ -330,7 +420,7 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
     };
     match value {
         Value::Nil => {
-            vec![format("(empty)".as_ref())]
+            vec![format("(Nil)".as_ref())]
         }
         Value::Int(int) => {
             vec![format(int.to_string().as_ref())]
@@ -449,6 +539,10 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
                 VerbatimFormat::Unknown(s) => {
                     if s == "ERROR" {
                         text.lines().map(|line| format_err(line.as_ref())).collect_vec()
+                    } else if s == "PROMPT" {
+                        text.lines().map(|line| {
+                            (OutputKind::Else(Style::default().dim()), format!("{prepend}{line}"))
+                        }).collect_vec()
                     } else {
                         vec![format(format!("\"{}\"", escape_string(s)).as_ref())]
                     }
