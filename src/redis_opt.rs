@@ -22,18 +22,42 @@ use tokio::time::interval;
 macro_rules! str_cmd {
     ($cmd:expr) => {{
         let mut command = Cmd::new();
-        let parts: Vec<&str> = $cmd.split_whitespace().collect();
-        for arg in &parts[0..] {
-            let mut _arg = arg.to_string();
-            let bytes = arg.as_bytes();
-            if bytes.len() >= 2 {
-                let first = bytes[0];
-                let last = bytes[bytes.len() - 1];
-                if (first == b'\'' && last == b'\'') || (first == b'"' && last == b'"') {
-                    _arg = _arg[1.._arg.len() - 1].to_string();
+        // let parts: Vec<&str> = $cmd.split_whitespace().collect();
+        let mut parts: Vec<String> = Vec::new();
+        let mut current = String::new();
+        let mut in_quotes = false;
+        let mut quote_char = '\0';
+
+        for c in $cmd.chars() {
+            if in_quotes {
+                if c == quote_char {
+                    in_quotes = false;
+                    parts.push(current.clone());
+                    current.clear();
+                } else {
+                    current.push(c);
+                }
+            } else {
+                if c.is_whitespace() {
+                    if !current.is_empty() {
+                        parts.push(current.clone());
+                        current.clear();
+                    }
+                } else if c == '\'' || c == '"' {
+                    in_quotes = true;
+                    quote_char = c;
+                } else {
+                    current.push(c);
                 }
             }
-            command.arg(_arg);
+        }
+
+        if !current.is_empty() {
+            parts.push(current);
+        }
+
+        for arg in &parts {
+            command.arg(arg);
         }
         command
     }};

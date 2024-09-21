@@ -13,15 +13,6 @@ pub fn dead_pool() -> Result<deadpool_redis::Pool> {
             protocol: ProtocolVersion::RESP3,
         },
     });
-    let config = deadpool_redis::Config::from_connection_info(ConnectionInfo {
-        addr: Tcp("10.37.1.133".to_string(), 6001),
-        redis: RedisConnectionInfo {
-            db: 0,
-            username: None,
-            password: Some("123456".to_string()),
-            protocol: ProtocolVersion::RESP3,
-        },
-    });
 
     config.create_pool(Some(Runtime::Tokio1)).context("Failed to create pool")
 }
