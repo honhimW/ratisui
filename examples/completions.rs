@@ -1,16 +1,18 @@
 use std::thread::sleep;
 use std::time::Duration;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::widgets::{Block, BorderType, Cell, Clear, Row, Table, Widget};
 use ratatui::{Frame, TerminalOptions, Viewport};
 use ratatui::buffer::Buffer;
-use ratatui::text::{Span, Text};
+use ratatui::text::{Line, Span, Text};
 use tui_textarea::TextArea;
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use ratatui::crossterm::event;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
+use ratatui::style::{Style, Stylize};
+use strum::Display;
 
 fn main() -> Result<()> {
     let mut terminal = ratatui::init();
@@ -29,9 +31,9 @@ fn main() -> Result<()> {
         cells.push(Cell::new(Span::raw("value")));
         rows.push(Row::new(cells));
     }
-    let table = Table::new(rows, [Min(1), Length(8)]).block(Block::bordered().border_type(BorderType::Rounded));
     loop {
         let input = text_area.lines().get(0).unwrap();
+        let table = get_table(input);
         terminal
             .draw(|frame: &mut Frame| {
                 draw_picture(frame, &text_area, &table);
@@ -79,14 +81,33 @@ fn get_table(input: &str) -> Table {
 
 fn get_rows(input: &str) -> Vec<Row> {
     let mut rows = vec![];
-
+    for item in TOAST_CHANNEL.iter() {
+        if item.label.label.starts_with(input) {
+            let mut prompt = Line::default();
+            prompt.push_span(Span::raw(&item.label.label));
+            if let Some(ref detail) = item.label.detail {
+                prompt.push_span(Span::raw(" "));
+                prompt.push_span(Span::raw(detail).style(Style::default().dim()));
+            }
+            let prompt = Cell::new(prompt);
+            let kind = Cell::new(Line::raw(item.kind.to_string()).alignment(Alignment::Right));
+            let row = Row::new(vec![prompt, kind]);
+            rows.push(row);
+        }
+    }
     rows
 }
 
 static TOAST_CHANNEL: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
-    vec![]
+    let mut vec = vec![];
+    vec.push(CompletionItem::string("set"));
+    vec.push(CompletionItem::string("get"));
+    vec.push(CompletionItem::string("strlen"));
+    vec.push(CompletionItem::hash("hgetall"));
+    vec
 });
 
+#[derive(Debug, Clone)]
 struct CompletionItem {
     kind: CompletionItemKind,
     label: Label,
@@ -107,12 +128,52 @@ impl CompletionItem {
             insert_text: "ping".to_string(),
         }
     }
+
+    fn string(s: impl Into<String>) -> CompletionItem {
+        let s = s.into();
+        Self {
+            kind: CompletionItemKind::String,
+            label: Label {
+                label: s.clone(),
+                detail: Some(s.clone()),
+                description: Some(s.clone()),
+            },
+            range: (0, -1),
+            insert_text: s,
+        }
+    }
+
+    fn hash(s: impl Into<String>) -> CompletionItem {
+        let s = s.into();
+        Self {
+            kind: CompletionItemKind::Hash,
+            label: Label {
+                label: s.clone(),
+                detail: Some(s.clone()),
+                description: Some(s.clone()),
+            },
+            range: (0, -1),
+            insert_text: s,
+        }
+    }
+
 }
 
+#[derive(Debug, Clone)]
 struct Label {
     label: String,
     detail: Option<String>,
     description: Option<String>,
+}
+
+#[derive(Debug, Clone, Display)]
+enum CompletionItemKind {
+    String,
+    List,
+    Set,
+    SortedSet,
+    Hash,
+    Json,
 }
 
 fn draw_picture(frame: &mut Frame, text_area: &TextArea, table: &Table) {
@@ -134,15 +195,6 @@ fn draw_picture(frame: &mut Frame, text_area: &TextArea, table: &Table) {
 
     frame.render_widget(table, menu_area);
     frame.render_widget(text_area, area);
-}
-
-enum CompletionItemKind {
-    String,
-    List,
-    Set,
-    SortedSet,
-    Hash,
-    Json,
 }
 
 pub fn centered_rect(percentage_x: u16, percentage_y: u16, area: Rect) -> Rect {

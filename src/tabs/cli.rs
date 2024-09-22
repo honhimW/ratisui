@@ -24,6 +24,7 @@ use std::ops::Neg;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use strum::Display;
+use throbber_widgets_tui::{Throbber, ThrobberState};
 use tui_textarea::{CursorMove, Scrolling, TextArea};
 
 pub struct CliTab {
@@ -37,6 +38,7 @@ pub struct CliTab {
     data_sender: Sender<Value>,
     data_receiver: Receiver<Value>,
     disposable_monitor: Arc<Mutex<Option<Box<dyn Disposable>>>>,
+    monitor_state: (ThrobberState, Instant),
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Display)]
@@ -229,6 +231,7 @@ impl CliTab {
             data_sender: tx,
             data_receiver: rx,
             disposable_monitor: Arc::new(Mutex::new(None)),
+            monitor_state: (ThrobberState::default(), Instant::now()),
         }
     }
 
@@ -358,10 +361,21 @@ impl CliTab {
     }
 
     fn render_input(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        let vertical = Layout::vertical([Length(1), Length(1)]).split(rect);
-        let horizontal = Layout::horizontal([Length(3), Min(10)]).split(vertical[0]);
-        frame.render_widget(Span::raw(">_ "), horizontal[0]);
-        frame.render_widget(&self.input_text_area, horizontal[1]);
+        if self.is_monitoring() {
+            if self.monitor_state.1.elapsed() >= Duration::from_millis(150) {
+                self.monitor_state.0.calc_next();
+                self.monitor_state.1 = Instant::now();
+            }
+            let throbber = Throbber::default()
+                .throbber_set(throbber_widgets_tui::BRAILLE_EIGHT_DOUBLE)
+                .label(Span::raw("Monitoring...").style(Style::default().dim()));
+            frame.render_stateful_widget(throbber, rect, &mut self.monitor_state.0);
+        } else {
+            let vertical = Layout::vertical([Length(1), Length(1)]).split(rect);
+            let horizontal = Layout::horizontal([Length(3), Min(10)]).split(vertical[0]);
+            frame.render_widget(Span::raw(">_ "), horizontal[0]);
+            frame.render_widget(&self.input_text_area, horizontal[1]);
+        }
         Ok(())
     }
 
@@ -390,7 +404,7 @@ impl CliTab {
                             let elapsed = lock_at.elapsed();
                             let duration = chronoutil::RelativeDuration::from(elapsed).format_to_iso8601();
                             self.console_data.push(OutputKind::Else(Style::default().dim()), "---");
-                            self.console_data.push(OutputKind::Else(Style::default().dim()), format!("cost: {}", duration));
+                            self.console_data.push(OutputKind::Else(Style::default().dim()), format!("Elapsed: {}", duration));
                         }
                         self.lock_input = false;
                         self.console_data.push_std("");

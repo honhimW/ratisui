@@ -487,7 +487,7 @@ impl RedisOperations {
             drop(streams);
             sender.send(Value::VerbatimString {
                 format: VerbatimFormat::Unknown("PROMPT".to_string()),
-                text: "Monitor is gracefully shut down.".to_string(),
+                text: "Monitor has gracefully shut down.".to_string(),
             })?;
             Ok::<(), Error>(())
         });
