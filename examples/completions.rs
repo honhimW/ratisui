@@ -1,7 +1,8 @@
+use std::cmp;
 use std::thread::sleep;
 use std::time::Duration;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
-use ratatui::widgets::{Block, BorderType, Cell, Clear, Row, Table, Widget};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
+use ratatui::widgets::{Block, BorderType, Cell, Clear, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, TableState, Widget};
 use ratatui::{Frame, TerminalOptions, Viewport};
 use ratatui::buffer::Buffer;
 use ratatui::text::{Line, Span, Text};
@@ -12,6 +13,7 @@ use ratatui::crossterm::event;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::style::{Style, Stylize};
+use ratatui::style::palette::tailwind;
 use strum::Display;
 
 fn main() -> Result<()> {
@@ -31,12 +33,61 @@ fn main() -> Result<()> {
         cells.push(Cell::new(Span::raw("value")));
         rows.push(Row::new(cells));
     }
+    let mut table_state = TableState::default();
+    let mut scroll_state = ScrollbarState::default();
+    table_state.select_first();
+    scroll_state.first();
+    let mut show_table = false;
     loop {
         let input = text_area.lines().get(0).unwrap();
-        let table = get_table(input);
+        let items = get_items(input);
+        let rows = get_rows(input, &items);
+        let table = get_table(rows);
+        let size = items.len() as u16;
         terminal
             .draw(|frame: &mut Frame| {
-                draw_picture(frame, &text_area, &table);
+                let rect = frame.area();
+                let rect = centered_rect(50, 50, rect);
+                let (y, x) = text_area.cursor();
+
+                let area = Rect {
+                    height: rect.height - 1,
+                    ..rect
+                };
+
+                let max_height = 2;
+                let width = if size > max_height {
+                    41
+                } else {
+                    40
+                };
+                let scrollbar_area = Rect {
+                    x: area.x + x as u16 + 1,
+                    y: area.y + y as u16 + 2,
+                    height: cmp::min(max_height, size),
+                    width,
+                };
+                let menu_area = Rect {
+                    x: area.x + x as u16 + 1,
+                    y: area.y + y as u16 + 2,
+                    height: cmp::min(max_height, size),
+                    width: 40,
+                };
+
+                frame.render_widget(Clear::default(), menu_area);
+                frame.render_stateful_widget(table, menu_area, &mut table_state);
+                frame.render_widget(&text_area, area);
+                frame.render_stateful_widget(
+                    Scrollbar::default()
+                        .orientation(ScrollbarOrientation::VerticalRight)
+                        .begin_symbol(None)
+                        .end_symbol(None),
+                    scrollbar_area.inner(Margin {
+                        vertical: 1,
+                        horizontal: 1,
+                    }),
+                    &mut scroll_state,
+                );
             })?;
         if event::poll(Duration::from_millis(20))? {
             if let Event::Key(key) = event::read()? {
@@ -61,6 +112,28 @@ fn main() -> Result<()> {
                         KeyEvent { code: KeyCode::Char('y'), modifiers: KeyModifiers::CONTROL, .. } => {
                             text_area.redo();
                         }
+                        KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::NONE, .. } => {
+                            table_state.select_previous();
+                            scroll_state.prev();
+                        }
+                        KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::NONE, .. } => {
+                            table_state.select_next();
+                            scroll_state.next();
+                        }
+                        KeyEvent { code: KeyCode::Tab, modifiers: KeyModifiers::NONE, .. } => {
+                            if !items.is_empty() {
+                                if let Some(selected) = table_state.selected() {
+                                    if let Some(item) = items.get(selected) {
+                                        text_area.select_all();
+                                        // text_area.input(tui_textarea::Input {
+                                        //     key: tui_textarea::Key::Backspace,
+                                        //     ..tui_textarea::Input::default()
+                                        // });
+                                        text_area.insert_str(item.insert_text.clone());
+                                    }
+                                }
+                            }
+                        }
                         input => {
                             text_area.input(input);
                         }
@@ -73,26 +146,48 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn get_table(input: &str) -> Table {
-    let table = Table::new(get_rows(input), [Min(1), Length(8)]).block(Block::bordered()
-        .border_type(BorderType::Rounded));
+fn get_table(rows: Vec<Row>) -> Table {
+    let table = Table::new(rows, [Min(1), Length(8)])
+        // .block(Block::bordered().border_type(BorderType::Rounded))
+        .style(Style::default().bg(tailwind::NEUTRAL.c800))
+        .highlight_style(Style::default().bg(tailwind::ZINC.c900));
     table
 }
 
-fn get_rows(input: &str) -> Vec<Row> {
+fn get_rows(input: impl Into<String>, items: &Vec<CompletionItem>) -> Vec<Row> {
+    let input = input.into();
+    let mut rows = vec![];
+    for item in items {
+        let mut prompt = Line::default();
+        if let Some(pos) = item.label.label.find(input.clone().as_str()) {
+            prompt.push_span(Span::raw(&item.label.label[0..pos]));
+            prompt.push_span(Span::raw(input.clone()).style(Style::default().fg(tailwind::AMBER.c500)));
+            prompt.push_span(Span::raw(&item.label.label[pos + input.len()..item.label.label.len()]));
+        }
+        // if let Some(strip) = item.label.label.strip_prefix(input) {
+        //     prompt.push_span(Span::raw(input).style(Style::default().fg(tailwind::AMBER.c500)));
+        //     prompt.push_span(Span::raw(strip));
+        // }
+        if let Some(ref detail) = item.label.detail {
+            prompt.push_span(Span::raw(" "));
+            prompt.push_span(Span::raw(detail).style(Style::default().dim()));
+        }
+        let prompt = Cell::new(prompt);
+        let kind = Cell::new(Line::raw(item.kind.to_string())
+            .alignment(Alignment::Right)
+            .style(Style::default().dim())
+        );
+        let row = Row::new(vec![prompt, kind]);
+        rows.push(row);
+    }
+    rows
+}
+
+fn get_items(input: &str) -> Vec<CompletionItem> {
     let mut rows = vec![];
     for item in TOAST_CHANNEL.iter() {
-        if item.label.label.starts_with(input) {
-            let mut prompt = Line::default();
-            prompt.push_span(Span::raw(&item.label.label));
-            if let Some(ref detail) = item.label.detail {
-                prompt.push_span(Span::raw(" "));
-                prompt.push_span(Span::raw(detail).style(Style::default().dim()));
-            }
-            let prompt = Cell::new(prompt);
-            let kind = Cell::new(Line::raw(item.kind.to_string()).alignment(Alignment::Right));
-            let row = Row::new(vec![prompt, kind]);
-            rows.push(row);
+        if item.label.label.contains(input) {
+            rows.push(item.clone())
         }
     }
     rows
@@ -174,27 +269,6 @@ enum CompletionItemKind {
     SortedSet,
     Hash,
     Json,
-}
-
-fn draw_picture(frame: &mut Frame, text_area: &TextArea, table: &Table) {
-    let rect = frame.area();
-    let rect = centered_rect(50, 50, rect);
-    let (y, x) = text_area.cursor();
-
-    let area = Rect {
-        height: rect.height - 1,
-        ..rect
-    };
-
-    let menu_area = Rect {
-        x: area.x + x as u16 + 1,
-        y: area.y + y as u16 + 2,
-        height: 7,
-        width: 40,
-    };
-
-    frame.render_widget(table, menu_area);
-    frame.render_widget(text_area, area);
 }
 
 pub fn centered_rect(percentage_x: u16, percentage_y: u16, area: Rect) -> Rect {
