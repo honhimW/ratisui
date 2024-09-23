@@ -41,9 +41,9 @@ fn main() -> Result<()> {
     let mut show_table = false;
     loop {
         let mut input = text_area.lines().get(0).unwrap().clone();
-        let (y, x) = text_area.cursor();
-        if let Some(start_pos) = find_word_start_backward(&input, x) {
-            input = (&input[start_pos..x]).to_string();
+        let (cursor_y, cursor_x) = text_area.cursor();
+        if let Some(start_pos) = find_word_start_backward(&input, cursor_x) {
+            input = (&input[start_pos..cursor_x]).to_string();
         }
         let items = get_items(&input);
         scroll_state = scroll_state.content_length(items.len());
@@ -65,30 +65,28 @@ fn main() -> Result<()> {
                     ..rect
                 };
 
-                let max_height = 4;
-                let should_scroll = size > max_height;
-                let width = if should_scroll {
-                    41
-                } else {
-                    40
-                };
-                let scrollbar_area = Rect {
-                    x: area.x + x as u16 + 1,
-                    y: area.y + y as u16 + 2,
-                    height: cmp::min(max_height, size),
-                    width,
-                };
-                let menu_area = Rect {
-                    x: area.x + x as u16 + 1,
-                    y: area.y + y as u16 + 2,
-                    height: cmp::min(max_height, size),
+                let max_menu_height = 10;
+                let should_scroll = size > max_menu_height;
+
+                let mut menu_area = Rect {
+                    x: area.x + cursor_x as u16 + 1,
+                    y: area.y + cursor_y as u16 + 2,
+                    height: cmp::min(max_menu_height, size),
                     width: 40,
                 };
+                if menu_area.x + menu_area.width > max_width {
+                    let x_offset = menu_area.x + menu_area.width - max_width;
+                    menu_area.x = menu_area.x - x_offset;
+                }
+                if menu_area.y + menu_area.height > max_height {
+                    let y_offset = menu_area.y + menu_area.height - max_height;
+                    menu_area.y = menu_area.y - y_offset;
+                }
 
                 frame.render_widget(&text_area, area);
                 if show_table {
-                    frame.render_widget(Clear::default(), scrollbar_area);
-                    frame.render_stateful_widget(table, scrollbar_area, &mut table_state);
+                    frame.render_widget(Clear::default(), menu_area);
+                    frame.render_stateful_widget(table, menu_area, &mut table_state);
                     if should_scroll {
                         frame.render_stateful_widget(
                             Scrollbar::default()
@@ -101,7 +99,7 @@ fn main() -> Result<()> {
                                 })
                                 .begin_symbol(None)
                                 .end_symbol(None),
-                            scrollbar_area.inner(Margin {
+                            menu_area.inner(Margin {
                                 vertical: 0,
                                 horizontal: 0,
                             }),
@@ -123,6 +121,9 @@ fn main() -> Result<()> {
                             } else if show_table {
                                 show_table = false;
                             }
+                        }
+                        KeyEvent { code: KeyCode::Char(' '), modifiers: KeyModifiers::CONTROL, .. } => {
+                            show_table = true;
                         }
                         KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
                         KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
@@ -228,6 +229,13 @@ static TOAST_CHANNEL: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
     vec.push(CompletionItem::hash("scan"));
     vec.push(CompletionItem::hash("ping"));
     vec.push(CompletionItem::hash("monitor"));
+    vec.push(CompletionItem::hash("info"));
+    vec.push(CompletionItem::hash("ttl"));
+    vec.push(CompletionItem::hash("expire"));
+    vec.push(CompletionItem::hash("mget"));
+    vec.push(CompletionItem::hash("hget"));
+    vec.push(CompletionItem::hash("sadd"));
+    vec.push(CompletionItem::hash("zadd"));
     vec
 });
 
@@ -391,6 +399,9 @@ pub fn find_word_start_backward(line: &str, start_col: usize) -> Option<usize> {
         .unwrap_or(line.len());
     let mut it = line[..idx].chars().rev().enumerate();
     let mut cur = CharKind::new(it.next()?.1);
+    if cur == CharKind::Space {
+        return Some(start_col);
+    }
     for (i, c) in it {
         let next = CharKind::new(c);
         if cur != CharKind::Space && next != cur {

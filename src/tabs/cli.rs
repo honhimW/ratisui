@@ -39,6 +39,7 @@ pub struct CliTab {
     data_receiver: Receiver<Value>,
     disposable_monitor: Arc<Mutex<Option<Box<dyn Disposable>>>>,
     monitor_state: (ThrobberState, Instant),
+    input_throbber_state: ThrobberState,
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Display)]
@@ -73,7 +74,11 @@ impl Renderable for CliTab {
         let session_vertical = Layout::vertical([Length(session_height - input_height), Length(input_height)]).split(vertical[0]);
         self.render_output(frame, session_vertical[0])?;
         self.render_input(frame, session_vertical[1])?;
-        frame.render_widget(Span::raw(format!("- {} -", self.mode)), vertical[2]);
+        let throbber = Throbber::default()
+            .throbber_set(throbber_widgets_tui::BRAILLE_EIGHT_DOUBLE);
+        let horizontal = Layout::horizontal([Length(2), Fill(0)]).split(vertical[2]);
+        frame.render_stateful_widget(throbber, horizontal[0], &mut self.input_throbber_state);
+        frame.render_widget(Span::raw(format!("- {} -", self.mode)), horizontal[1]);
         Ok(())
     }
 }
@@ -198,9 +203,28 @@ impl Listenable for CliTab {
                                 self.input_text_area = input_text_area;
                             }
                         }
+                        KeyEvent { code: KeyCode::Home, .. } => {
+                            self.scroll_start();
+                        }
+                        KeyEvent { code: KeyCode::End, .. } => {
+                            self.scroll_end();
+                        }
+                        KeyEvent { code: KeyCode::Char('k'), modifiers: KeyModifiers::CONTROL, .. } => {
+                            self.scroll_up();
+                        }
+                        KeyEvent { code: KeyCode::Char('j'), modifiers: KeyModifiers::CONTROL, .. } => {
+                            self.scroll_down();
+                        }
+                        KeyEvent { code: KeyCode::PageUp, .. } => {
+                            self.scroll_page_up();
+                        }
+                        KeyEvent { code: KeyCode::PageDown, .. } => {
+                            self.scroll_page_down();
+                        }
                         input => {
                             if !self.lock_input {
                                 self.input_text_area.input(input);
+                                self.input_throbber_state.calc_next();
                             }
                         }
                     }
@@ -232,6 +256,7 @@ impl CliTab {
             data_receiver: rx,
             disposable_monitor: Arc::new(Mutex::new(None)),
             monitor_state: (ThrobberState::default(), Instant::now()),
+            input_throbber_state: ThrobberState::default(),
         }
     }
 
