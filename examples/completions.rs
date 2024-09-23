@@ -173,7 +173,7 @@ fn main() -> Result<()> {
 }
 
 fn get_table(rows: Vec<Row>) -> Table {
-    let table = Table::new(rows, [Min(1), Length(8), Length(1)])
+    let table = Table::new(rows, [Min(1), Length(8), Length(0)])
         // .block(Block::bordered().border_type(BorderType::Rounded))
         .style(Style::default().bg(tailwind::NEUTRAL.c800))
         .highlight_style(Style::default().bg(tailwind::ZINC.c900).bold());
