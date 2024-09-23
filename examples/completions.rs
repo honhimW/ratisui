@@ -147,14 +147,14 @@ fn main() -> Result<()> {
                             if !items.is_empty() && show_table {
                                 if let Some(selected) = table_state.selected() {
                                     if let Some(item) = items.get(selected) {
-                                        text_area.start_selection();
-                                        text_area.move_cursor(CursorMove::WordBack);
-                                        // text_area.input(tui_textarea::Input {
-                                        //     key: tui_textarea::Key::Backspace,
-                                        //     ..tui_textarea::Input::default()
-                                        // });
-                                        text_area.insert_str(item.insert_text.clone());
                                         show_table = false;
+                                        if input.is_empty() {
+                                            text_area.insert_str(item.insert_text.clone());
+                                        } else {
+                                            text_area.start_selection();
+                                            text_area.move_cursor(CursorMove::WordBack);
+                                            text_area.insert_str(item.insert_text.clone());
+                                        }
                                     }
                                 }
                             }
