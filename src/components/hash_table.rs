@@ -262,8 +262,8 @@ impl HashValue {
                 .begin_symbol(None)
                 .end_symbol(None),
             area.inner(Margin {
-                vertical: 1,
-                horizontal: 1,
+                vertical: 0,
+                horizontal: 0,
             }),
             &mut self.scroll_state,
         );

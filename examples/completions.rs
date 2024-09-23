@@ -6,7 +6,7 @@ use ratatui::widgets::{Block, BorderType, Cell, Clear, Row, Scrollbar, Scrollbar
 use ratatui::{Frame, TerminalOptions, Viewport};
 use ratatui::buffer::Buffer;
 use ratatui::text::{Line, Span, Text};
-use tui_textarea::TextArea;
+use tui_textarea::{CursorMove, Input, TextArea};
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use ratatui::crossterm::event;
@@ -14,6 +14,7 @@ use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModif
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::style::{Style, Stylize};
 use ratatui::style::palette::tailwind;
+use ratatui::symbols::scrollbar::Set;
 use strum::Display;
 
 fn main() -> Result<()> {
@@ -39,24 +40,34 @@ fn main() -> Result<()> {
     scroll_state.first();
     let mut show_table = false;
     loop {
-        let input = text_area.lines().get(0).unwrap();
-        let items = get_items(input);
-        let rows = get_rows(input, &items);
+        let mut input = text_area.lines().get(0).unwrap().clone();
+        let (y, x) = text_area.cursor();
+        if let Some(start_pos) = find_word_start_backward(&input, x) {
+            input = (&input[start_pos..x]).to_string();
+        }
+        let items = get_items(&input);
+        scroll_state = scroll_state.content_length(items.len());
+        let rows = get_rows(&input, &items);
         let table = get_table(rows);
         let size = items.len() as u16;
         terminal
             .draw(|frame: &mut Frame| {
                 let rect = frame.area();
+                let Rect {
+                    height: max_height,
+                    width: max_width,
+                    ..
+                } = rect;
                 let rect = centered_rect(50, 50, rect);
-                let (y, x) = text_area.cursor();
 
                 let area = Rect {
                     height: rect.height - 1,
                     ..rect
                 };
 
-                let max_height = 2;
-                let width = if size > max_height {
+                let max_height = 4;
+                let should_scroll = size > max_height;
+                let width = if should_scroll {
                     41
                 } else {
                     40
@@ -74,20 +85,30 @@ fn main() -> Result<()> {
                     width: 40,
                 };
 
-                frame.render_widget(Clear::default(), menu_area);
-                frame.render_stateful_widget(table, menu_area, &mut table_state);
                 frame.render_widget(&text_area, area);
-                frame.render_stateful_widget(
-                    Scrollbar::default()
-                        .orientation(ScrollbarOrientation::VerticalRight)
-                        .begin_symbol(None)
-                        .end_symbol(None),
-                    scrollbar_area.inner(Margin {
-                        vertical: 1,
-                        horizontal: 1,
-                    }),
-                    &mut scroll_state,
-                );
+                if show_table {
+                    frame.render_widget(Clear::default(), scrollbar_area);
+                    frame.render_stateful_widget(table, scrollbar_area, &mut table_state);
+                    if should_scroll {
+                        frame.render_stateful_widget(
+                            Scrollbar::default()
+                                .orientation(ScrollbarOrientation::VerticalRight)
+                                .symbols(Set {
+                                    track: " ",
+                                    thumb: "█",
+                                    begin: "↑",
+                                    end: "↓",
+                                })
+                                .begin_symbol(None)
+                                .end_symbol(None),
+                            scrollbar_area.inner(Margin {
+                                vertical: 0,
+                                horizontal: 0,
+                            }),
+                            &mut scroll_state,
+                        );
+                    }
+                }
             })?;
         if event::poll(Duration::from_millis(20))? {
             if let Event::Key(key) = event::read()? {
@@ -99,9 +120,10 @@ fn main() -> Result<()> {
                         KeyEvent { code: KeyCode::Esc, .. } => {
                             if text_area.is_selecting() {
                                 text_area.cancel_selection();
+                            } else if show_table {
+                                show_table = false;
                             }
                         }
-                        KeyEvent { code: KeyCode::Enter, .. } => {}
                         KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
                         KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
                             text_area.select_all();
@@ -120,22 +142,26 @@ fn main() -> Result<()> {
                             table_state.select_next();
                             scroll_state.next();
                         }
-                        KeyEvent { code: KeyCode::Tab, modifiers: KeyModifiers::NONE, .. } => {
-                            if !items.is_empty() {
+                        KeyEvent { code: KeyCode::Tab | KeyCode::Enter, modifiers: KeyModifiers::NONE, .. } => {
+                            if !items.is_empty() && show_table {
                                 if let Some(selected) = table_state.selected() {
                                     if let Some(item) = items.get(selected) {
-                                        text_area.select_all();
+                                        text_area.start_selection();
+                                        text_area.move_cursor(CursorMove::WordBack);
                                         // text_area.input(tui_textarea::Input {
                                         //     key: tui_textarea::Key::Backspace,
                                         //     ..tui_textarea::Input::default()
                                         // });
                                         text_area.insert_str(item.insert_text.clone());
+                                        show_table = false;
                                     }
                                 }
                             }
                         }
                         input => {
-                            text_area.input(input);
+                            if text_area.input(input) {
+                                show_table = true;
+                            };
                         }
                     }
                 }
@@ -147,10 +173,10 @@ fn main() -> Result<()> {
 }
 
 fn get_table(rows: Vec<Row>) -> Table {
-    let table = Table::new(rows, [Min(1), Length(8)])
+    let table = Table::new(rows, [Min(1), Length(8), Length(1)])
         // .block(Block::bordered().border_type(BorderType::Rounded))
         .style(Style::default().bg(tailwind::NEUTRAL.c800))
-        .highlight_style(Style::default().bg(tailwind::ZINC.c900));
+        .highlight_style(Style::default().bg(tailwind::ZINC.c900).bold());
     table
 }
 
@@ -199,6 +225,9 @@ static TOAST_CHANNEL: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
     vec.push(CompletionItem::string("get"));
     vec.push(CompletionItem::string("strlen"));
     vec.push(CompletionItem::hash("hgetall"));
+    vec.push(CompletionItem::hash("scan"));
+    vec.push(CompletionItem::hash("ping"));
+    vec.push(CompletionItem::hash("monitor"));
     vec
 });
 
@@ -288,4 +317,86 @@ pub fn centered_rect(percentage_x: u16, percentage_y: u16, area: Rect) -> Rect {
             Constraint::Percentage((100 - percentage_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum CharKind {
+    Space,
+    Punct,
+    Other,
+}
+
+impl CharKind {
+    fn new(c: char) -> Self {
+        if c.is_whitespace() {
+            Self::Space
+        } else if c.is_ascii_punctuation() {
+            Self::Punct
+        } else {
+            Self::Other
+        }
+    }
+}
+
+pub fn find_word_start_forward(line: &str, start_col: usize) -> Option<usize> {
+    let mut it = line.chars().enumerate().skip(start_col);
+    let mut prev = CharKind::new(it.next()?.1);
+    for (col, c) in it {
+        let cur = CharKind::new(c);
+        if cur != CharKind::Space && prev != cur {
+            return Some(col);
+        }
+        prev = cur;
+    }
+    None
+}
+
+pub fn find_word_exclusive_end_forward(line: &str, start_col: usize) -> Option<usize> {
+    let mut it = line.chars().enumerate().skip(start_col);
+    let mut prev = CharKind::new(it.next()?.1);
+    for (col, c) in it {
+        let cur = CharKind::new(c);
+        if prev != CharKind::Space && prev != cur {
+            return Some(col);
+        }
+        prev = cur;
+    }
+    None
+}
+
+pub fn find_word_inclusive_end_forward(line: &str, start_col: usize) -> Option<usize> {
+    let mut it = line.chars().enumerate().skip(start_col);
+    let (mut last_col, c) = it.next()?;
+    let mut prev = CharKind::new(c);
+    for (col, c) in it {
+        let cur = CharKind::new(c);
+        if prev != CharKind::Space && cur != prev {
+            return Some(col.saturating_sub(1));
+        }
+        prev = cur;
+        last_col = col;
+    }
+    if prev != CharKind::Space {
+        Some(last_col)
+    } else {
+        None
+    }
+}
+
+pub fn find_word_start_backward(line: &str, start_col: usize) -> Option<usize> {
+    let idx = line
+        .char_indices()
+        .nth(start_col)
+        .map(|(i, _)| i)
+        .unwrap_or(line.len());
+    let mut it = line[..idx].chars().rev().enumerate();
+    let mut cur = CharKind::new(it.next()?.1);
+    for (i, c) in it {
+        let next = CharKind::new(c);
+        if cur != CharKind::Space && next != cur {
+            return Some(start_col - i);
+        }
+        cur = next;
+    }
+    (cur != CharKind::Space).then(|| 0)
 }

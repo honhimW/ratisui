@@ -73,7 +73,7 @@ impl Renderable for CliTab {
         let session_vertical = Layout::vertical([Length(session_height - input_height), Length(input_height)]).split(vertical[0]);
         self.render_output(frame, session_vertical[0])?;
         self.render_input(frame, session_vertical[1])?;
-        frame.render_widget(Span::raw(self.mode.to_string()), vertical[2]);
+        frame.render_widget(Span::raw(format!("- {} -", self.mode)), vertical[2]);
         Ok(())
     }
 }
@@ -92,10 +92,10 @@ impl Listenable for CliTab {
                     KeyEvent { code: KeyCode::End, .. } => {
                         self.scroll_end();
                     }
-                    KeyEvent { code: KeyCode::Up, .. } => {
+                    KeyEvent { code: KeyCode::Up | KeyCode::Char('k'), .. } => {
                         self.scroll_up();
                     }
-                    KeyEvent { code: KeyCode::Down, .. } => {
+                    KeyEvent { code: KeyCode::Down | KeyCode::Char('j'), .. } => {
                         self.scroll_down();
                     }
                     KeyEvent { code: KeyCode::PageUp, .. } => {
@@ -122,10 +122,10 @@ impl Listenable for CliTab {
                         KeyEvent { code: KeyCode::End, .. } => {
                             self.scroll_end();
                         }
-                        KeyEvent { code: KeyCode::Up, .. } => {
+                        KeyEvent { code: KeyCode::Up | KeyCode::Char('k'), .. } => {
                             self.scroll_up();
                         }
-                        KeyEvent { code: KeyCode::Down, .. } => {
+                        KeyEvent { code: KeyCode::Down | KeyCode::Char('j'), .. } => {
                             self.scroll_down();
                         }
                         KeyEvent { code: KeyCode::PageUp, .. } => {
@@ -252,7 +252,7 @@ impl CliTab {
                 //     self.console_data.push(OutputKind::Else(Style::default().dim()), format!("The monitor has been running for: {}", duration));
                 //     self.console_data.build_paragraph();
                 // }
-                self.scroll_end();
+                // self.scroll_end();
             }
             *monitor = None;
         }
@@ -393,7 +393,7 @@ impl CliTab {
                     }
                 }
             }
-            self.scroll_end();
+            // self.scroll_end();
         } else {
             loop {
                 match self.data_receiver.try_recv() {
