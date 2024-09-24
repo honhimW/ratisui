@@ -66,3 +66,41 @@ pub fn escape_string(s: impl Into<String>) -> String {
         .replace("\n", "\\n")
         .replace("\r", "\\r")
 }
+
+pub fn split_args(cmd: impl Into<String>) -> Vec<String> {
+    let cmd = cmd.into();
+
+    let mut parts: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut quote_char = '\0';
+
+    for c in cmd.chars() {
+        if in_quotes {
+            if c == quote_char {
+                in_quotes = false;
+                parts.push(current.clone());
+                current.clear();
+            } else {
+                current.push(c);
+            }
+        } else {
+            if c.is_whitespace() {
+                if !current.is_empty() {
+                    parts.push(current.clone());
+                    current.clear();
+                }
+            } else if c == '\'' || c == '"' {
+                in_quotes = true;
+                quote_char = c;
+            } else {
+                current.push(c);
+            }
+        }
+    }
+
+    if !current.is_empty() {
+        parts.push(current);
+    }
+    parts
+}

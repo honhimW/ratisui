@@ -1,7 +1,8 @@
+use std::ascii::AsciiExt;
 use crate::app::{Listenable, Renderable, TabImplementation};
 use crate::components::console_output::{ConsoleData, OutputKind};
 use crate::redis_opt::{async_redis_opt, spawn_redis_opt, Disposable};
-use crate::utils::{bytes_to_string, escape_string, is_clean_text_area};
+use crate::utils::{bytes_to_string, escape_string, is_clean_text_area, split_args};
 use anyhow::{Context, Error, Result};
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use itertools::Itertools;
@@ -37,8 +38,8 @@ pub struct CliTab {
     console_data: ConsoleData<'static>,
     data_sender: Sender<Value>,
     data_receiver: Receiver<Value>,
-    disposable_monitor: Arc<Mutex<Option<Box<dyn Disposable>>>>,
-    monitor_state: (ThrobberState, Instant),
+    disposable: Arc<Mutex<Option<Box<dyn Disposable>>>>,
+    listen_state: (ThrobberState, Instant),
     input_throbber_state: ThrobberState,
 }
 
@@ -85,11 +86,11 @@ impl Renderable for CliTab {
 
 impl Listenable for CliTab {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
-        if self.is_monitoring() {
+        if self.is_listening() {
             if key_event.kind == KeyEventKind::Press {
                 match key_event {
                     KeyEvent { code: KeyCode::Esc, .. } => {
-                        self.stop_monitor();
+                        self.do_dispose();
                     }
                     KeyEvent { code: KeyCode::Home, .. } => {
                         self.scroll_start();
@@ -203,10 +204,10 @@ impl Listenable for CliTab {
                                 self.input_text_area = input_text_area;
                             }
                         }
-                        KeyEvent { code: KeyCode::Home, .. } => {
+                        KeyEvent { code: KeyCode::Home, modifiers: KeyModifiers::CONTROL, .. } => {
                             self.scroll_start();
                         }
-                        KeyEvent { code: KeyCode::End, .. } => {
+                        KeyEvent { code: KeyCode::End, modifiers: KeyModifiers::CONTROL, .. } => {
                             self.scroll_end();
                         }
                         KeyEvent { code: KeyCode::Char('k'), modifiers: KeyModifiers::CONTROL, .. } => {
@@ -254,8 +255,8 @@ impl CliTab {
             console_data: ConsoleData::default(),
             data_sender: tx,
             data_receiver: rx,
-            disposable_monitor: Arc::new(Mutex::new(None)),
-            monitor_state: (ThrobberState::default(), Instant::now()),
+            disposable: Arc::new(Mutex::new(None)),
+            listen_state: (ThrobberState::default(), Instant::now()),
             input_throbber_state: ThrobberState::default(),
         }
     }
@@ -264,22 +265,14 @@ impl CliTab {
         self.console_data = ConsoleData::default();
     }
 
-    fn stop_monitor(&mut self) {
-        let arc = Arc::clone(&self.disposable_monitor);
+    fn do_dispose(&mut self) {
+        let arc = Arc::clone(&self.disposable);
         let result = arc.lock();
-        if let Ok(mut monitor) = result {
-            if let Some(monitor) = monitor.as_mut() {
-                let _ = monitor.disposable();
-                // if let Some(lock_at) = self.lock_at {
-                //     let elapsed = lock_at.elapsed();
-                //     let duration = chronoutil::RelativeDuration::from(elapsed).format_to_iso8601();
-                //     self.console_data.push(OutputKind::Else(Style::default().dim()), "---");
-                //     self.console_data.push(OutputKind::Else(Style::default().dim()), format!("The monitor has been running for: {}", duration));
-                //     self.console_data.build_paragraph();
-                // }
-                // self.scroll_end();
+        if let Ok(mut disposable) = result {
+            if let Some(instance) = disposable.as_mut() {
+                let _ = instance.disposable();
             }
-            *monitor = None;
+            *disposable = None;
         }
     }
 
@@ -301,27 +294,51 @@ impl CliTab {
         } else {
             self.history.push(command.clone())
         }
+        let command = command.trim().to_string();
         self.history_viewpoint = self.history.len();
         let mut input_text_area = TextArea::default();
         input_text_area.set_cursor_style(Style::default().rapid_blink().reversed());
         input_text_area.set_cursor_line_style(Style::default());
         self.input_text_area = input_text_area;
 
-        if "clear".eq_ignore_ascii_case(&command.trim()) {
+        if "clear".eq_ignore_ascii_case(&command) {
             self.clear_output();
             self.lock_input = false;
             return;
         }
 
         let mut result = Ok(());
-        if "monitor".eq_ignore_ascii_case(&command.trim()) {
-            self.stop_monitor();
-            let arc = Arc::clone(&self.disposable_monitor);
+        let args = split_args(&command);
+        if args.len() == 1 && "monitor".eq_ignore_ascii_case(&args[0]) {
+            self.do_dispose();
+            let arc = Arc::clone(&self.disposable);
             let sender_clone = self.data_sender.clone();
             result = spawn_redis_opt(move |operations| async move {
                 let x = operations.monitor(sender_clone).await?;
                 if let Ok(mut monitor) = arc.lock() {
                     *monitor = Some(Box::new(x));
+                }
+                Ok::<(), Error>(())
+            });
+        } else if args.len() == 2 && "subscribe".eq_ignore_ascii_case(&args[0]) {
+            self.do_dispose();
+            let arc = Arc::clone(&self.disposable);
+            let sender_clone = self.data_sender.clone();
+            result = spawn_redis_opt(move |operations| async move {
+                let x = operations.subscribe(args[1].clone(), sender_clone).await?;
+                if let Ok(mut subscriber) = arc.lock() {
+                    *subscriber = Some(Box::new(x));
+                }
+                Ok::<(), Error>(())
+            });
+        } else if args.len() == 2 && "psubscribe".eq_ignore_ascii_case(&args[0]) {
+            self.do_dispose();
+            let arc = Arc::clone(&self.disposable);
+            let sender_clone = self.data_sender.clone();
+            result = spawn_redis_opt(move |operations| async move {
+                let x = operations.psubscribe(args[1].clone(), sender_clone).await?;
+                if let Ok(mut p_subscriber) = arc.lock() {
+                    *p_subscriber = Some(Box::new(x));
                 }
                 Ok::<(), Error>(())
             });
@@ -375,26 +392,26 @@ impl CliTab {
         self.console_data.scroll_page_down();
     }
 
-    fn is_monitoring(&self) -> bool {
-        let arc = Arc::clone(&self.disposable_monitor);
+    fn is_listening(&self) -> bool {
+        let arc = Arc::clone(&self.disposable);
         let read_result = arc.lock();
-        if let Ok(monitor) = read_result {
-            monitor.is_some()
+        if let Ok(disposable) = read_result {
+            disposable.is_some()
         } else {
             false
         }
     }
 
     fn render_input(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        if self.is_monitoring() {
-            if self.monitor_state.1.elapsed() >= Duration::from_millis(150) {
-                self.monitor_state.0.calc_next();
-                self.monitor_state.1 = Instant::now();
+        if self.is_listening() {
+            if self.listen_state.1.elapsed() >= Duration::from_millis(150) {
+                self.listen_state.0.calc_next();
+                self.listen_state.1 = Instant::now();
             }
             let throbber = Throbber::default()
                 .throbber_set(throbber_widgets_tui::BRAILLE_EIGHT_DOUBLE)
-                .label(Span::raw("Monitoring...").style(Style::default().dim()));
-            frame.render_stateful_widget(throbber, rect, &mut self.monitor_state.0);
+                .label(Span::raw("Listening...").style(Style::default().dim()));
+            frame.render_stateful_widget(throbber, rect, &mut self.listen_state.0);
         } else {
             let vertical = Layout::vertical([Length(1), Length(1)]).split(rect);
             let horizontal = Layout::horizontal([Length(3), Min(10)]).split(vertical[0]);
@@ -405,7 +422,7 @@ impl CliTab {
     }
 
     fn render_output(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        if self.is_monitoring() {
+        if self.is_listening() {
             loop {
                 match self.data_receiver.try_recv() {
                     Ok(v) => {
