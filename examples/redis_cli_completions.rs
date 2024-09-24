@@ -48,7 +48,7 @@ fn main() -> Result<()> {
                 if max_width <= 40 || max_height <= 11 {
                     return;
                 }
-                let rect = centered_rect(90, 90, rect);
+                let rect = centered_rect(100, 10, rect);
 
                 let area = Rect {
                     height: rect.height - 1,
@@ -198,6 +198,8 @@ fn get_rows(input: impl Into<String>, items: &Vec<CompletionItem>) -> Vec<Row> {
 }
 
 fn get_items(input: &str) -> Vec<CompletionItem> {
+    let args = split_args(input);
+
     let mut rows = vec![];
     for item in TOAST_CHANNEL.iter() {
         if item.label.label.contains(input) {
@@ -209,20 +211,21 @@ fn get_items(input: &str) -> Vec<CompletionItem> {
 
 static TOAST_CHANNEL: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
     let mut vec = vec![];
+    vec.push(CompletionItem::default("ping"));
+    vec.push(CompletionItem::default("info"));
+    vec.push(CompletionItem::default("scan"));
     vec.push(CompletionItem::string("set"));
     vec.push(CompletionItem::string("get"));
     vec.push(CompletionItem::string("strlen"));
     vec.push(CompletionItem::hash("hgetall"));
-    vec.push(CompletionItem::hash("scan"));
-    vec.push(CompletionItem::hash("ping"));
     vec.push(CompletionItem::hash("monitor"));
     vec.push(CompletionItem::hash("info"));
     vec.push(CompletionItem::hash("ttl"));
     vec.push(CompletionItem::hash("expire"));
     vec.push(CompletionItem::hash("mget"));
     vec.push(CompletionItem::hash("hget"));
-    vec.push(CompletionItem::hash("sadd"));
-    vec.push(CompletionItem::hash("zadd"));
+    vec.push(CompletionItem::set("sadd"));
+    vec.push(CompletionItem::zset("zadd"));
     vec
 });
 
@@ -235,37 +238,37 @@ struct CompletionItem {
 }
 
 impl CompletionItem {
-    fn default() -> CompletionItem {
-        Self {
-            kind: CompletionItemKind::String,
-            label: Label {
-                label: "ping".to_string(),
-                detail: None,
-                description: None,
-            },
-            range: (0, -1),
-            insert_text: "ping".to_string(),
-        }
+    fn default(s: impl Into<String>) -> CompletionItem {
+        Self::new(s, CompletionItemKind::Generic)
     }
 
     fn string(s: impl Into<String>) -> CompletionItem {
-        let s = s.into();
-        Self {
-            kind: CompletionItemKind::String,
-            label: Label {
-                label: s.clone(),
-                detail: Some(s.clone()),
-                description: Some(s.clone()),
-            },
-            range: (0, -1),
-            insert_text: s,
-        }
+        Self::new(s, CompletionItemKind::String)
+    }
+
+    fn list(s: impl Into<String>) -> CompletionItem {
+        Self::new(s, CompletionItemKind::List)
+    }
+
+    fn set(s: impl Into<String>) -> CompletionItem {
+        Self::new(s, CompletionItemKind::Set)
+    }
+    fn zset(s: impl Into<String>) -> CompletionItem {
+        Self::new(s, CompletionItemKind::SortedSet)
     }
 
     fn hash(s: impl Into<String>) -> CompletionItem {
+        Self::new(s, CompletionItemKind::Hash)
+    }
+
+    fn stream(s: impl Into<String>) -> CompletionItem {
+        Self::new(s, CompletionItemKind::Stream)
+    }
+
+    fn new(s: impl Into<String>, kind: CompletionItemKind) -> CompletionItem {
         let s = s.into();
         Self {
-            kind: CompletionItemKind::Hash,
+            kind,
             label: Label {
                 label: s.clone(),
                 detail: Some(s.clone()),
@@ -287,12 +290,53 @@ struct Label {
 
 #[derive(Debug, Clone, Display)]
 enum CompletionItemKind {
+    Generic,
     String,
     List,
     Set,
     SortedSet,
     Hash,
-    Json,
+    Stream,
+    PubSub,
+    Server
+}
+
+pub fn split_args(cmd: impl Into<String>) -> Vec<String> {
+    let cmd = cmd.into();
+
+    let mut parts: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut quote_char = '\0';
+
+    for c in cmd.chars() {
+        if in_quotes {
+            if c == quote_char {
+                in_quotes = false;
+                parts.push(current.clone());
+                current.clear();
+            } else {
+                current.push(c);
+            }
+        } else {
+            if c.is_whitespace() {
+                if !current.is_empty() {
+                    parts.push(current.clone());
+                    current.clear();
+                }
+            } else if c == '\'' || c == '"' {
+                in_quotes = true;
+                quote_char = c;
+            } else {
+                current.push(c);
+            }
+        }
+    }
+
+    if !current.is_empty() {
+        parts.push(current);
+    }
+    parts
 }
 
 pub fn centered_rect(percentage_x: u16, percentage_y: u16, area: Rect) -> Rect {

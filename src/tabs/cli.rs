@@ -1,32 +1,26 @@
-use std::ascii::AsciiExt;
 use crate::app::{Listenable, Renderable, TabImplementation};
 use crate::components::console_output::{ConsoleData, OutputKind};
-use crate::redis_opt::{async_redis_opt, spawn_redis_opt, Disposable};
-use crate::utils::{bytes_to_string, escape_string, is_clean_text_area, split_args};
-use anyhow::{Context, Error, Result};
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+use crate::redis_opt::{spawn_redis_opt, Disposable};
+use crate::utils::{bytes_to_string, escape_string, split_args};
+use anyhow::{Error, Result};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use itertools::Itertools;
-use log::{info, warn};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::layout::Constraint::{Fill, Length, Max, Min};
-use ratatui::layout::{Layout, Position, Rect};
+use ratatui::layout::Constraint::{Fill, Length, Min};
+use ratatui::layout::{Layout, Rect};
 use ratatui::prelude::{Line, Stylize};
 use ratatui::style::palette::tailwind;
 use ratatui::style::Style;
-use ratatui::text::{Span, Text};
-use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
+use ratatui::text::Span;
 use ratatui::Frame;
-use ratatui_macros::line;
-use redis::Value::ServerError;
 use redis::{Value, VerbatimFormat};
+use std::ascii::AsciiExt;
 use std::cmp;
-use std::fmt::format;
-use std::ops::Neg;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use strum::Display;
 use throbber_widgets_tui::{Throbber, ThrobberState};
-use tui_textarea::{CursorMove, Scrolling, TextArea};
+use tui_textarea::TextArea;
 
 pub struct CliTab {
     mode: Mode,

@@ -15,9 +15,6 @@ async fn main() -> Result<()> {
     let client = &pool.manager().client;
 
     let mut connection = pool.get().await?;
-    let x1 = client.get_async_pubsub().await?;
-    x1.subscribe()
-    connection.psubscribe("")
     let x: Value = cmd("ping").query_async(&mut connection).await?;
     dbg!(x);
     Ok(())
