@@ -20,6 +20,8 @@ use strum::Display;
 fn main() -> Result<()> {
     let mut terminal = ratatui::init();
     let mut text_area = TextArea::default();
+    text_area.set_cursor_style(Style::default().rapid_blink().reversed());
+    text_area.set_cursor_line_style(Style::default());
     text_area.set_block(Block::bordered().border_type(BorderType::Thick));
     let mut table_state = TableState::default();
     let mut scroll_state = ScrollbarState::default();
@@ -146,8 +148,6 @@ fn main() -> Result<()> {
                                         }
                                     }
                                 }
-                            } else {
-                                text_area.input(key);
                             }
                         }
                         input => {
@@ -233,8 +233,19 @@ static TOAST_CHANNEL: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
 struct CompletionItem {
     kind: CompletionItemKind,
     label: Label,
+    options: Vec<CompletionItem>,
+    parameter: Parameter,
     range: (isize, isize),
     insert_text: String,
+}
+
+#[derive(Clone, Debug)]
+enum Parameter {
+    None,
+    Flag(String),
+    Enum(Vec<String>),
+    Single,
+    Many,
 }
 
 impl CompletionItem {
@@ -274,6 +285,8 @@ impl CompletionItem {
                 detail: Some(s.clone()),
                 description: Some(s.clone()),
             },
+            options: vec![],
+            parameter: Parameter::None,
             range: (0, -1),
             insert_text: s,
         }
