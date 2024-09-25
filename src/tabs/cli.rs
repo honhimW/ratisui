@@ -1,5 +1,6 @@
 use crate::app::{Listenable, Renderable, TabImplementation};
 use crate::components::console_output::{ConsoleData, OutputKind};
+use crate::components::redis_cli::RedisCli;
 use crate::redis_opt::{spawn_redis_opt, Disposable};
 use crate::utils::{bytes_to_string, escape_string, split_args};
 use anyhow::{Error, Result};
@@ -20,7 +21,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use strum::Display;
 use throbber_widgets_tui::{Throbber, ThrobberState};
-use tui_textarea::TextArea;
 
 pub struct CliTab {
     mode: Mode,
@@ -28,7 +28,8 @@ pub struct CliTab {
     lock_at: Option<Instant>,
     history: Vec<String>,
     history_viewpoint: usize,
-    input_text_area: TextArea<'static>,
+    redis_cli: RedisCli<'static>,
+    // input_text_area: TextArea<'static>,
     console_data: ConsoleData<'static>,
     data_sender: Sender<Value>,
     data_receiver: Receiver<Value>,
@@ -140,29 +141,22 @@ impl Listenable for CliTab {
             }
             Mode::Insert => {
                 if key_event.kind == KeyEventKind::Press {
+                    if !self.lock_input {
+                        self.input_throbber_state.calc_next();
+                        let handled = self.redis_cli.handle_key_event(key_event);
+                        if handled {
+                            return Ok(true);
+                        }
+                    }
                     match key_event {
                         KeyEvent { code: KeyCode::Esc, .. } => {
-                            if self.input_text_area.is_selecting() {
-                                self.input_text_area.cancel_selection();
-                            } else {
-                                self.mode = Mode::Normal;
-                            }
+                            self.mode = Mode::Normal;
                         }
                         KeyEvent { code: KeyCode::Enter, .. } => {
                             let command = self.get_command();
                             if let Some(command) = command {
                                 self.commit_command(&command);
                             }
-                        }
-                        KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
-                        KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
-                            self.input_text_area.select_all();
-                        }
-                        KeyEvent { code: KeyCode::Char('z'), modifiers: KeyModifiers::CONTROL, .. } => {
-                            self.input_text_area.undo();
-                        }
-                        KeyEvent { code: KeyCode::Char('y'), modifiers: KeyModifiers::CONTROL, .. } => {
-                            self.input_text_area.redo();
                         }
                         KeyEvent { code: KeyCode::BackTab, .. } => {
                             return Ok(false);
@@ -173,29 +167,20 @@ impl Listenable for CliTab {
                         KeyEvent { code: KeyCode::Up, .. } => {
                             self.history_viewpoint = self.history_viewpoint.saturating_sub(1);
                             if let Some(command) = self.history.get(self.history_viewpoint) {
-                                let mut input_text_area = TextArea::default();
-                                input_text_area.set_cursor_style(Style::default().rapid_blink().reversed());
-                                input_text_area.set_cursor_line_style(Style::default());
-                                input_text_area.insert_str(command);
-                                self.input_text_area = input_text_area;
+                                self.redis_cli = RedisCli::new();
+                                self.redis_cli.insert_str(command);
                             }
                         }
                         KeyEvent { code: KeyCode::Down, .. } => {
                             if self.history_viewpoint < self.history.len().saturating_sub(1) {
                                 self.history_viewpoint = self.history_viewpoint.saturating_add(1);
                                 if let Some(command) = self.history.get(self.history_viewpoint) {
-                                    let mut input_text_area = TextArea::default();
-                                    input_text_area.set_cursor_style(Style::default().rapid_blink().reversed());
-                                    input_text_area.set_cursor_line_style(Style::default());
-                                    input_text_area.insert_str(command);
-                                    self.input_text_area = input_text_area;
+                                    self.redis_cli = RedisCli::new();
+                                    self.redis_cli.insert_str(command);
                                 }
                             } else {
                                 self.history_viewpoint = self.history.len();
-                                let mut input_text_area = TextArea::default();
-                                input_text_area.set_cursor_style(Style::default().rapid_blink().reversed());
-                                input_text_area.set_cursor_line_style(Style::default());
-                                self.input_text_area = input_text_area;
+                                self.redis_cli = RedisCli::new();
                             }
                         }
                         KeyEvent { code: KeyCode::Home, modifiers: KeyModifiers::CONTROL, .. } => {
@@ -216,12 +201,7 @@ impl Listenable for CliTab {
                         KeyEvent { code: KeyCode::PageDown, .. } => {
                             self.scroll_page_down();
                         }
-                        input => {
-                            if !self.lock_input {
-                                self.input_text_area.input(input);
-                                self.input_throbber_state.calc_next();
-                            }
-                        }
+                        _ => {}
                     }
                     return Ok(true);
                 }
@@ -234,10 +214,6 @@ impl Listenable for CliTab {
 
 impl CliTab {
     pub fn new() -> Self {
-        let mut input_text_area = TextArea::default();
-        input_text_area.set_cursor_style(Style::default().rapid_blink().reversed());
-        input_text_area.set_cursor_line_style(Style::default());
-
         let (tx, rx) = unbounded();
         Self {
             mode: Mode::default(),
@@ -245,7 +221,7 @@ impl CliTab {
             lock_at: None,
             history: vec![],
             history_viewpoint: 0,
-            input_text_area,
+            redis_cli: RedisCli::new(),
             console_data: ConsoleData::default(),
             data_sender: tx,
             data_receiver: rx,
@@ -290,10 +266,7 @@ impl CliTab {
         }
         let command = command.trim().to_string();
         self.history_viewpoint = self.history.len();
-        let mut input_text_area = TextArea::default();
-        input_text_area.set_cursor_style(Style::default().rapid_blink().reversed());
-        input_text_area.set_cursor_line_style(Style::default());
-        self.input_text_area = input_text_area;
+        self.redis_cli = RedisCli::new();
 
         if "clear".eq_ignore_ascii_case(&command) {
             self.clear_output();
@@ -410,7 +383,9 @@ impl CliTab {
             let vertical = Layout::vertical([Length(1), Length(1)]).split(rect);
             let horizontal = Layout::horizontal([Length(3), Min(10)]).split(vertical[0]);
             frame.render_widget(Span::raw(">_ "), horizontal[0]);
-            frame.render_widget(&self.input_text_area, horizontal[1]);
+            let frame_area = frame.area();
+            self.redis_cli.update_frame(frame_area.height, frame_area.width);
+            self.redis_cli.render_frame(frame, horizontal[1])?;
         }
         Ok(())
     }
@@ -456,7 +431,7 @@ impl CliTab {
     }
 
     fn get_command(&self) -> Option<String> {
-        self.input_text_area.lines().get(0).cloned()
+        Some(self.redis_cli.get_input())
     }
 }
 

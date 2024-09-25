@@ -17,12 +17,9 @@ use ratatui::style::{Style, Stylize};
 use ratatui::style::palette::tailwind;
 use ratatui::symbols::scrollbar::Set;
 use strum::Display;
+use crate::app::Renderable;
 
 pub struct RedisCli<'a> {
-    scrollbar: Scrollbar<'a>,
-}
-
-pub struct CliState<'a> {
     single_line_text_area: TextArea<'a>,
     table_state: TableState,
     scroll_state: ScrollbarState,
@@ -34,87 +31,9 @@ pub struct CliState<'a> {
 
 impl RedisCli<'_> {
     pub fn new() -> Self {
-        Self {
-            scrollbar: Scrollbar::default()
-                .orientation(ScrollbarOrientation::VerticalRight)
-                .symbols(Set {
-                    track: " ",
-                    thumb: "█",
-                    begin: "↑",
-                    end: "↓",
-                })
-                .begin_symbol(None)
-                .end_symbol(None),
-        }
-    }
-}
-
-impl StatefulWidget for RedisCli<'_> {
-    type State = CliState<'_>;
-
-    fn render(self, rect: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let (cursor_y, cursor_x) = state.single_line_text_area.cursor();
-        let items = &state.completion_items;
-        let segment = state.segment.clone();
-        state.scroll_state = state.scroll_state.content_length(items.len());
-        let rows = get_rows(&segment, &items);
-        let table = get_table(rows);
-        let size = items.len() as u16;
-
-        let Self::State {
-            frame_size: (max_height, max_width),
-            ..
-        } = state;
-
-
-        let max_menu_width = 50;
-        let max_menu_height = 10;
-        if max_width <= *max_menu_width || *max_height <= 11 {
-            return;
-        }
-        let rect = centered_rect(100, 10, rect);
-
-        let area = Rect {
-            height: rect.height - 1,
-            ..rect
-        };
-
-        let should_scroll = size > max_menu_height;
-
-        let mut menu_area = Rect {
-            x: area.x + cursor_x as u16 + 1,
-            y: area.y + cursor_y as u16 + 2,
-            height: cmp::min(max_menu_height, size),
-            width: max_menu_width,
-        };
-        if menu_area.x + menu_area.width > *max_width {
-            let x_offset = menu_area.x + menu_area.width - max_width;
-            menu_area.x = menu_area.x.saturating_sub(x_offset);
-        }
-        if menu_area.y + menu_area.height > *max_height {
-            menu_area.y = menu_area.y.saturating_sub(menu_area.height).saturating_sub(1);
-        }
-
-        state.single_line_text_area.render(area, buf);
-        if state.show_table {
-            Clear::default().render(menu_area, buf);
-            table.render(menu_area, buf, &state.table_state);
-            if should_scroll {
-                self.scrollbar.render(menu_area.inner(Margin {
-                    vertical: 0,
-                    horizontal: 0,
-                }), buf, &state.scroll_state);
-            }
-        }
-    }
-}
-
-impl CliState {
-    pub fn default() -> Self {
         let mut text_area = TextArea::default();
         text_area.set_cursor_style(Style::default().rapid_blink().reversed());
         text_area.set_cursor_line_style(Style::default());
-        text_area.set_block(Block::bordered().border_type(BorderType::Thick));
         let mut table_state = TableState::default();
         table_state.select_first();
         let mut scroll_state = ScrollbarState::default();
@@ -129,12 +48,90 @@ impl CliState {
             segment: "".to_string(),
         }
     }
+}
+
+impl Renderable for RedisCli<'_> {
+    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
+        let (cursor_y, cursor_x) = self.single_line_text_area.cursor();
+        let items = &self.completion_items;
+        let segment = self.segment.clone();
+        self.scroll_state = self.scroll_state.content_length(items.len());
+        let rows = get_rows(&segment, &items);
+        let table = get_table(rows);
+        let size = items.len() as u16;
+
+        let max_height = self.frame_size.0;
+        let max_width = self.frame_size.1;
+
+
+        let max_menu_width = 50;
+        let max_menu_height = 10;
+        if max_width <= max_menu_width || max_height <= 11 {
+            return Ok(());
+        }
+
+        let input_area = rect;
+
+        let should_scroll = size > max_menu_height;
+
+        let mut menu_area = Rect {
+            x: input_area.x + cursor_x as u16 + 1,
+            y: input_area.y + cursor_y as u16 + 2,
+            height: cmp::min(max_menu_height, size),
+            width: max_menu_width,
+        };
+        if menu_area.x + menu_area.width > max_width {
+            let x_offset = menu_area.x + menu_area.width - max_width;
+            menu_area.x = menu_area.x.saturating_sub(x_offset);
+        }
+        if menu_area.y + menu_area.height > max_height {
+            menu_area.y = menu_area.y.saturating_sub(menu_area.height).saturating_sub(1);
+        }
+
+        frame.render_widget(&self.single_line_text_area, input_area);
+        if self.show_table {
+            frame.render_widget(Clear::default(), menu_area);
+            frame.render_stateful_widget(table, menu_area, &mut self.table_state);
+            if should_scroll {
+                let scrollbar = Scrollbar::default()
+                    .orientation(ScrollbarOrientation::VerticalRight)
+                    .symbols(Set {
+                        track: " ",
+                        thumb: "█",
+                        begin: "↑",
+                        end: "↓",
+                    })
+                    .begin_symbol(None)
+                    .end_symbol(None);
+                frame.render_stateful_widget(scrollbar, menu_area.inner(Margin {
+                    vertical: 0,
+                    horizontal: 0,
+                }), &mut self.scroll_state);
+            }
+        }
+        Ok(())
+    }
+
+    fn footer_elements(&self) -> Vec<(&str, &str)> {
+        todo!()
+    }
+}
+
+impl RedisCli<'_> {
+    pub fn insert_str(&mut self, s: impl Into<String>) {
+        self.single_line_text_area.insert_str(s.into());
+    }
+
+    pub fn get_input(&self) -> String {
+        let (cursor_y, _) = self.single_line_text_area.cursor();
+        self.single_line_text_area.lines().get(cursor_y).unwrap().clone()
+    }
 
     pub fn update_frame(&mut self, frame_height: u16, frame_width: u16) {
         self.frame_size = (frame_width, frame_height);
     }
 
-    pub fn handle_key_event(&mut self, event: KeyEvent) {
+    pub fn handle_key_event(&mut self, event: KeyEvent) -> bool {
         let (cursor_y, cursor_x) = self.single_line_text_area.cursor();
         let input = self.single_line_text_area.lines().get(cursor_y).unwrap().clone();
         let (items, segment) = get_items(&input, cursor_x);
@@ -147,30 +144,42 @@ impl CliState {
                 KeyEvent { code: KeyCode::Esc, .. } => {
                     if self.single_line_text_area.is_selecting() {
                         self.single_line_text_area.cancel_selection();
+                        true
                     } else if self.show_table {
                         self.show_table = false;
+                        true
+                    } else {
+                        false
                     }
                 }
                 KeyEvent { code: KeyCode::Char(' '), modifiers: KeyModifiers::CONTROL, .. } => {
                     self.show_table = true;
+                    true
                 }
-                KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
+                KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {
+                    false
+                }
                 KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
                     self.single_line_text_area.select_all();
+                    true
                 }
                 KeyEvent { code: KeyCode::Char('z'), modifiers: KeyModifiers::CONTROL, .. } => {
                     self.single_line_text_area.undo();
+                    true
                 }
                 KeyEvent { code: KeyCode::Char('y'), modifiers: KeyModifiers::CONTROL, .. } => {
                     self.single_line_text_area.redo();
+                    true
                 }
                 KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::NONE, .. } => {
                     self.table_state.select_previous();
                     self.scroll_state.prev();
+                    true
                 }
                 KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::NONE, .. } => {
                     self.table_state.select_next();
                     self.scroll_state.next();
+                    true
                 }
                 KeyEvent { code: KeyCode::Tab | KeyCode::Enter, .. } => {
                     if !self.completion_items.is_empty() && self.show_table {
@@ -191,19 +200,25 @@ impl CliState {
                                     }
                                     self.single_line_text_area.insert_str(item.insert_text.clone());
                                 }
+                                return true;
                             }
                         }
                     }
+                    false
                 }
                 input => {
                     if self.single_line_text_area.input(input) {
                         self.show_table = true;
-                    };
+                        true
+                    } else {
+                        false
+                    }
                 }
             }
+        } else {
+            false
         }
     }
-
 }
 
 fn main() -> Result<()> {

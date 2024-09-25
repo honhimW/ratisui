@@ -10,4 +10,4 @@ pub mod servers;
 mod database_editor;
 pub mod create_key_editor;
 pub mod console_output;
-mod redis_cli;
+pub mod redis_cli;
