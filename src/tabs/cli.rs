@@ -77,6 +77,22 @@ impl Renderable for CliTab {
         frame.render_widget(Span::raw(format!("- {} -", self.mode)), horizontal[1]);
         Ok(())
     }
+
+    fn footer_elements(&self) -> Vec<(&str, &str)> {
+        let mut elements = vec![];
+        if self.is_listening() {
+            elements.push(("Esc", "Stop"));
+        } else {
+            match self.mode {
+                Mode::Insert => {
+                    elements.push(("Esc", "Normal"));
+                    elements.push(("^Space", "Suggest"));
+                },
+                Mode::Normal => elements.push(("i", "Insert")),
+            }
+        }
+        elements
+    }
 }
 
 impl Listenable for CliTab {

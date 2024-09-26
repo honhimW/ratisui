@@ -126,9 +126,9 @@ impl Renderable for RedisCli<'_> {
         Ok(())
     }
 
-    fn footer_elements(&self) -> Vec<(&str, &str)> {
-        todo!()
-    }
+    // fn footer_elements(&self) -> Vec<(&str, &str)> {
+    //     todo!()
+    // }
 }
 
 impl Listenable for RedisCli<'_> {
@@ -221,15 +221,13 @@ impl Listenable for RedisCli<'_> {
                     }
                 }
             };
-            if accepted {
-                let (cursor_y, cursor_x) = self.single_line_text_area.cursor();
-                self.raw_input = self.single_line_text_area.lines().get(cursor_y).unwrap().clone();
-                let (mut items, segment) = get_items(&self.raw_input, cursor_x);
-                sort_commands(&mut items, &segment);
-                self.completion_items = items;
-                self.segment = segment;
-                self.scroll_state = self.scroll_state.content_length(self.completion_items.len());
-            }
+            let (cursor_y, cursor_x) = self.single_line_text_area.cursor();
+            self.raw_input = self.single_line_text_area.lines().get(cursor_y).unwrap().clone();
+            let (mut items, segment) = get_items(&self.raw_input, cursor_x);
+            sort_commands(&mut items, &segment);
+            self.completion_items = items;
+            self.segment = segment;
+            self.scroll_state = self.scroll_state.content_length(self.completion_items.len());
             Ok(accepted)
         } else {
             Ok(false)
@@ -725,6 +723,7 @@ enum CompletionItemKind {
     Stream,
     PubSub,
     Server,
+    Other,
 }
 
 fn split_args(cmd: impl Into<String>) -> Vec<(String, Option<char>, usize, usize)> {
@@ -940,7 +939,7 @@ static COMMANDS: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
                 "stream" => CompletionItemKind::Stream,
                 "pubsub" => CompletionItemKind::PubSub,
                 "server" => CompletionItemKind::Server,
-                _ => CompletionItemKind::Generic,
+                _ => CompletionItemKind::Other,
             };
             item.kind = kind;
             item = item.description(Doc::default()
