@@ -23,8 +23,8 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.event.inputs.major_version }}.${{ github.run_number }}
-        release_name: v${{ github.event.inputs.major_version }}.${{ github.run_number }}
+        tag_name: ${{ github.event.inputs.major_version }}
+        release_name: v${{ github.event.inputs.major_version }}
         draft: false
     - name: Set output
       id: set_output
