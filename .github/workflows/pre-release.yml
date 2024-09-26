@@ -1,4 +1,4 @@
-name: Release
+name: Pre-Release
 
 on:
   workflow_dispatch:
@@ -8,11 +8,6 @@ on:
         required: true
         type: string
         default: '0.0'
-      prerelease:
-        description: 'Pre Release'
-        required: true
-        type: boolean
-        default: true
 
 jobs:
   create_release:
@@ -32,7 +27,7 @@ jobs:
         tag_name: ${{ github.event.inputs.major_version }}.${{ github.run_number }}
         release_name: v${{ github.event.inputs.major_version }}.${{ github.run_number }}
         draft: false
-        prerelease: ${{ github.event.inputs.prerelease }}
+        prerelease: true
     - name: Set output
       id: set_output
       run: echo "upload_url=${{ steps.create_release.outputs.upload_url }}" >> "$GITHUB_OUTPUT"
