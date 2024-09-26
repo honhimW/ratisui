@@ -997,69 +997,6 @@ static COMMANDS: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
             items.push(item);
         }
     }
-    // items.push(CompletionItem::default("COPY").generic()
-    //     .add_param(Parameter::single("source", ""))
-    //     .add_param(Parameter::single("destination", ""))
-    //     .add_param(Parameter::arg("DB", "destination-db", "database index"))
-    //     .add_param(Parameter::flag("REPLACE", "removes the destination key"))
-    //     .description(Doc::default()
-    //         .syntax("COPY source destination [DB destination-db] [REPLACE]")
-    //         .summary("This command copies the value stored at the source key to the destination key.")
-    //         .since("6.2.0")
-    //         .complexity("O(N) worst case for collections, where N is the number of nested items. O(1) for string values.")
-    //         .acl("@keyspace, @write, @slow")
-    //     )
-    //     .build_label());
-    //
-    // items.push(CompletionItem::default("DEL").generic()
-    //     .add_param(Parameter::many("key", ""))
-    //     .description(Doc::default()
-    //         .syntax("DEL key [key ...]")
-    //         .summary("Removes the specified keys. A key is ignored if it does not exist.")
-    //         .since("1.0.0")
-    //         .complexity("O(N) where N is the number of keys that will be removed. When a key to remove holds a value other than a string, the individual complexity for this key is O(M) where M is the number of elements in the list, set, sorted set or hash. Removing a single key that holds a string value is O(1).")
-    //         .acl("@keyspace, @write, @slow")
-    //     )
-    //     .build_label());
-    //
-    // items.push(CompletionItem::default("DUMP").generic()
-    //     .add_param(Parameter::many("key", ""))
-    //     .description(Doc::default()
-    //         .syntax("DEL key [key ...]")
-    //         .summary("Removes the specified keys. A key is ignored if it does not exist.")
-    //         .since("1.0.0")
-    //         .complexity("O(N) where N is the number of keys that will be removed. When a key to remove holds a value other than a string, the individual complexity for this key is O(M) where M is the number of elements in the list, set, sorted set or hash. Removing a single key that holds a string value is O(1).")
-    //         .acl("@keyspace, @write, @slow")
-    //     )
-    //     .build_label());
-    //
-    // items.push(CompletionItem::default("SCAN").generic()
-    //     .add_param(Parameter::single("cursor", "* cursor"))
-    //     .add_param(Parameter::arg("MATCH", "pattern", "pattern"))
-    //     .add_param(Parameter::arg("COUNT", "count", "count"))
-    //     .add_param(Parameter::arg("TYPE", "type", "type"))
-    //     .description(Doc::default()
-    //         .syntax("SCAN cursor [MATCH pattern] [COUNT count] [TYPE type]")
-    //         .summary("iterates the set of keys in the currently selected Redis database.")
-    //         .since("2.8.0")
-    //         .acl("@keyspace, @read, @slow")
-    //         .complexity("O(1) for every call. O(N) for a complete iteration, including enough command calls for the cursor to return back to 0. N is the number of elements inside the collection.")
-    //     )
-    //     .build_label());
-    //
-    // items.push(CompletionItem::default("TTL"));
-    // items.push(CompletionItem::default("EXPIRE"));
-    // items.push(CompletionItem::default("MGET"));
-    // items.push(CompletionItem::default("PING").server());
-    // items.push(CompletionItem::default("INFO").server());
-    // items.push(CompletionItem::default("MONITOR").server());
-    // items.push(CompletionItem::default("SET").string());
-    // items.push(CompletionItem::default("GET").string());
-    // items.push(CompletionItem::default("STRLEN").string());
-    // items.push(CompletionItem::default("HGETALL").hash());
-    // items.push(CompletionItem::default("HGET").hash());
-    // items.push(CompletionItem::default("SADD").set());
-    // items.push(CompletionItem::default("ZADD").z_set());
     items
 });
 
