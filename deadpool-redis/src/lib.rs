@@ -128,6 +128,7 @@ impl ConnectionLike for Connection {
 /// [`Manager`]: managed::Manager
 #[derive(Debug)]
 pub struct Manager {
+    /// Manager client
     pub client: Client,
     ping_number: AtomicUsize,
 }

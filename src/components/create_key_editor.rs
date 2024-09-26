@@ -1,7 +1,5 @@
-use std::cmp;
 use crate::app::{Listenable, Renderable};
-use crate::components::servers::Data;
-use crate::configuration::{Database, Protocol};
+use crate::utils::clean_text_area;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Percentage};
 use ratatui::layout::{Layout, Rect};
@@ -11,10 +9,9 @@ use ratatui::text::Span;
 use ratatui::widgets::{Block, BorderType, Clear};
 use ratatui::Frame;
 use serde::{Deserialize, Serialize};
-use strum::{Display, EnumCount, EnumIter, IntoEnumIterator, ToString};
+use std::cmp;
+use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
 use tui_textarea::TextArea;
-use uuid::Uuid;
-use crate::utils::clean_text_area;
 
 pub struct Form {
     title: String,
@@ -25,7 +22,7 @@ pub struct Form {
     ttl_text_area: TextArea<'static>,
 }
 
-#[derive(Default, Eq, PartialEq, EnumCount, EnumIter, ToString)]
+#[derive(Default, Eq, PartialEq, EnumCount, EnumIter, Display)]
 enum Editing {
     #[default]
     #[strum(serialize = "Type(*)")]

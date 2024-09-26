@@ -15,7 +15,6 @@ use ratatui::style::Style;
 use ratatui::text::Span;
 use ratatui::Frame;
 use redis::{Value, VerbatimFormat};
-use std::ascii::AsciiExt;
 use std::cmp;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -290,45 +289,44 @@ impl CliTab {
             return;
         }
 
-        let mut result = Ok(());
         let args = split_args(&command);
-        if args.len() == 1 && "monitor".eq_ignore_ascii_case(&args[0]) {
+        let result = if args.len() == 1 && "monitor".eq_ignore_ascii_case(&args[0]) {
             self.do_dispose();
             let arc = Arc::clone(&self.disposable);
             let sender_clone = self.data_sender.clone();
-            result = spawn_redis_opt(move |operations| async move {
+            spawn_redis_opt(move |operations| async move {
                 let x = operations.monitor(sender_clone).await?;
                 if let Ok(mut monitor) = arc.lock() {
                     *monitor = Some(Box::new(x));
                 }
                 Ok::<(), Error>(())
-            });
+            })
         } else if args.len() == 2 && "subscribe".eq_ignore_ascii_case(&args[0]) {
             self.do_dispose();
             let arc = Arc::clone(&self.disposable);
             let sender_clone = self.data_sender.clone();
-            result = spawn_redis_opt(move |operations| async move {
+            spawn_redis_opt(move |operations| async move {
                 let x = operations.subscribe(args[1].clone(), sender_clone).await?;
                 if let Ok(mut subscriber) = arc.lock() {
                     *subscriber = Some(Box::new(x));
                 }
                 Ok::<(), Error>(())
-            });
+            })
         } else if args.len() == 2 && "psubscribe".eq_ignore_ascii_case(&args[0]) {
             self.do_dispose();
             let arc = Arc::clone(&self.disposable);
             let sender_clone = self.data_sender.clone();
-            result = spawn_redis_opt(move |operations| async move {
+            spawn_redis_opt(move |operations| async move {
                 let x = operations.psubscribe(args[1].clone(), sender_clone).await?;
                 if let Ok(mut p_subscriber) = arc.lock() {
                     *p_subscriber = Some(Box::new(x));
                 }
                 Ok::<(), Error>(())
-            });
+            })
         } else {
             let cmd = command.clone();
             let sender = self.data_sender.clone();
-            result = spawn_redis_opt(move |operations| async move {
+            spawn_redis_opt(move |operations| async move {
                 match operations.str_cmd(cmd).await {
                     Ok(value) => sender.send(value)?,
                     Err(e) => {
@@ -339,8 +337,8 @@ impl CliTab {
                     },
                 }
                 Ok(())
-            });
-        }
+            })
+        };
 
         if let Err(e) = result {
             let string = format!("{}", e);
@@ -544,7 +542,7 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
             }
             lines
         }
-        Value::Attribute { attributes, data, .. } => {
+        Value::Attribute { .. } => {
             vec![format_err("Attribute, not supported yet")]
         }
         Value::Set(set) => {
@@ -596,7 +594,7 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
         Value::BigNumber(big_number) => {
             vec![format(&big_number.to_string())]
         }
-        Value::Push { kind, data, .. } => {
+        Value::Push { data, .. } => {
             let mut lines = vec![];
             for value in data {
                 let sub_lines = value_to_lines(value, pad + 2);

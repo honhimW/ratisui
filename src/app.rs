@@ -85,20 +85,3 @@ pub fn centered_rect(percentage_x: u16, percentage_y: u16, area: Rect) -> Rect {
         ])
         .split(popup_layout[1])[1]
 }
-
-pub fn top_right_rect(percentage_x: u16, percentage_y: u16, area: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage(percentage_y),
-            Constraint::Percentage(100 - percentage_y),
-        ])
-        .split(area);
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(100 - percentage_x),
-            Constraint::Percentage(percentage_x),
-        ])
-        .split(popup_layout[0])[1]
-}

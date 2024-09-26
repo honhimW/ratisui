@@ -62,6 +62,7 @@ pub struct HighlightText {
     pub kind: HighlightKind,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum HighlightKind {
     String,
@@ -77,6 +78,7 @@ pub enum HighlightKind {
     Unknown,
 }
 
+#[allow(unused)]
 #[derive(Default)]
 pub enum ContentType {
     String,
@@ -128,6 +130,7 @@ impl HighlightProcessor {
         Ok(())
     }
 
+    #[allow(unused)]
     pub fn get_cursor_path(&self, row: usize, column: usize) -> Result<String> {
         if let Some(tree) = &self.tree {
             let cursor_position = tree_sitter::Point::new(row, column);

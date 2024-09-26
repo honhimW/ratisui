@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::sync::{Arc, Condvar, Mutex};
 
 /// combines a `Mutex` and `Condvar` to allow waiting for a change in the variable protected by the `Mutex`

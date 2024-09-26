@@ -1,4 +1,5 @@
 use crate::app::{centered_rect, AppEvent, Listenable, Renderable, TabImplementation};
+use crate::components::create_key_editor::{Form, KeyType};
 use crate::components::hash_table::HashValue;
 use crate::components::list_table::ListValue;
 use crate::components::popup::Popup;
@@ -7,9 +8,9 @@ use crate::components::set_table::SetValue;
 use crate::components::zset_table::ZSetValue;
 use crate::redis_opt::{async_redis_opt, spawn_redis_opt};
 use crate::tabs::explorer::CurrentScreen::{KeysTree, ValuesViewer};
+use crate::utils::{bytes_to_string, clean_text_area};
 use anyhow::{anyhow, Context, Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use itertools::Itertools;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -26,8 +27,6 @@ use std::ops::Not;
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
-use crate::components::create_key_editor::{Form, KeyType};
-use crate::utils::{bytes_to_string, clean_text_area};
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
@@ -196,7 +195,6 @@ impl ExplorerTab {
             Block::bordered()
                 .title("Rename Key")
         );
-        let mut create_key_form = Form::default().title("Create Key");
         Self {
             current_screen: KeysTree,
             show_filter: false,
@@ -206,7 +204,7 @@ impl ExplorerTab {
             filter_mod: FilterMod::Fuzzy,
             scan_size: 2_000,
             filter_text_area,
-            create_key_form,
+            create_key_form: Form::default().title("Create Key"),
             rename_key_text_area,
             scan_keys_result: vec![],
             tree_state: Default::default(),

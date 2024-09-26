@@ -35,13 +35,6 @@ use std::cmp;
 use style::palette::tailwind;
 use unicode_width::UnicodeWidthStr;
 
-const PALETTES: [tailwind::Palette; 4] = [
-    tailwind::BLUE,
-    tailwind::EMERALD,
-    tailwind::INDIGO,
-    tailwind::RED,
-];
-
 const ITEM_HEIGHT: usize = 4;
 
 struct TableColors {
@@ -49,7 +42,6 @@ struct TableColors {
     header_bg: Color,
     header_fg: Color,
     row_fg: Color,
-    selected_style_bg: Color,
     normal_row_color: Color,
     alt_row_color: Color,
 }
@@ -61,7 +53,6 @@ impl TableColors {
             header_bg: color.c900,
             header_fg: color.c200,
             row_fg: color.c200,
-            selected_style_bg: color.c900,
             normal_row_color: Color::default(),
             alt_row_color: color.c950,
         }
@@ -75,10 +66,6 @@ pub struct Data {
 }
 
 impl Data {
-    const fn ref_array(&self) -> [&String; 2] {
-        [&self.index, &self.value]
-    }
-
     fn index(&self) -> &str {
         &self.index
     }
@@ -90,13 +77,11 @@ impl Data {
 }
 
 pub struct ListValue {
-    item_values: Vec<String>,
     state: TableState,
     items: Vec<Data>,
     longest_item_lens: (u16, u16),
     scroll_state: ScrollbarState,
     colors: TableColors,
-    color_index: usize,
 }
 
 impl ListValue {
@@ -111,12 +96,10 @@ impl ListValue {
             vec.push(data);
         }
         Self {
-            item_values: data,
             state: TableState::default().with_selected(0),
             longest_item_lens: constraint_len_calculator(&vec),
             scroll_state: ScrollbarState::new((vec.len() - 1) * ITEM_HEIGHT),
             colors: TableColors::new(&tailwind::GRAY),
-            color_index: 3,
             items: vec,
         }
     }
@@ -149,19 +132,6 @@ impl ListValue {
         };
         self.state.select(Some(i));
         self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
-    }
-
-    pub fn next_color(&mut self) {
-        self.color_index = (self.color_index + 1) % PALETTES.len();
-    }
-
-    pub fn previous_color(&mut self) {
-        let count = PALETTES.len();
-        self.color_index = (self.color_index + count - 1) % count;
-    }
-
-    pub fn set_colors(&mut self) {
-        self.colors = TableColors::new(&PALETTES[self.color_index]);
     }
 
     fn render_table(&mut self, frame: &mut Frame, area: Rect) {

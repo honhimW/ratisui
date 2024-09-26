@@ -4,7 +4,7 @@ use itertools::Itertools;
 use once_cell::sync::Lazy;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Min};
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
+use ratatui::layout::{Alignment, Layout, Margin, Rect};
 use ratatui::style::palette::tailwind;
 use ratatui::style::{Style, Stylize};
 use ratatui::symbols::scrollbar::Set;
@@ -193,7 +193,7 @@ impl Listenable for RedisCli<'_> {
                                     if e < 0 {
                                         e = self.raw_input.len() as isize;
                                     }
-                                    let (cursor_y, cursor_x) = self.single_line_text_area.cursor();
+                                    let (cursor_y, _) = self.single_line_text_area.cursor();
                                     self.single_line_text_area.move_cursor(CursorMove::Jump(cursor_y as u16, s as u16));
                                     self.single_line_text_area.start_selection();
                                     for _ in 0..(e - s) {
@@ -373,7 +373,7 @@ fn get_rows(input: impl Into<String>, items: &Vec<CompletionItem>) -> Vec<Row> {
 fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
     let args = split_args(input);
 
-    /// Find current word
+    // Find current word
     let mut current_word: Option<(usize, String, Option<char>, usize, usize)> = None;
     let mut segment = String::new();
     for (idx, (arg, quote, start_pos, end_pos)) in args.iter().enumerate() {
@@ -385,10 +385,10 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
     }
 
     let mut commands = vec![];
-    /// Find command by first word
+    // Find command by first word
     for item in COMMANDS.iter() {
         let mut item_clone = item.clone();
-        if let Some((idx, ref cmd, _, start_pos, end_pos)) = current_word {
+        if let Some((idx, _, _, start_pos, end_pos)) = current_word {
             if idx == 0 {
                 if item.label.label.contains(&segment) {
                     item_clone.range = (start_pos.clone() as isize, end_pos.clone() as isize);
@@ -483,7 +483,6 @@ struct CompletionItem {
 
 #[derive(Clone, Debug)]
 enum Parameter {
-    None,              // monitor
     Flag(String, String),      // [CH]
     Enum(Vec<(String, String)>), // [NX | XX]
     Arg {              // [match pattern]
@@ -491,8 +490,8 @@ enum Parameter {
         arg: String,   // pattern
         detail: String,
     },
-    Single(String, String),    // cursor
-    Many(String, String),            // score member [score members...], tail
+    Single(String),    // cursor
+    Many(String),            // score member [score members...], tail
 }
 
 impl Parameter {
@@ -508,18 +507,17 @@ impl Parameter {
         Parameter::Arg { key: key.into(), arg: arg.into(), detail: detail.into() }
     }
 
-    fn single(s: impl Into<String>, detail: impl Into<String>) -> Parameter {
-        Parameter::Single(s.into(), detail.into())
+    fn single(s: impl Into<String>) -> Parameter {
+        Parameter::Single(s.into())
     }
 
-    fn many(s: impl Into<String>, detail: impl Into<String>) -> Parameter {
-        Parameter::Many(s.into(), detail.into())
+    fn many(s: impl Into<String>) -> Parameter {
+        Parameter::Many(s.into())
     }
 
     fn to_string(&self) -> String {
         let mut detail = String::new();
         match self {
-            Parameter::None => {}
             Parameter::Flag(flag, _) => {
                 detail.push('[');
                 detail.push_str(flag);
@@ -537,10 +535,10 @@ impl Parameter {
                 detail.push_str(arg);
                 detail.push(']');
             }
-            Parameter::Single(name, _) => {
+            Parameter::Single(name) => {
                 detail.push_str(name);
             }
-            Parameter::Many(name, _) => {
+            Parameter::Many(name) => {
                 detail.push_str(name);
                 detail.push_str(" [");
                 detail.push_str(name);
@@ -552,9 +550,6 @@ impl Parameter {
 }
 
 impl CompletionItem {
-    fn empty() -> CompletionItem {
-        Self::new("", CompletionItemKind::Generic)
-    }
 
     fn default(s: impl Into<String>) -> CompletionItem {
         Self::new(s, CompletionItemKind::Generic)
@@ -577,51 +572,6 @@ impl CompletionItem {
             range: (0, -1),
             insert_text: s,
         }
-    }
-
-    fn generic(mut self) -> Self {
-        self.kind = CompletionItemKind::Generic;
-        self
-    }
-
-    fn string(mut self) -> Self {
-        self.kind = CompletionItemKind::String;
-        self
-    }
-
-    fn list(mut self) -> Self {
-        self.kind = CompletionItemKind::List;
-        self
-    }
-
-    fn set(mut self) -> Self {
-        self.kind = CompletionItemKind::Set;
-        self
-    }
-
-    fn z_set(mut self) -> Self {
-        self.kind = CompletionItemKind::ZSet;
-        self
-    }
-
-    fn hash(mut self) -> Self {
-        self.kind = CompletionItemKind::Hash;
-        self
-    }
-
-    fn stream(mut self) -> Self {
-        self.kind = CompletionItemKind::Stream;
-        self
-    }
-
-    fn pub_sub(mut self) -> Self {
-        self.kind = CompletionItemKind::PubSub;
-        self
-    }
-
-    fn server(mut self) -> Self {
-        self.kind = CompletionItemKind::Server;
-        self
     }
 
     fn add_param(mut self, p: Parameter) -> Self {
@@ -763,125 +713,9 @@ fn split_args(cmd: impl Into<String>) -> Vec<(String, Option<char>, usize, usize
         cursor += 1;
     }
 
-    // if !current.is_empty() {
-    //     parts.push((current, None, start, cursor));
-    // }
     parts.push((current, None, start, cursor));
     parts
 }
-
-fn centered_rect(percentage_x: u16, percentage_y: u16, area: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percentage_y) / 2),
-            Constraint::Percentage(percentage_y),
-            Constraint::Percentage((100 - percentage_y) / 2),
-        ])
-        .split(area);
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percentage_x) / 2),
-            Constraint::Percentage(percentage_x),
-            Constraint::Percentage((100 - percentage_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
-}
-
-#[derive(PartialEq, Eq, Clone, Copy)]
-enum CharKind {
-    Space,
-    Punct,
-    Other,
-}
-
-impl CharKind {
-    fn new(c: char) -> Self {
-        if c.is_whitespace() {
-            Self::Space
-        } else if c.is_ascii_punctuation() {
-            Self::Punct
-        } else {
-            Self::Other
-        }
-    }
-}
-
-fn find_word_start_forward(line: &str, start_col: usize) -> Option<usize> {
-    let mut it = line.chars().enumerate().skip(start_col);
-    let mut prev = CharKind::new(it.next()?.1);
-    for (col, c) in it {
-        let cur = CharKind::new(c);
-        if cur != CharKind::Space && prev != cur {
-            return Some(col);
-        }
-        prev = cur;
-    }
-    None
-}
-
-fn find_word_exclusive_end_forward(line: &str, start_col: usize) -> Option<usize> {
-    let mut it = line.chars().enumerate().skip(start_col);
-    let mut prev = CharKind::new(it.next()?.1);
-    for (col, c) in it {
-        let cur = CharKind::new(c);
-        if prev != CharKind::Space && prev != cur {
-            return Some(col);
-        }
-        prev = cur;
-    }
-    None
-}
-
-fn find_word_inclusive_end_forward(line: &str, start_col: usize) -> Option<usize> {
-    let mut it = line.chars().enumerate().skip(start_col);
-    let (mut last_col, c) = it.next()?;
-    let mut prev = CharKind::new(c);
-    for (col, c) in it {
-        let cur = CharKind::new(c);
-        if prev != CharKind::Space && cur != prev {
-            return Some(col.saturating_sub(1));
-        }
-        prev = cur;
-        last_col = col;
-    }
-    if prev != CharKind::Space {
-        Some(last_col)
-    } else {
-        None
-    }
-}
-
-fn find_word_start_backward(line: &str, start_col: usize) -> usize {
-    let idx = line
-        .char_indices()
-        .nth(start_col)
-        .map(|(i, _)| i)
-        .unwrap_or(line.len());
-    let mut it = line[..idx].chars().rev().enumerate();
-    let mut cur = if let Some(next) = it.next() {
-        CharKind::new(next.1)
-    } else {
-        CharKind::Space
-    };
-    if cur == CharKind::Space {
-        return start_col;
-    }
-    for (i, c) in it {
-        let next = CharKind::new(c);
-        if cur != CharKind::Space && next != cur {
-            return start_col - i;
-        }
-        cur = next;
-    }
-    if cur != CharKind::Space {
-        0
-    } else {
-        start_col
-    }
-}
-
 
 /// Redis Commands Completion Items Definition
 
@@ -981,12 +815,12 @@ static COMMANDS: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
                         "many" => {
                             let name = argument.get("name").expect("many name is empty");
                             let name = value_to_string(name);
-                            item = item.add_param(Parameter::many(name, ""));
+                            item = item.add_param(Parameter::many(name));
                         },
                         "single" => {
                             let name = argument.get("name").expect("many name is empty");
                             let name = value_to_string(name);
-                            item = item.add_param(Parameter::single(name, ""));
+                            item = item.add_param(Parameter::single(name));
                         },
                         _ => {}
                     }

@@ -17,35 +17,24 @@ use crate::app::{centered_rect, AppEvent, Listenable, Renderable};
 use crate::bus::{publish_msg, Message};
 use crate::components::database_editor::Form;
 use crate::components::popup::Popup;
-use crate::components::raw_value::raw_value_to_highlight_text;
-use crate::configuration::{Database, Databases, Protocol, save_database_configuration};
+use crate::configuration::{save_database_configuration, Database, Databases};
 use crate::redis_opt::{redis_operations, switch_client};
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Result};
 use itertools::Itertools;
 use log::info;
-use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyEvent, KeyModifiers};
 use ratatui::layout::Alignment;
-use ratatui::layout::Constraint::{Length, Min};
+use ratatui::layout::Constraint::Length;
 use ratatui::widgets::block::Position;
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Widget};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::{crossterm::event::{KeyCode, KeyEventKind}, layout::{Margin, Rect}, style::{self, Color, Style, Stylize}, symbols, text::{Line, Text}, widgets::{
     Cell, HighlightSpacing, Row, Scrollbar, ScrollbarOrientation, ScrollbarState
     , Table, TableState,
 }, Frame};
-use std::borrow::Cow;
 use std::cmp;
 use std::string::ToString;
 use style::palette::tailwind;
-use tui_textarea::TextArea;
 use unicode_width::UnicodeWidthStr;
-
-const PALETTES: [tailwind::Palette; 4] = [
-    tailwind::BLUE,
-    tailwind::EMERALD,
-    tailwind::INDIGO,
-    tailwind::RED,
-];
 
 const ITEM_HEIGHT: usize = 4;
 
@@ -86,10 +75,6 @@ impl Data {
         [&self.selected, &self.name, &self.location, &self.db, &self.username, &self.use_tls, &self.protocol]
     }
 
-    fn selected(&self) -> &str {
-        &self.selected
-    }
-
     fn name(&self) -> &str {
         &self.name
     }
@@ -127,7 +112,6 @@ pub struct ServerList {
     column_styles: [Style; 7],
     scroll_state: ScrollbarState,
     colors: TableColors,
-    color_index: usize,
     create_form: Form,
     edit_form: Form,
 }
@@ -177,7 +161,6 @@ impl ServerList {
             ],
             scroll_state: ScrollbarState::new((vec.len().saturating_sub(1)) * ITEM_HEIGHT),
             colors: TableColors::new(&tailwind::GRAY),
-            color_index: 3,
             items: vec,
             create_form: Form::default().title("New"),
             edit_form: Form::default().title("Edit"),
@@ -236,19 +219,6 @@ impl ServerList {
         Ok(())
     }
 
-    pub fn next_color(&mut self) {
-        self.color_index = (self.color_index + 1) % PALETTES.len();
-    }
-
-    pub fn previous_color(&mut self) {
-        let count = PALETTES.len();
-        self.color_index = (self.color_index + count - 1) % count;
-    }
-
-    pub fn set_colors(&mut self) {
-        self.colors = TableColors::new(&PALETTES[self.color_index]);
-    }
-
     fn render_table(&mut self, frame: &mut Frame, area: Rect) {
         let header_style = Style::default()
             .bold()
@@ -269,7 +239,7 @@ impl ServerList {
             .height(1)
             ;
 
-        let rows = self.items.iter().enumerate().map(|(i, data)| {
+        let rows = self.items.iter().enumerate().map(|(_, data)| {
             let item = data.ref_array();
             item.into_iter().enumerate()
                 .map(|(idx, content)| {

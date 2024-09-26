@@ -4,23 +4,23 @@ use tui_textarea::TextArea;
 pub fn none_match(key_event: &KeyEvent, key_code: KeyCode) -> bool {
     none_modifier(key_event) && key_event.code == key_code
 }
-
+#[allow(unused)]
 pub fn ctrl_match(key_event: &KeyEvent, key_code: KeyCode) -> bool {
     ctrl_modifier(key_event) && key_event.code == key_code
 }
-
+#[allow(unused)]
 pub fn none_modifier(key_event: &KeyEvent) -> bool {
     key_event.modifiers == KeyModifiers::NONE
 }
-
+#[allow(unused)]
 pub fn ctrl_modifier(key_event: &KeyEvent) -> bool {
     key_event.modifiers == KeyModifiers::CONTROL
 }
-
+#[allow(unused)]
 pub fn alt_modifier(key_event: &KeyEvent) -> bool {
     key_event.modifiers == KeyModifiers::ALT
 }
-
+#[allow(unused)]
 pub fn shift_modifier(key_event: &KeyEvent) -> bool {
     key_event.modifiers == KeyModifiers::SHIFT
 }
@@ -32,16 +32,6 @@ pub fn clean_text_area(text_area: &mut TextArea) {
         key: tui_textarea::Key::Backspace,
         ..tui_textarea::Input::default()
     });
-}
-
-pub fn is_clean_text_area(text_area: &TextArea) -> bool {
-    let lines = text_area.lines();
-    if lines.len() == 1 {
-        if let Some(first_line) = lines.get(0) {
-            return first_line.is_empty();
-        }
-    }
-    false
 }
 
 pub fn bytes_to_string(bytes: Vec<u8>) -> anyhow::Result<String> {

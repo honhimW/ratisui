@@ -1,13 +1,12 @@
 use crate::configuration::{to_protocol_version, Database};
 use crate::utils::split_args;
 use anyhow::{anyhow, Context, Error, Result};
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::{Sender};
 use deadpool_redis::redis::cmd;
 use deadpool_redis::{Pool, Runtime};
 use futures::StreamExt;
-use log::{info, warn};
+use log::{info};
 use once_cell::sync::Lazy;
-use redis::aio::Monitor;
 use redis::cluster::ClusterClient;
 use redis::ConnectionAddr::{Tcp, TcpTls};
 use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value, VerbatimFormat};
@@ -16,7 +15,6 @@ use std::future::Future;
 use std::sync::RwLock;
 use std::task::Poll;
 use std::time::{Duration, Instant};
-use tokio::sync::watch::error::RecvError;
 use tokio::time::interval;
 
 #[macro_export]
@@ -174,20 +172,20 @@ impl RedisOperations {
         }
     }
 
-    async fn get_connection(&self) -> Result<Box<dyn redis::aio::ConnectionLike>> {
-        if self.is_cluster() {
-            let pool = &self.cluster_pool.clone().context("should be cluster")?;
-            let connection = pool.get().await?;
-            Ok(Box::new(connection))
-        } else {
-            let connection = self.pool.get().await?;
-            Ok(Box::new(connection))
-        }
-    }
+    // async fn get_connection(&self) -> Result<Box<dyn redis::aio::ConnectionLike>> {
+    //     if self.is_cluster() {
+    //         let pool = &self.cluster_pool.clone().context("should be cluster")?;
+    //         let connection = pool.get().await?;
+    //         Ok(Box::new(connection))
+    //     } else {
+    //         let connection = self.pool.get().await?;
+    //         Ok(Box::new(connection))
+    //     }
+    // }
 
-    pub fn get_database(&self) -> Database {
-        self.database.clone()
-    }
+    // pub fn get_database(&self) -> Database {
+    //     self.database.clone()
+    // }
 
     pub fn is_cluster(&self) -> bool {
         self.cluster_client.is_some()
@@ -769,6 +767,7 @@ impl RedisOperations {
         }
     }
 
+    #[allow(unused)]
     pub async fn persist<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<()> {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
@@ -936,6 +935,7 @@ impl RedisOperations {
         }
     }
 
+    #[allow(unused)]
     pub async fn exists<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<bool> {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
@@ -977,6 +977,7 @@ impl RedisOperations {
 
     /// rpushx key element [element ...]
     /// Appends an element to a list only when the list exists.
+    #[allow(unused)]
     pub async fn rpush<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, value: V) -> Result<()> {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;

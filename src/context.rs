@@ -1,26 +1,22 @@
-use std::time::Instant;
-use crate::app::{centered_rect, top_right_rect, AppEvent, Listenable, Renderable, TabImplementation};
-use crate::components::popup::{Popup, RenderAblePopup};
-use crate::utils::none_match;
-use crate::redis_opt::redis_operations;
+use crate::app::{centered_rect, AppEvent, Listenable, Renderable, TabImplementation};
+use crate::bus::{Kind, Message};
+use crate::components::servers::ServerList;
+use crate::configuration::Databases;
+use crate::tabs::cli::CliTab;
 use crate::tabs::explorer::ExplorerTab;
 use crate::tabs::logger::LoggerTab;
-use crate::tabs::cli::CliTab;
+use crate::utils::none_match;
 use anyhow::Result;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Max, Min};
 use ratatui::layout::{Alignment, Layout, Rect};
 use ratatui::prelude::{Color, Span, Style, Stylize, Text};
 use ratatui::style::palette::tailwind;
-use ratatui::widgets::block::Position;
+use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 use ratatui::{symbols, Frame};
-use ratatui::text::Line;
+use std::time::Instant;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
-use tui_textarea::TextArea;
-use crate::bus::{try_take_msg, Kind, Message};
-use crate::components::servers::ServerList;
-use crate::configuration::Databases;
 
 pub struct Context {
     show_server_switcher: bool,
@@ -29,7 +25,6 @@ pub struct Context {
     explorer_tab: ExplorerTab,
     cli_tab: CliTab,
     logger_tab: LoggerTab,
-    databases: Databases,
     server_list: ServerList,
     pub toast: Option<Message>,
     pub fps: f32,
@@ -52,7 +47,6 @@ impl Context {
             cli_tab: CliTab::new(),
             logger_tab: LoggerTab::new(),
             server_list: ServerList::new(&databases),
-            databases,
             toast: None,
             fps: 0.0,
         }
@@ -226,7 +220,7 @@ impl Renderable for Context {
     }
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
-        let mut elements = vec![];
+        let mut elements;
         if self.show_server_switcher {
             elements = self.server_list.footer_elements();
         } else {

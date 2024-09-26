@@ -29,6 +29,7 @@ pub enum Kind {
     Info,
 }
 
+#[allow(unused)]
 impl Message {
     pub fn info(msg: impl Into<String>) -> Self {
         Self::with_default(Kind::Info, msg)
@@ -66,10 +67,12 @@ pub fn try_take_msg() -> Result<Message> {
     TOAST_CHANNEL.rx.try_recv().context("Taking failed")
 }
 
+#[allow(unused)]
 pub fn get_sender() -> Result<Sender<Message>> {
     Ok(TOAST_CHANNEL.tx.clone())
 }
 
+#[allow(unused)]
 pub fn get_receiver() -> Result<Receiver<Message>> {
     Ok(TOAST_CHANNEL.rx.clone())
 }

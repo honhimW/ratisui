@@ -1,12 +1,11 @@
 use crate::components::console_output::OutputKind::{ERR, STD};
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::Text;
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::palette::tailwind;
+use ratatui::style::{Style};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui_macros::{line, span};
 use std::cmp;
-use ratatui::style::palette::tailwind;
-use ratatui::text::Line;
 use strum::Display;
 use OutputKind::{Else, CMD};
 

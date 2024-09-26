@@ -3,14 +3,14 @@ use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use log::debug;
 use redis::ProtocolVersion;
+use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
-use serde::de::Error;
-use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
+use strum::{Display, EnumCount, EnumIter};
 
 pub fn load_app_configuration() -> Result<Configuration> {
     let mut configuration = Configuration::default();
@@ -40,6 +40,7 @@ pub fn load_database_configuration() -> Result<Databases> {
     Ok(databases)
 }
 
+#[allow(unused)]
 pub fn save_configuration(config: &Configuration) -> Result<()> {
     let app_config_path = get_file_path("config.toml")?;
 
@@ -132,8 +133,8 @@ fn from_base64<'d, S: Deserializer<'d>>(deserializer: S) -> Result<Option<String
     let option = Option::<String>::deserialize(deserializer)?;
     match option {
         Some(p) => {
-            let bytes = BASE64_STANDARD.decode(p).map_err(|e| S::Error::custom("decode base64 error"))?;
-            let string = String::from_utf8(bytes).map_err(|e| S::Error::custom("decode utf-8 error"))?;
+            let bytes = BASE64_STANDARD.decode(p).map_err(|_| S::Error::custom("decode base64 error"))?;
+            let string = String::from_utf8(bytes).map_err(|_| S::Error::custom("decode utf-8 error"))?;
             Ok(Some(string))
         }
         None => { Ok(None) }
@@ -169,19 +170,6 @@ pub fn to_protocol_version(protocol: Protocol) -> ProtocolVersion {
 }
 
 impl Database {
-    pub fn default() -> Self {
-        Self {
-            host: "127.0.0.1".to_string(),
-            port: 6379,
-            username: None,
-            password: None,
-            use_tls: false,
-            use_ssh_tunnel: false,
-            db: 0,
-            protocol: Protocol::RESP3,
-        }
-    }
-
     pub fn from(other: Database) -> Self {
         Self {
             ..other

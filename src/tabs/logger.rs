@@ -1,11 +1,11 @@
 use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
-use log::{debug, error, info, trace, warn, LevelFilter};
+use log::LevelFilter;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::prelude::{Line, Stylize};
 use ratatui::style::palette::tailwind;
-use ratatui::style::{Style};
-use ratatui::{Frame};
+use ratatui::style::Style;
+use ratatui::Frame;
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerSmartWidget, TuiWidgetEvent, TuiWidgetState};
 
 pub struct LoggerTab {
