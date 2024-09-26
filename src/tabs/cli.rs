@@ -143,7 +143,7 @@ impl Listenable for CliTab {
                 if key_event.kind == KeyEventKind::Press {
                     if !self.lock_input {
                         self.input_throbber_state.calc_next();
-                        let handled = self.redis_cli.handle_key_event(key_event);
+                        let handled = self.redis_cli.handle_key_event(key_event)?;
                         if handled {
                             return Ok(true);
                         }

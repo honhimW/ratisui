@@ -116,7 +116,7 @@ impl ConsoleData<'_> {
 
     pub fn scroll_up(&mut self) {
         let mut position = self.position.clone();
-        position.y = position.y.saturating_sub(1);
+        position.y = position.y.saturating_sub(3);
         self.position = position;
         let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
         self.paragraph = current.scroll((
@@ -129,7 +129,7 @@ impl ConsoleData<'_> {
 
     pub fn scroll_down(&mut self) {
         let mut position = self.position.clone();
-        position.y = cmp::min(position.y.saturating_add(1), self.max_offset());
+        position.y = cmp::min(position.y.saturating_add(3), self.max_offset());
         self.position = position;
         let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
         self.paragraph = current.scroll((
