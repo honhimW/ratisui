@@ -7,7 +7,7 @@ use std::{
 };
 
 use deadpool::managed;
-use redis::{aio::ConnectionLike, IntoConnectionInfo, RedisError, RedisResult, RedisWrite};
+use redis::{aio::ConnectionLike, IntoConnectionInfo, RedisError, RedisResult};
 
 use redis;
 pub use redis::cluster::{ClusterClient, ClusterClientBuilder};

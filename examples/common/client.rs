@@ -13,6 +13,7 @@ pub fn dead_pool() -> Result<deadpool_redis::Pool> {
             protocol: ProtocolVersion::RESP3,
         },
     });
+
     config.create_pool(Some(Runtime::Tokio1)).context("Failed to create pool")
 }
 

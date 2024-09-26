@@ -1,32 +1,31 @@
 use crate::configuration::{to_protocol_version, Database};
+use crate::utils::split_args;
 use anyhow::{anyhow, Context, Error, Result};
+use crossbeam_channel::{Receiver, Sender};
 use deadpool_redis::redis::cmd;
 use deadpool_redis::{Pool, Runtime};
-use log::info;
+use futures::StreamExt;
+use log::{info, warn};
+use once_cell::sync::Lazy;
+use redis::aio::Monitor;
 use redis::cluster::ClusterClient;
 use redis::ConnectionAddr::{Tcp, TcpTls};
-use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value};
+use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value, VerbatimFormat};
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::RwLock;
-use once_cell::sync::Lazy;
+use std::task::Poll;
+use std::time::{Duration, Instant};
+use tokio::sync::watch::error::RecvError;
+use tokio::time::interval;
 
 #[macro_export]
 macro_rules! str_cmd {
     ($cmd:expr) => {{
         let mut command = Cmd::new();
-        let parts: Vec<&str> = $cmd.split_whitespace().collect();
-        for arg in &parts[0..] {
-            let mut _arg = arg.to_string();
-            let bytes = arg.as_bytes();
-            if bytes.len() >= 2 {
-                let first = bytes[0];
-                let last = bytes[bytes.len() - 1];
-                if (first == b'\'' && last == b'\'') || (first == b'"' && last == b'"') {
-                    _arg = _arg[1.._arg.len() - 1].to_string();
-                }
-            }
-            command.arg(_arg);
+        let parts: Vec<String> = split_args($cmd);
+        for arg in &parts {
+            command.arg(arg);
         }
         command
     }};
@@ -65,7 +64,7 @@ where
 /// let value = async_redis_opt(|operations| async move {
 ///     Ok(operations.get::<_, String>("key_to_get").await?)
 /// }).await?;
-/// 
+///
 /// let value: String = async_redis_opt(|operations| async move {
 ///     Ok(operations.get("key_to_get").await?)
 /// }).await?;
@@ -379,6 +378,262 @@ impl RedisOperations {
             let v: Value = cmd.query_async(&mut connection).await?;
             Ok(v)
         }
+    }
+
+    pub async fn monitor(&self, sender: Sender<Value>) -> Result<impl Disposable> {
+        struct DisposableMonitor(tokio::sync::watch::Sender<bool>);
+
+        impl Disposable for DisposableMonitor {
+            fn disposable(&mut self) -> Result<()> {
+                self.0.send(true)?;
+                Ok(())
+            }
+        }
+        tokio::sync::mpsc::channel::<bool>(2);
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let disposable_monitor = DisposableMonitor(tx);
+        let mut streams = vec![];
+        if self.is_cluster() {
+            for (_, holder) in self.nodes.iter() {
+                let mut monitor = holder.node_client.get_async_monitor().await?;
+                let _ = monitor.monitor().await?;
+                let stream = monitor.into_on_message::<Value>();
+                streams.push(stream);
+            }
+        } else {
+            let mut monitor = self.client.get_async_monitor().await?;
+            let _ = monitor.monitor().await?;
+            let stream = monitor.into_on_message::<Value>();
+            streams.push(stream);
+        }
+        tokio::spawn(async move {
+            let mut gap = Duration::from_secs(60);
+            let mut anchor = Instant::now();
+            let mut loop_interval = interval(Duration::from_millis(50));
+            loop {
+                loop_interval.tick().await;
+                match rx.has_changed() {
+                    Ok(has_changed) => {
+                        if has_changed {
+                            let stop = *rx.borrow();
+                            if stop {
+                                break;
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // means tx is release
+                        break;
+                    }
+                }
+                let waker = futures::task::noop_waker_ref();
+                let mut context = std::task::Context::from_waker(waker);
+                for stream in streams.iter_mut() {
+                    loop {
+                        let poll = stream.poll_next_unpin(&mut context);
+                        match poll {
+                            Poll::Ready(Some(v)) => {
+                                sender.send(v)?;
+                                anchor = Instant::now();
+                                gap = Duration::from_secs(60);
+                            }
+                            Poll::Ready(None) => {
+                                break;
+                            }
+                            Poll::Pending => {
+                                let duration = anchor.elapsed();
+                                if duration > gap {
+                                    sender.send(Value::SimpleString(format!("Pending {}s ...", duration.as_secs())))?;
+                                    gap = gap + Duration::from_secs(60);
+                                }
+                                break;
+                            }
+                        };
+                    }
+                }
+            }
+            drop(streams);
+            sender.send(Value::VerbatimString {
+                format: VerbatimFormat::Unknown("PROMPT".to_string()),
+                text: "Monitor has gracefully shut down.".to_string(),
+            })?;
+            Ok::<(), Error>(())
+        });
+        Ok(disposable_monitor)
+    }
+
+    pub async fn subscribe<K: ToRedisArgs + Send + Sync>(&self, key: K, sender: Sender<Value>) -> Result<impl Disposable> {
+        struct DisposableMonitor(tokio::sync::watch::Sender<bool>);
+
+        impl Disposable for DisposableMonitor {
+            fn disposable(&mut self) -> Result<()> {
+                self.0.send(true)?;
+                Ok(())
+            }
+        }
+        tokio::sync::mpsc::channel::<bool>(2);
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let disposable_monitor = DisposableMonitor(tx);
+        let mut streams = vec![];
+        if self.is_cluster() {
+            for (_, holder) in self.nodes.iter() {
+                if holder.is_master {
+                    let mut pub_sub = holder.node_client.get_async_pubsub().await?;
+                    pub_sub.subscribe(&key).await?;
+                    let stream = pub_sub.into_on_message();
+                    streams.push(stream);
+                }
+            }
+        } else {
+            let mut pub_sub = self.client.get_async_pubsub().await?;
+            pub_sub.subscribe(&key).await?;
+            let stream = pub_sub.into_on_message();
+            streams.push(stream);
+        }
+        tokio::spawn(async move {
+            let mut gap = Duration::from_secs(60);
+            let mut anchor = Instant::now();
+            let mut loop_interval = interval(Duration::from_millis(50));
+            loop {
+                loop_interval.tick().await;
+                match rx.has_changed() {
+                    Ok(has_changed) => {
+                        if has_changed {
+                            let stop = *rx.borrow();
+                            if stop {
+                                break;
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // means tx is release
+                        break;
+                    }
+                }
+                let waker = futures::task::noop_waker_ref();
+                let mut context = std::task::Context::from_waker(waker);
+                for stream in streams.iter_mut() {
+                    loop {
+                        let poll = stream.poll_next_unpin(&mut context);
+                        match poll {
+                            Poll::Ready(Some(msg)) => {
+                                let channel_name = msg.get_channel_name();
+                                let payload = msg.get_payload::<Value>()?;
+                                let value = Value::Map(vec![(Value::SimpleString(channel_name.to_string()), payload)]);
+                                sender.send(value)?;
+                                anchor = Instant::now();
+                                gap = Duration::from_secs(60);
+                            }
+                            Poll::Ready(None) => {
+                                break;
+                            }
+                            Poll::Pending => {
+                                let duration = anchor.elapsed();
+                                if duration > gap {
+                                    sender.send(Value::SimpleString(format!("Pending {}s ...", duration.as_secs())))?;
+                                    gap = gap + Duration::from_secs(60);
+                                }
+                                break;
+                            }
+                        };
+                    }
+                }
+            }
+            drop(streams);
+            sender.send(Value::VerbatimString {
+                format: VerbatimFormat::Unknown("PROMPT".to_string()),
+                text: "Subscriber has gracefully shut down.".to_string(),
+            })?;
+            Ok::<(), Error>(())
+        });
+        Ok(disposable_monitor)
+    }
+
+    pub async fn psubscribe<K: ToRedisArgs + Send + Sync>(&self, key: K, sender: Sender<Value>) -> Result<impl Disposable> {
+        struct DisposableMonitor(tokio::sync::watch::Sender<bool>);
+
+        impl Disposable for DisposableMonitor {
+            fn disposable(&mut self) -> Result<()> {
+                self.0.send(true)?;
+                Ok(())
+            }
+        }
+        tokio::sync::mpsc::channel::<bool>(2);
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let disposable_monitor = DisposableMonitor(tx);
+        let mut streams = vec![];
+        if self.is_cluster() {
+            for (_, holder) in self.nodes.iter() {
+                if holder.is_master {
+                    let mut pub_sub = holder.node_client.get_async_pubsub().await?;
+                    pub_sub.psubscribe(&key).await?;
+                    let stream = pub_sub.into_on_message();
+                    streams.push(stream);
+                }
+            }
+        } else {
+            let mut pub_sub = self.client.get_async_pubsub().await?;
+            pub_sub.psubscribe(&key).await?;
+            let stream = pub_sub.into_on_message();
+            streams.push(stream);
+        }
+        tokio::spawn(async move {
+            let mut gap = Duration::from_secs(60);
+            let mut anchor = Instant::now();
+            let mut loop_interval = interval(Duration::from_millis(50));
+            loop {
+                loop_interval.tick().await;
+                match rx.has_changed() {
+                    Ok(has_changed) => {
+                        if has_changed {
+                            let stop = *rx.borrow();
+                            if stop {
+                                break;
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // means tx is release
+                        break;
+                    }
+                }
+                let waker = futures::task::noop_waker_ref();
+                let mut context = std::task::Context::from_waker(waker);
+                for stream in streams.iter_mut() {
+                    loop {
+                        let poll = stream.poll_next_unpin(&mut context);
+                        match poll {
+                            Poll::Ready(Some(msg)) => {
+                                let channel_name = msg.get_channel_name();
+                                let payload = msg.get_payload::<Value>()?;
+                                let value = Value::Map(vec![(Value::SimpleString(channel_name.to_string()), payload)]);
+                                sender.send(value)?;
+                                anchor = Instant::now();
+                                gap = Duration::from_secs(60);
+                            }
+                            Poll::Ready(None) => {
+                                break;
+                            }
+                            Poll::Pending => {
+                                let duration = anchor.elapsed();
+                                if duration > gap {
+                                    sender.send(Value::SimpleString(format!("Pending {}s ...", duration.as_secs())))?;
+                                    gap = gap + Duration::from_secs(60);
+                                }
+                                break;
+                            }
+                        };
+                    }
+                }
+            }
+            drop(streams);
+            sender.send(Value::VerbatimString {
+                format: VerbatimFormat::Unknown("PROMPT".to_string()),
+                text: "P-Subscriber has gracefully shut down.".to_string(),
+            })?;
+            Ok::<(), Error>(())
+        });
+        Ok(disposable_monitor)
     }
 
     pub async fn scan(&self, pattern: impl Into<String>, count: usize) -> Result<Vec<String>> {
@@ -786,7 +1041,10 @@ impl RedisOperations {
             Ok(())
         }
     }
+}
 
+pub trait Disposable: Send {
+    fn disposable(&mut self) -> Result<()>;
 }
 
 #[cfg(test)]
@@ -794,7 +1052,7 @@ mod tests {
     use crate::configuration::Protocol;
     use crate::redis_opt::{async_redis_opt, build_client, switch_client, Database, RedisOperations};
     use anyhow::Result;
-    use redis::{Commands, ToRedisArgs};
+    use redis::Commands;
 
     #[test]
     fn test_get_server_info() -> Result<()> {

@@ -1,13 +1,14 @@
 use crate::components::console_output::OutputKind::{ERR, STD};
-use log::{info, warn};
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::Text;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui_macros::{line, span};
 use std::cmp;
+use ratatui::style::palette::tailwind;
 use ratatui::text::Line;
 use strum::Display;
+use OutputKind::{Else, CMD};
 
 pub struct ConsoleData<'a> {
     pub lines: Vec<(OutputKind, String)>,
@@ -21,8 +22,10 @@ pub struct ConsoleData<'a> {
 
 #[derive(Debug, Display)]
 pub enum OutputKind {
+    CMD,
     STD,
     ERR,
+    Else(Style)
 }
 
 impl ConsoleData<'_> {
@@ -39,16 +42,14 @@ impl ConsoleData<'_> {
     }
 
     pub fn build_paragraph(&mut self) {
-        info!("y: {}, max: {}, height: {}", self.position.y, self.max_offset(), self.height);
-        self.is_bottom = self.position.y >= self.max_offset();
         let mut text = Text::default();
         for (kind, l) in self.lines.iter() {
-            warn!("{}", kind);
             let new_line = match kind {
-                STD => line![l.clone()],
-                ERR => line![l.clone().red()],
+                CMD => line![span!(Style::default().fg(tailwind::EMERALD.c700); l.clone())],
+                STD => line![span!(l.clone())],
+                ERR => line![span!(Style::default().fg(tailwind::ROSE.c700); l.clone())],
+                Else(style) => line![span!(*style; l.clone())],
             };
-            warn!("{:?}", &new_line);
             text.push_line(new_line);
         }
         let mut paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
@@ -65,22 +66,22 @@ impl ConsoleData<'_> {
         }
     }
 
-    pub fn push(&mut self, line: impl Into<String>) {
-        self.lines.push((STD, line.into()));
+    pub fn push(&mut self, kind: OutputKind, line: impl Into<String>) {
+        self.lines.push((kind, line.into()));
         self.total_lines = self.lines.len();
     }
 
+    pub fn push_std(&mut self, line: impl Into<String>) {
+        self.push(STD, line.into());
+    }
+
     pub fn push_err(&mut self, line: impl Into<String>) {
-        self.lines.push((ERR, line.into()));
-        self.total_lines = self.lines.len();
+        self.push(ERR, line.into());
     }
 
     pub fn extend(&mut self, lines: Vec<(OutputKind, String)>) {
         for (kind, line) in lines {
-            match kind {
-                STD => self.push(line),
-                ERR => self.push_err(line),
-            }
+            self.push(kind, line);
         }
     }
 
@@ -97,7 +98,8 @@ impl ConsoleData<'_> {
             position.y,
             position.x,
         ));
-        self.is_bottom = self.position.y >= self.max_offset();
+        self.is_bottom = false;
+        // self.is_bottom = self.position.y >= self.max_offset();
     }
 
     pub fn scroll_end(&mut self) {
@@ -114,19 +116,20 @@ impl ConsoleData<'_> {
 
     pub fn scroll_up(&mut self) {
         let mut position = self.position.clone();
-        position.y = position.y.saturating_sub(1);
+        position.y = position.y.saturating_sub(3);
         self.position = position;
         let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
         self.paragraph = current.scroll((
             position.y,
             position.x,
         ));
-        self.is_bottom = self.position.y >= self.max_offset();
+        self.is_bottom = false;
+        // self.is_bottom = self.position.y >= self.max_offset();
     }
 
     pub fn scroll_down(&mut self) {
         let mut position = self.position.clone();
-        position.y = cmp::min(position.y.saturating_add(1), self.max_offset());
+        position.y = cmp::min(position.y.saturating_add(3), self.max_offset());
         self.position = position;
         let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
         self.paragraph = current.scroll((
@@ -159,6 +162,7 @@ impl ConsoleData<'_> {
             position.y,
             position.x,
         ));
-        self.is_bottom = self.position.y >= self.max_offset();
+        self.is_bottom = false;
+        // self.is_bottom = self.position.y >= self.max_offset();
     }
 }
