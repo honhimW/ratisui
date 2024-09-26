@@ -11,6 +11,7 @@ use ratatui::symbols::scrollbar::Set;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, TableState, Wrap};
 use ratatui::{symbols, Frame};
+use serde_json::Value;
 use std::cmp;
 use strum::Display;
 use tui_textarea::{CursorMove, TextArea};
@@ -223,7 +224,8 @@ impl Listenable for RedisCli<'_> {
             if accepted {
                 let (cursor_y, cursor_x) = self.single_line_text_area.cursor();
                 self.raw_input = self.single_line_text_area.lines().get(cursor_y).unwrap().clone();
-                let (items, segment) = get_items(&self.raw_input, cursor_x);
+                let (mut items, segment) = get_items(&self.raw_input, cursor_x);
+                sort_commands(&mut items, &segment);
                 self.completion_items = items;
                 self.segment = segment;
                 self.scroll_state = self.scroll_state.content_length(self.completion_items.len());
@@ -457,6 +459,19 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
     }
 
     (commands, segment)
+}
+
+fn sort_commands(commands: &mut Vec<CompletionItem>, segment: &String) {
+    commands.sort_by(|x, x1| {
+        let x_starts_with = x.label.label.starts_with(segment);
+        let x1_starts_with = x1.label.label.starts_with(segment);
+
+        match (x_starts_with, x1_starts_with) {
+            (true, false) => cmp::Ordering::Less,
+            (false, true) => cmp::Ordering::Greater,
+            _ => x.label.label.cmp(&x1.label.label),
+        }
+    });
 }
 
 #[derive(Debug, Clone)]
@@ -899,69 +914,159 @@ fn highlight_doc(doc: &Doc) -> Text {
 }
 
 static COMMANDS: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
-    let mut vec = vec![];
-    vec.push(CompletionItem::default("COPY").generic()
-        .add_param(Parameter::single("source", ""))
-        .add_param(Parameter::single("destination", ""))
-        .add_param(Parameter::arg("DB", "destination-db", "database index"))
-        .add_param(Parameter::flag("REPLACE", "removes the destination key"))
-        .description(Doc::default()
-            .syntax("COPY source destination [DB destination-db] [REPLACE]")
-            .summary("This command copies the value stored at the source key to the destination key.")
-            .since("6.2.0")
-            .complexity("O(N) worst case for collections, where N is the number of nested items. O(1) for string values.")
-            .acl("@keyspace, @write, @slow")
-        )
-        .build_label());
+    let redis_cmd_json = include_str!("./redis-cmd.json");
+    let result = serde_json::from_str::<Vec<Value>>(redis_cmd_json);
+    let mut items = vec![];
+    if let Ok(commands) = result {
+        for command in commands.iter() {
+            let cmd = command.get("command").expect("command is empty");
+            let group = command.get("group").expect("group is empty");
+            let syntax = command.get("syntax").expect("syntax is empty");
+            let summary = command.get("summary").expect("summary is empty");
+            let since = command.get("since").expect("since is empty");
+            let complexity = command.get("complexity").expect("complexity is empty");
+            let acl = command.get("acl").expect("acl is empty");
+            let arguments = command.get("arguments").expect("arguments is empty");
 
-    vec.push(CompletionItem::default("DEL").generic()
-        .add_param(Parameter::many("key", ""))
-        .description(Doc::default()
-            .syntax("DEL key [key ...]")
-            .summary("Removes the specified keys. A key is ignored if it does not exist.")
-            .since("1.0.0")
-            .complexity("O(N) where N is the number of keys that will be removed. When a key to remove holds a value other than a string, the individual complexity for this key is O(M) where M is the number of elements in the list, set, sorted set or hash. Removing a single key that holds a string value is O(1).")
-            .acl("@keyspace, @write, @slow")
-        )
-        .build_label());
+            let mut item = CompletionItem::default(value_to_string(cmd));
 
-    vec.push(CompletionItem::default("DUMP").generic()
-        .add_param(Parameter::many("key", ""))
-        .description(Doc::default()
-            .syntax("DEL key [key ...]")
-            .summary("Removes the specified keys. A key is ignored if it does not exist.")
-            .since("1.0.0")
-            .complexity("O(N) where N is the number of keys that will be removed. When a key to remove holds a value other than a string, the individual complexity for this key is O(M) where M is the number of elements in the list, set, sorted set or hash. Removing a single key that holds a string value is O(1).")
-            .acl("@keyspace, @write, @slow")
-        )
-        .build_label());
-
-    vec.push(CompletionItem::default("SCAN").generic()
-        .add_param(Parameter::single("cursor", "* cursor"))
-        .add_param(Parameter::arg("MATCH", "pattern", "pattern"))
-        .add_param(Parameter::arg("COUNT", "count", "count"))
-        .add_param(Parameter::arg("TYPE", "type", "type"))
-        .description(Doc::default()
-            .syntax("SCAN cursor [MATCH pattern] [COUNT count] [TYPE type]")
-            .summary("iterates the set of keys in the currently selected Redis database.")
-            .since("2.8.0")
-            .acl("@keyspace, @read, @slow")
-            .complexity("O(1) for every call. O(N) for a complete iteration, including enough command calls for the cursor to return back to 0. N is the number of elements inside the collection.")
-        )
-        .build_label());
-
-    vec.push(CompletionItem::default("TTL"));
-    vec.push(CompletionItem::default("EXPIRE"));
-    vec.push(CompletionItem::default("MGET"));
-    vec.push(CompletionItem::default("PING").server());
-    vec.push(CompletionItem::default("INFO").server());
-    vec.push(CompletionItem::default("MONITOR").server());
-    vec.push(CompletionItem::default("SET").string());
-    vec.push(CompletionItem::default("GET").string());
-    vec.push(CompletionItem::default("STRLEN").string());
-    vec.push(CompletionItem::default("HGETALL").hash());
-    vec.push(CompletionItem::default("HGET").hash());
-    vec.push(CompletionItem::default("SADD").set());
-    vec.push(CompletionItem::default("ZADD").z_set());
-    vec
+            let kind: CompletionItemKind = match group.as_str().expect("group is not string") {
+                "generic" => CompletionItemKind::Generic,
+                "string" => CompletionItemKind::String,
+                "list" => CompletionItemKind::List,
+                "set" => CompletionItemKind::Set,
+                "sorted-set" => CompletionItemKind::ZSet,
+                "hash" => CompletionItemKind::Hash,
+                "stream" => CompletionItemKind::Stream,
+                "pubsub" => CompletionItemKind::PubSub,
+                "server" => CompletionItemKind::Server,
+                _ => CompletionItemKind::Generic,
+            };
+            item.kind = kind;
+            item = item.description(Doc::default()
+                .syntax(value_to_string(syntax))
+                .summary(value_to_string(summary))
+                .since(value_to_string(since))
+                .complexity(value_to_string(complexity))
+                .acl(value_to_string(acl))
+            );
+            let arguments = arguments.as_array().expect("arguments is not an array");
+            for argument in arguments.iter() {
+                let arg_type = argument.get("type").expect("argument type is empty");
+                if let Value::String(type_str) = arg_type {
+                    match type_str.as_str() {
+                        "flag" => {
+                            let value = argument.get("value").expect("flag value is empty");
+                            let string = value_to_string(value);
+                            item = item.add_param(Parameter::flag(string.clone(), string.clone()));
+                        },
+                        "enum" => {
+                            let values = argument.get("values").expect("enums values is empty");
+                            let values = values.as_array().expect("values is not an array");
+                            let mut vec = vec![];
+                            for value in values {
+                                let string = value_to_string(value);
+                                vec.push((string.clone(), string.clone()));
+                            }
+                            item = item.add_param(Parameter::enums(vec));
+                        },
+                        "arg" => {
+                            let key = argument.get("key").expect("arg key is empty");
+                            let arg = argument.get("arg").expect("arg arg is empty");
+                            let detail = argument.get("detail").expect("arg detail is empty");
+                            let key = value_to_string(key);
+                            let arg = value_to_string(arg);
+                            let detail = value_to_string(detail);
+                            item = item.add_param(Parameter::arg(key, arg, detail));
+                        },
+                        "many" => {
+                            let name = argument.get("name").expect("many name is empty");
+                            let name = value_to_string(name);
+                            item = item.add_param(Parameter::many(name, ""));
+                        },
+                        "single" => {
+                            let name = argument.get("name").expect("many name is empty");
+                            let name = value_to_string(name);
+                            item = item.add_param(Parameter::single(name, ""));
+                        },
+                        _ => {}
+                    }
+                }
+            }
+            item = item.build_label();
+            items.push(item);
+        }
+    }
+    // items.push(CompletionItem::default("COPY").generic()
+    //     .add_param(Parameter::single("source", ""))
+    //     .add_param(Parameter::single("destination", ""))
+    //     .add_param(Parameter::arg("DB", "destination-db", "database index"))
+    //     .add_param(Parameter::flag("REPLACE", "removes the destination key"))
+    //     .description(Doc::default()
+    //         .syntax("COPY source destination [DB destination-db] [REPLACE]")
+    //         .summary("This command copies the value stored at the source key to the destination key.")
+    //         .since("6.2.0")
+    //         .complexity("O(N) worst case for collections, where N is the number of nested items. O(1) for string values.")
+    //         .acl("@keyspace, @write, @slow")
+    //     )
+    //     .build_label());
+    //
+    // items.push(CompletionItem::default("DEL").generic()
+    //     .add_param(Parameter::many("key", ""))
+    //     .description(Doc::default()
+    //         .syntax("DEL key [key ...]")
+    //         .summary("Removes the specified keys. A key is ignored if it does not exist.")
+    //         .since("1.0.0")
+    //         .complexity("O(N) where N is the number of keys that will be removed. When a key to remove holds a value other than a string, the individual complexity for this key is O(M) where M is the number of elements in the list, set, sorted set or hash. Removing a single key that holds a string value is O(1).")
+    //         .acl("@keyspace, @write, @slow")
+    //     )
+    //     .build_label());
+    //
+    // items.push(CompletionItem::default("DUMP").generic()
+    //     .add_param(Parameter::many("key", ""))
+    //     .description(Doc::default()
+    //         .syntax("DEL key [key ...]")
+    //         .summary("Removes the specified keys. A key is ignored if it does not exist.")
+    //         .since("1.0.0")
+    //         .complexity("O(N) where N is the number of keys that will be removed. When a key to remove holds a value other than a string, the individual complexity for this key is O(M) where M is the number of elements in the list, set, sorted set or hash. Removing a single key that holds a string value is O(1).")
+    //         .acl("@keyspace, @write, @slow")
+    //     )
+    //     .build_label());
+    //
+    // items.push(CompletionItem::default("SCAN").generic()
+    //     .add_param(Parameter::single("cursor", "* cursor"))
+    //     .add_param(Parameter::arg("MATCH", "pattern", "pattern"))
+    //     .add_param(Parameter::arg("COUNT", "count", "count"))
+    //     .add_param(Parameter::arg("TYPE", "type", "type"))
+    //     .description(Doc::default()
+    //         .syntax("SCAN cursor [MATCH pattern] [COUNT count] [TYPE type]")
+    //         .summary("iterates the set of keys in the currently selected Redis database.")
+    //         .since("2.8.0")
+    //         .acl("@keyspace, @read, @slow")
+    //         .complexity("O(1) for every call. O(N) for a complete iteration, including enough command calls for the cursor to return back to 0. N is the number of elements inside the collection.")
+    //     )
+    //     .build_label());
+    //
+    // items.push(CompletionItem::default("TTL"));
+    // items.push(CompletionItem::default("EXPIRE"));
+    // items.push(CompletionItem::default("MGET"));
+    // items.push(CompletionItem::default("PING").server());
+    // items.push(CompletionItem::default("INFO").server());
+    // items.push(CompletionItem::default("MONITOR").server());
+    // items.push(CompletionItem::default("SET").string());
+    // items.push(CompletionItem::default("GET").string());
+    // items.push(CompletionItem::default("STRLEN").string());
+    // items.push(CompletionItem::default("HGETALL").hash());
+    // items.push(CompletionItem::default("HGET").hash());
+    // items.push(CompletionItem::default("SADD").set());
+    // items.push(CompletionItem::default("ZADD").z_set());
+    items
 });
+
+fn value_to_string(value: &Value) -> String {
+    if let Some(s) = value.as_str() {
+        s.to_string()
+    } else {
+        String::new()
+    }
+}
