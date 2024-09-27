@@ -19,7 +19,7 @@ jobs:
     - name: Create Release
       if: github.event_name == 'workflow_dispatch'
       id: create_release
-      uses: actions/create-release@v1.1.0
+      uses: actions/create-release@v1.1.4
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
