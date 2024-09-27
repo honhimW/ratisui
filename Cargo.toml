@@ -47,7 +47,8 @@ deadpool-redis = { path = "deadpool-redis", features = [
 
 strum = "0.26.3"
 uuid = { version = "1.10.0", features = ["v4"] }
-toml = "0.8.19"
+#toml = { version = "0.8.19"}
+ron = { version = "0.8.1", features = ["default"] }
 dirs = "5.0.1"
 base64 = "0.22.1"
 clap = "4.5.16"

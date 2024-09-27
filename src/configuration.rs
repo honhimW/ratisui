@@ -10,17 +10,18 @@ use std::fmt::{Debug, Display, Formatter};
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
+use ron::ser::PrettyConfig;
 use strum::{Display, EnumCount, EnumIter};
 
 pub fn load_app_configuration() -> Result<Configuration> {
     let mut configuration = Configuration::default();
-    let app_config_path = get_file_path("config.toml")?;
+    let app_config_path = get_file_path("config.ron")?;
 
     if let Ok(mut file) = File::open(&app_config_path) {
         let mut content = String::new();
         file.read_to_string(&mut content)?;
         if !content.is_empty() {
-            configuration = toml::from_str(&content)?;
+            configuration = ron::from_str(&content)?;
         }
     }
     Ok(configuration)
@@ -28,13 +29,13 @@ pub fn load_app_configuration() -> Result<Configuration> {
 
 pub fn load_database_configuration() -> Result<Databases> {
     let mut databases = Databases::empty();
-    let db_config_path = get_file_path("databases.toml")?;
+    let db_config_path = get_file_path("databases.ron")?;
 
     if let Ok(mut file) = File::open(&db_config_path) {
         let mut content = String::new();
         file.read_to_string(&mut content)?;
         if !content.is_empty() {
-            databases = toml::from_str(&content)?;
+            databases = ron::from_str(&content)?;
         }
     }
     Ok(databases)
@@ -42,22 +43,22 @@ pub fn load_database_configuration() -> Result<Databases> {
 
 #[allow(unused)]
 pub fn save_configuration(config: &Configuration) -> Result<()> {
-    let app_config_path = get_file_path("config.toml")?;
+    let app_config_path = get_file_path("config.ron")?;
 
-    let toml_content = toml::to_string(&config)?;
-    debug!("{}", &toml_content);
+    let ron_content = ron::to_string(&config)?;
+    debug!("{}", &ron_content);
     if let Ok(mut file) = File::create(&app_config_path) {
-        file.write_all(toml_content.as_ref())?;
+        file.write_all(ron_content.as_ref())?;
     }
     Ok(())
 }
 
 pub fn save_database_configuration(databases: &Databases) -> Result<()> {
-    let db_config_path = get_file_path("databases.toml")?;
-    let toml_content = toml::to_string_pretty(&databases)?;
-    debug!("{}", &toml_content);
+    let db_config_path = get_file_path("databases.ron")?;
+    let ron_content = ron::ser::to_string_pretty(&databases, PrettyConfig::default())?;
+    debug!("{}", &ron_content);
     if let Ok(mut file) = File::create(&db_config_path) {
-        file.write_all(toml_content.as_ref())?;
+        file.write_all(ron_content.as_ref())?;
     }
     Ok(())
 }
