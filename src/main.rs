@@ -48,17 +48,21 @@ async fn main() -> Result<()> {
 
     if let Some(db) = default_db {
         if let Some(database) = db_config.databases.get(&db) {
-            match switch_client(db.clone(), database) {
-                Ok(_) => {
-                    info!("Successfully connected to default database '{db}'");
-                    info!("{database}");
-                }
-                Err(_) => {warn!("Failed to connect to default database.");}
-            };
+            let database_clone = database.clone();
+            tokio::spawn(async move {
+                match switch_client(db.clone(), &database_clone) {
+                    Ok(_) => {
+                        info!("Successfully connected to default database '{db}'");
+                        info!("{database_clone}");
+                    }
+                    Err(_) => {warn!("Failed to connect to default database.");}
+                };
+            });
         } else {
             Err(anyhow!("Unknown database '{db}'."))?;
         }
     }
+
 
     let terminal = tui::init()?;
     let app = App::new(db_config);

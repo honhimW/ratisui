@@ -29,7 +29,7 @@ pub enum AppEvent {
     Destroy,
 }
 
-pub trait TabImplementation : Renderable + Listenable{
+pub trait TabImplementation: Renderable + Listenable {
     fn palette(&self) -> tailwind::Palette;
     fn title(&self) -> Line<'static>;
 }
@@ -58,13 +58,12 @@ impl App {
             context: context::Context::new(databases),
             state: AppState::Preparing,
             input: Input::new(),
-       }
+        }
     }
 
     pub fn health(&self) -> bool {
         self.state == AppState::Running || self.state == AppState::Preparing
     }
-
 }
 
 pub fn centered_rect(percentage_x: u16, percentage_y: u16, area: Rect) -> Rect {

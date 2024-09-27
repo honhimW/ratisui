@@ -19,12 +19,13 @@ use tui_textarea::{CursorMove, TextArea};
 pub struct RedisCli<'a> {
     max_menu_width: u16,
     max_menu_height: u16,
+    min_desc_width: u16,
     max_desc_width: u16,
     max_desc_height: u16,
     single_line_text_area: TextArea<'a>,
     table_state: TableState,
     scroll_state: ScrollbarState,
-    show_table: bool,
+    show_menu: bool,
     frame_size: (u16, u16), // max width, max height
     completion_items: Vec<CompletionItem>,
     raw_input: String,
@@ -43,12 +44,13 @@ impl RedisCli<'_> {
         Self {
             max_menu_width: 50,
             max_menu_height: 11,
-            max_desc_width: 35,
+            min_desc_width: 35,
+            max_desc_width: 50,
             max_desc_height: 20,
             single_line_text_area: text_area,
             table_state,
             scroll_state,
-            show_table: false,
+            show_menu: false,
             frame_size: (0, 0),
             completion_items: vec![],
             raw_input: "".to_string(),
@@ -93,7 +95,7 @@ impl Renderable for RedisCli<'_> {
         }
 
         frame.render_widget(&self.single_line_text_area, input_area);
-        if self.show_table && self.completion_items.len() > 0 {
+        if self.show_menu && self.completion_items.len() > 0 {
             frame.render_widget(Clear::default(), menu_area);
             let vertical = Layout::vertical([Fill(1), Length(1)]).split(menu_area);
             frame.render_stateful_widget(table, vertical[0], &mut self.table_state);
@@ -139,18 +141,21 @@ impl Listenable for RedisCli<'_> {
                     if self.single_line_text_area.is_selecting() {
                         self.single_line_text_area.cancel_selection();
                         true
-                    } else if self.show_table {
-                        self.show_table = false;
+                    } else if self.show_menu {
+                        self.hide_menu();
                         true
                     } else {
                         false
                     }
                 }
                 KeyEvent { code: KeyCode::Char(' '), modifiers: KeyModifiers::CONTROL, .. } => {
-                    self.show_table = true;
+                    self.show_menu = true;
                     true
                 }
                 KeyEvent { code: KeyCode::Char('m') | KeyCode::Enter, modifiers: KeyModifiers::CONTROL, .. } => {
+                    false
+                }
+                KeyEvent { code: KeyCode::Enter, .. } => {
                     false
                 }
                 KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
@@ -166,7 +171,7 @@ impl Listenable for RedisCli<'_> {
                     true
                 }
                 KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::NONE, .. } => {
-                    if self.show_table {
+                    if self.show_menu {
                         self.previous();
                         true
                     } else {
@@ -174,7 +179,7 @@ impl Listenable for RedisCli<'_> {
                     }
                 }
                 KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::NONE, .. } => {
-                    if self.show_table {
+                    if self.show_menu {
                         self.next();
                         true
                     } else {
@@ -182,10 +187,9 @@ impl Listenable for RedisCli<'_> {
                     }
                 }
                 KeyEvent { code: KeyCode::Tab, .. } => {
-                    if !self.completion_items.is_empty() && self.show_table {
+                    if !self.completion_items.is_empty() && self.show_menu {
                         if let Some(selected) = self.table_state.selected() {
                             if let Some(item) = self.completion_items.get(selected) {
-                                self.show_table = false;
                                 if self.raw_input.is_empty() {
                                     self.single_line_text_area.insert_str(item.insert_text.clone());
                                 } else {
@@ -201,6 +205,7 @@ impl Listenable for RedisCli<'_> {
                                     }
                                     self.single_line_text_area.insert_str(item.insert_text.clone());
                                 }
+                                self.hide_menu();
                                 true
                             } else {
                                 false
@@ -214,7 +219,7 @@ impl Listenable for RedisCli<'_> {
                 }
                 input => {
                     if self.single_line_text_area.input(input) {
-                        self.show_table = true;
+                        self.show_menu = true;
                         true
                     } else {
                         false
@@ -226,6 +231,9 @@ impl Listenable for RedisCli<'_> {
             let (mut items, segment) = get_items(&self.raw_input, cursor_x);
             sort_commands(&mut items, &segment);
             self.completion_items = items;
+            if self.segment != segment {
+                self.reset_state();
+            }
             self.segment = segment;
             self.scroll_state = self.scroll_state.content_length(self.completion_items.len());
             Ok(accepted)
@@ -247,6 +255,16 @@ impl RedisCli<'_> {
 
     pub fn update_frame(&mut self, frame_height: u16, frame_width: u16) {
         self.frame_size = (frame_height, frame_width);
+    }
+
+    fn hide_menu(&mut self) {
+        self.show_menu = false;
+        self.reset_state();
+    }
+
+    fn reset_state(&mut self) {
+        self.table_state.select_first();
+        self.scroll_state.first();
     }
 
     fn next(&mut self) {
@@ -293,7 +311,7 @@ impl RedisCli<'_> {
 
     fn render_desc(&mut self, frame: &mut Frame, menu_area: Rect, doc: Doc) {
         let (max_height, max_width) = self.frame_size;
-        let desc_width = self.max_desc_width;
+        let desc_width = self.min_desc_width;
         let Rect {
             x, y, height: menu_height, width: menu_width
         } = menu_area;
@@ -307,14 +325,17 @@ impl RedisCli<'_> {
 
         let mut is_right = true;
         let mut is_bottom = true;
-        let desc_width = self.max_desc_width;
+        let mut desc_width = self.min_desc_width;
         let right_area_width = max_width.saturating_sub(menu_width.saturating_add(x));
-        if right_area_width < self.max_desc_width {
-            if x < self.max_desc_width {
+        if right_area_width < self.min_desc_width {
+            if x < self.min_desc_width {
                 return;
             } else {
                 is_right = false;
+                desc_width = cmp::min(x, self.max_desc_width);
             }
+        } else {
+            desc_width = cmp::min(right_area_width, self.max_desc_width);
         }
 
         let bottom_area_height = max_height.saturating_sub(y);
