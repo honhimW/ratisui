@@ -325,7 +325,7 @@ impl RedisCli<'_> {
 
         let mut is_right = true;
         let mut is_bottom = true;
-        let mut desc_width = self.min_desc_width;
+        let desc_width;
         let right_area_width = max_width.saturating_sub(menu_width.saturating_add(x));
         if right_area_width < self.min_desc_width {
             if x < self.min_desc_width {
