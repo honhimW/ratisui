@@ -1,8 +1,6 @@
 #[path = "common/lib.rs"]
 mod common;
 
-use std::task::{Context, Poll};
-use std::time::Duration;
 use crate::common::client::dead_pool;
 use anyhow::Result;
 use futures::{StreamExt, TryStreamExt};

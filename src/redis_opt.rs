@@ -758,11 +758,11 @@ impl RedisOperations {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
-            connection.expire(key, seconds).await?;
+            let _: Value = connection.expire(key, seconds).await?;
             Ok(())
         } else {
             let mut connection = self.pool.get().await?;
-            connection.expire(key, seconds).await?;
+            let _: Value = connection.expire(key, seconds).await?;
             Ok(())
         }
     }
@@ -772,11 +772,11 @@ impl RedisOperations {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
-            connection.persist(key).await?;
+            let _: Value = connection.persist(key).await?;
             Ok(())
         } else {
             let mut connection = self.pool.get().await?;
-            connection.persist(key).await?;
+            let _: Value = connection.persist(key).await?;
             Ok(())
         }
     }
@@ -913,11 +913,11 @@ impl RedisOperations {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
-            connection.del(key).await?;
+            let _: Value = connection.del(key).await?;
             Ok(())
         } else {
             let mut connection = self.pool.get().await?;
-            connection.del(key).await?;
+            let _: Value = connection.del(key).await?;
             Ok(())
         }
     }
@@ -926,11 +926,11 @@ impl RedisOperations {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
-            connection.rename_nx(old_key, new_key).await?;
+            let _: Value = connection.rename_nx(old_key, new_key).await?;
             Ok(())
         } else {
             let mut connection = self.pool.get().await?;
-            connection.rename_nx(old_key, new_key).await?;
+            let _: Value = connection.rename_nx(old_key, new_key).await?;
             Ok(())
         }
     }
@@ -953,11 +953,11 @@ impl RedisOperations {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
-            connection.set_nx(key, value).await?;
+            let _: Value = connection.set_nx(key, value).await?;
             Ok(())
         } else {
             let mut connection = self.pool.get().await?;
-            connection.set_nx(key, value).await?;
+            let _: Value = connection.set_nx(key, value).await?;
             Ok(())
         }
     }
@@ -966,11 +966,11 @@ impl RedisOperations {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
-            connection.hset_nx(key, field, value).await?;
+            let _: Value = connection.hset_nx(key, field, value).await?;
             Ok(())
         } else {
             let mut connection = self.pool.get().await?;
-            connection.hset_nx(key, field, value).await?;
+            let _: Value = connection.hset_nx(key, field, value).await?;
             Ok(())
         }
     }
@@ -982,11 +982,11 @@ impl RedisOperations {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
-            connection.rpush(key, value).await?;
+            let _: Value = connection.rpush(key, value).await?;
             Ok(())
         } else {
             let mut connection = self.pool.get().await?;
-            connection.rpush(key, value).await?;
+            let _: Value = connection.rpush(key, value).await?;
             Ok(())
         }
     }
@@ -995,11 +995,11 @@ impl RedisOperations {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
-            connection.lpush(key, value).await?;
+            let _: Value = connection.lpush(key, value).await?;
             Ok(())
         } else {
             let mut connection = self.pool.get().await?;
-            connection.lpush(key, value).await?;
+            let _: Value = connection.lpush(key, value).await?;
             Ok(())
         }
     }
@@ -1008,11 +1008,11 @@ impl RedisOperations {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
-            connection.sadd(key, value).await?;
+            let _: Value = connection.sadd(key, value).await?;
             Ok(())
         } else {
             let mut connection = self.pool.get().await?;
-            connection.sadd(key, value).await?;
+            let _: Value = connection.sadd(key, value).await?;
             Ok(())
         }
     }
@@ -1021,11 +1021,11 @@ impl RedisOperations {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
-            connection.zadd(key, value, score).await?;
+            let _: Value = connection.zadd(key, value, score).await?;
             Ok(())
         } else {
             let mut connection = self.pool.get().await?;
-            connection.zadd(key, value, score).await?;
+            let _: Value = connection.zadd(key, value, score).await?;
             Ok(())
         }
     }
@@ -1034,11 +1034,11 @@ impl RedisOperations {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
             let mut connection = pool.get().await?;
-            connection.xadd(key, "*", &[(field, value)]).await?;
+            let _: Value = connection.xadd(key, "*", &[(field, value)]).await?;
             Ok(())
         } else {
             let mut connection = self.pool.get().await?;
-            connection.xadd(key, "*", &[(field, value)]).await?;
+            let _: Value = connection.xadd(key, "*", &[(field, value)]).await?;
             Ok(())
         }
     }

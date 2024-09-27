@@ -150,7 +150,7 @@ impl Listenable for RedisCli<'_> {
                     self.show_table = true;
                     true
                 }
-                KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {
+                KeyEvent { code: KeyCode::Char('m') | KeyCode::Enter, modifiers: KeyModifiers::CONTROL, .. } => {
                     false
                 }
                 KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
@@ -181,7 +181,7 @@ impl Listenable for RedisCli<'_> {
                         false
                     }
                 }
-                KeyEvent { code: KeyCode::Tab | KeyCode::Enter, .. } => {
+                KeyEvent { code: KeyCode::Tab, .. } => {
                     if !self.completion_items.is_empty() && self.show_table {
                         if let Some(selected) = self.table_state.selected() {
                             if let Some(item) = self.completion_items.get(selected) {
@@ -283,7 +283,7 @@ impl RedisCli<'_> {
         let horizontal = Layout::horizontal([Fill(1), Length(7)]).split(area);
         let selected = self.table_state.selected().unwrap_or(0);
         let style = Style::default().bg(tailwind::STONE.c900).italic();
-        let info = Line::raw("↑/↓ Tab/Enter").style(style);
+        let info = Line::raw("↑/↓ Tab").style(style);
         let item_count = Line::raw(format!("{}:{}", selected.saturating_add(1), self.completion_items.len()))
             .alignment(Alignment::Right)
             .style(style);
@@ -750,6 +750,18 @@ static COMMANDS: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
     let redis_cmd_json = include_str!("./redis-cmd.json");
     let result = serde_json::from_str::<Vec<Value>>(redis_cmd_json);
     let mut items = vec![];
+    let clear_item = CompletionItem {
+        kind: CompletionItemKind::Other,
+        label: Label {
+            label: "CLEAR".to_string(),
+            detail: Some("clear the cli screen".to_string()),
+            description: None,
+        },
+        parameters: vec![],
+        range: (0, -1),
+        insert_text: "clear".to_string(),
+    };
+    items.push(clear_item);
     if let Ok(commands) = result {
         for command in commands.iter() {
             let cmd = command.get("command").expect("command is empty");
