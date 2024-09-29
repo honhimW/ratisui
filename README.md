@@ -33,8 +33,8 @@ add files as fallow under `~/.config/ratisui/`:
 ```ron
 // ~/.config/ratisui/config.ron
 (
-    fps: Some(45),                               # tui render fps limitation
-    scan_size = scan_size: Some(2000),           # redis key scan size
+    fps: Some(45),                               // tui render fps limitation
+    scan_size = scan_size: Some(2000),           // redis key scan size
 )
 ```
 
@@ -57,7 +57,7 @@ add files as fallow under `~/.config/ratisui/`:
             host: "cluster.host",
             port: 6000,
             username: None,
-            password: Some("pasword"),
+            password: Some("password"),
             use_tls: false,
             use_ssh_tunnel: false,
             db: 0,

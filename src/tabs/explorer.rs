@@ -19,7 +19,7 @@ use ratatui::style::palette::tailwind;
 use ratatui::style::{Color, Modifier};
 use ratatui::text::Span;
 use ratatui::widgets::block::Position;
-use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
+use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, Wrap};
 use ratatui::{symbols, Frame};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -359,6 +359,7 @@ impl ExplorerTab {
         if self.selected_string_value.is_some() {
             if let Ok(text) = self.get_raw_value() {
                 let values_text = Paragraph::new(text)
+                    .wrap(Wrap { trim: false })
                     .block(values_block);
                 frame.render_widget(values_text, area);
             }
@@ -1095,6 +1096,9 @@ impl Listenable for ExplorerTab {
             if KeyCode::Left == key_event.code || KeyCode::Char('h') == key_event.code {
                 self.toggle_screen(KeysTree);
                 return Ok(true);
+            }
+            if let Some(ref mut string_value) = self.selected_string_value {
+
             }
             if let Some(ref mut list_value) = self.selected_list_value {
                 let accepted = list_value.handle_key_event(key_event)?;
