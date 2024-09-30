@@ -112,6 +112,10 @@ impl HighlightProcessor {
         if is_xml {
             return Ok(());
         }
+        let is_ron = self.process_ron()?;
+        if is_ron {
+            return Ok(());
+        }
         let is_plain = self.process_plain()?;
         if is_plain {
             return Ok(());
@@ -234,9 +238,10 @@ impl HighlightProcessor {
         let tree = parser.parse(source, self.tree.as_ref())
             .context("parse error")?;
         let node = tree.root_node();
+        debug!("{}", node);
         if node.kind() != "document" || (
             if let Some(first_child) = node.child(0) {
-                first_child.kind() == "ERROR"
+                first_child.kind() == "ERROR" || first_child.kind() == "text"
             } else {
                 false
             }
