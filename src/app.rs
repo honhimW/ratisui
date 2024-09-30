@@ -6,6 +6,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::palette::tailwind;
 use ratatui::text::Line;
 use ratatui::Frame;
+use crate::bus::GlobalEvent;
 use crate::configuration::Databases;
 
 pub struct App {
@@ -27,6 +28,7 @@ pub enum AppEvent {
     Init,
     Reset,
     Destroy,
+    Bus(GlobalEvent),
 }
 
 pub trait TabImplementation: Renderable + Listenable {

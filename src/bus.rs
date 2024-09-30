@@ -4,12 +4,12 @@ use crossbeam_channel::{Receiver, Sender};
 use once_cell::sync::Lazy;
 use strum::Display;
 
-static TOAST_CHANNEL: Lazy<Channel> = Lazy::new(|| {
+static TOAST_CHANNEL: Lazy<ToastChannel> = Lazy::new(|| {
     let (tx, rx) = crossbeam_channel::bounded(4);
-    Channel { tx, rx }
+    ToastChannel { tx, rx }
 });
 
-pub struct Channel {
+pub struct ToastChannel {
     pub tx: Sender<Message>,
     pub rx: Receiver<Message>,
 }
@@ -75,4 +75,29 @@ pub fn get_sender() -> Result<Sender<Message>> {
 #[allow(unused)]
 pub fn get_receiver() -> Result<Receiver<Message>> {
     Ok(TOAST_CHANNEL.rx.clone())
+}
+
+static GLOBAL_CHANNEL: Lazy<GlobalChannel> = Lazy::new(|| {
+    let (tx, rx) = crossbeam_channel::bounded(16);
+    GlobalChannel { tx, rx }
+});
+
+pub struct GlobalChannel {
+    pub tx: Sender<GlobalEvent>,
+    pub rx: Receiver<GlobalEvent>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GlobalEvent {
+    ClientChanged,
+    Dynamic(String),
+}
+
+pub fn publish_event(event: GlobalEvent) -> Result<()> {
+    GLOBAL_CHANNEL.tx.send(event).context("Publishing GlobalEvent failed")?;
+    Ok(())
+}
+
+pub fn subscribe_global_channel() -> Result<Receiver<GlobalEvent>> {
+    Ok(GLOBAL_CHANNEL.rx.clone())
 }

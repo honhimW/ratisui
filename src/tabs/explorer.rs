@@ -27,6 +27,7 @@ use std::ops::Not;
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
+use crate::bus::GlobalEvent;
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
@@ -1186,17 +1187,22 @@ impl Listenable for ExplorerTab {
     }
 
     fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
-        if _app_event == AppEvent::Init {
-            if let Some(first_line) = self.get_filter_text() {
-                self.do_scan(first_line)?;
-            }
-        }
         if _app_event == AppEvent::Reset {
             self.show_delete_popup = false;
             self.show_filter = false;
             self.filter_text_area = TextArea::default();
             if let Some(first_line) = self.get_filter_text() {
                 self.do_scan(first_line)?;
+            }
+        }
+        if let AppEvent::Bus(global_event) = _app_event {
+            match global_event {
+                GlobalEvent::ClientChanged => {
+                    if let Some(first_line) = self.get_filter_text() {
+                        self.do_scan(first_line)?;
+                    }
+                }
+                _ => {}
             }
         }
         Ok(())

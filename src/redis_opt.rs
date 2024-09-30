@@ -1,5 +1,6 @@
 use crate::configuration::{to_protocol_version, Database};
 use crate::utils::split_args;
+use crate::bus::{publish_event, GlobalEvent};
 use anyhow::{anyhow, Context, Error, Result};
 use crossbeam_channel::{Sender};
 use deadpool_redis::redis::cmd;
@@ -100,7 +101,7 @@ pub fn switch_client(name: impl Into<String>, database: &Database) -> Result<()>
             return Err(anyhow!("Failed to switch client: {}", e));
         }
     }
-
+    let _ = publish_event(GlobalEvent::ClientChanged);
     Ok(())
 }
 

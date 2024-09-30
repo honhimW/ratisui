@@ -23,7 +23,7 @@ use std::cmp;
 use std::time::Duration;
 use tokio::time::{interval};
 use crate::app::AppState::Closed;
-use crate::bus::{publish_msg, try_take_msg, Message};
+use crate::bus::{publish_msg, subscribe_global_channel, try_take_msg, Message};
 use crate::tui::TerminalBackEnd;
 
 #[tokio::main]
@@ -88,6 +88,7 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
     let delay_duration = Duration::from_millis(delay_millis as u64);
     let mut fps_calculator = FpsCalculator::default();
     let mut interval = interval(delay_duration);
+    let global_channel = subscribe_global_channel()?;
     loop {
         interval.tick().await;
         if !app.health() {
@@ -120,6 +121,10 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
             app.context.on_app_event(AppEvent::Init)?;
             app.state = AppState::Running;
             continue;
+        }
+
+        if let Ok(global_event) = global_channel.try_recv() {
+            app.context.on_app_event(AppEvent::Bus(global_event))?;
         }
 
         loop {
