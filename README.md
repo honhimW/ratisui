@@ -7,9 +7,17 @@
 
 ![gif](./assets/ratisui.gif)
 
-## Quick Start
+## Installation
 
-> build from source
+### Cargo
+```shell
+cargo install --git=https://github.com/honhimW/ratisui.git
+```
+
+### Download
+[Github release](https://github.com/honhimW/ratisui/releases)
+
+### Build from source
 ```shell
 # clone repo
 git clone https://github.com/honhimW/ratisui.git
@@ -19,16 +27,23 @@ cd ratisui
 cargo run
 ```
 
+
+## Quick Start
+
 > create a data source 
 
 1. Press 's' (open server popup)
 2. Press 'c' (create data source) 
 3. config data source
-4. select data source
+4. Press 'Enter' for confirm
+5. select data source
+6. Press 'Esc' (close data source popup)
+7. Enjoy!
 
 > save configuration, auto save on exit
 
-add files as fallow under `~/.config/ratisui/`:
+### Data storage
+User's data will be stored in `~/.config/ratisui/`:
 
 ```ron
 // ~/.config/ratisui/config.ron
