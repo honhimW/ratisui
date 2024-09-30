@@ -1,6 +1,11 @@
+use std::collections::HashMap;
 use std::io::Cursor;
+use protobuf::reflect::MessageDescriptor;
+use protobuf::UnknownValueRef;
+use protobuf::well_known_types::any::Any;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ron::ser::PrettyConfig;
+use serde::Serialize;
 use tui_textarea::TextArea;
 use jaded::Parser;
 
@@ -52,15 +57,21 @@ pub fn clean_text_area(text_area: &mut TextArea) {
 }
 
 pub fn deserialize_bytes(bytes: Vec<u8>) -> anyhow::Result<(String, Option<ContentType>)> {
+    let des_result = des_java(bytes.clone());
+    if des_result.is_ok() {
+        let string = des_result?;
+        return Ok((string, Some(ContentType::Ron)));
+    }
+
+    let des_result = des_protobuf(bytes.clone());
+    if des_result.is_ok() {
+        let string = des_result?;
+        return Ok((string, Some(ContentType::Ron)));
+    }
+
     if let Ok(string) = String::from_utf8(bytes.clone()) {
         Ok((string, None))
     } else {
-        let des_result = des_java(bytes.clone());
-        if des_result.is_ok() {
-            let string = des_result?;
-            return Ok((string, Some(ContentType::Ron)));
-        }
-
         Ok((bytes.iter().map(|&b| {
             if b.is_ascii() {
                 (b as char).to_string()
@@ -72,14 +83,18 @@ pub fn deserialize_bytes(bytes: Vec<u8>) -> anyhow::Result<(String, Option<Conte
 }
 
 pub fn bytes_to_string(bytes: Vec<u8>) -> anyhow::Result<String> {
+    let des_result = des_java(bytes.clone());
+    if des_result.is_ok() {
+        return des_result;
+    }
+
+    let des_result = des_protobuf(bytes.clone());
+    if des_result.is_ok() {
+        return des_result;
+    }
     if let Ok(string) = String::from_utf8(bytes.clone()) {
         Ok(string)
     } else {
-        let des_result = des_java(bytes.clone());
-        if des_result.is_ok() {
-            return des_result;
-        }
-
         Ok(bytes.iter().map(|&b| {
             if b.is_ascii() {
                 (b as char).to_string()
@@ -95,6 +110,36 @@ pub fn des_java(bytes: Vec<u8>) -> anyhow::Result<String> {
     let mut parser = Parser::new(cursor)?;
     let content = parser.read()?;
     let ron = ron::ser::to_string_pretty(&content, PrettyConfig::default())?;
+    Ok(ron)
+}
+
+pub fn des_protobuf(bytes: Vec<u8>) -> anyhow::Result<String> {
+    let descriptor = MessageDescriptor::for_type::<Any>();
+    let dynamic_message = descriptor.parse_from_bytes(&bytes)?;
+    let any_message: Box<Any> = dynamic_message.downcast_box().expect("");
+
+    let fields = any_message.special_fields;
+    let unknown_fields = fields.unknown_fields();
+    #[derive(Serialize)]
+    enum Field {
+        Fixed32(u32),
+        Fixed64(u64),
+        Varint(u64),
+        LengthDelimited(String)
+    }
+
+    let mut hash_map: HashMap<u32, Field> = HashMap::new();
+
+    for (idx, unknown_field) in unknown_fields.iter() {
+        match unknown_field {
+            UnknownValueRef::Fixed32(fixed32) => hash_map.insert(idx, Field::Fixed32(fixed32)),
+            UnknownValueRef::Fixed64(fixed64) => hash_map.insert(idx, Field::Fixed64(fixed64)),
+            UnknownValueRef::Varint(varint) => hash_map.insert(idx, Field::Varint(varint)),
+            UnknownValueRef::LengthDelimited(ld) => hash_map.insert(idx, Field::LengthDelimited(String::from_utf8(ld.to_vec())?)),
+        };
+    }
+
+    let ron = ron::ser::to_string_pretty(&hash_map, PrettyConfig::default())?;
     Ok(ron)
 }
 
