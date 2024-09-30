@@ -27,7 +27,6 @@ cd ratisui
 cargo run
 ```
 
-
 ## Quick Start
 
 > create a data source 
@@ -42,7 +41,7 @@ cargo run
 
 > save configuration, auto save on exit
 
-### Data storage
+## Data storage
 User's data will be stored in `~/.config/ratisui/`:
 
 ```ron
@@ -81,3 +80,37 @@ User's data will be stored in `~/.config/ratisui/`:
     },
 )
 ```
+
+## Features
+
+**Connection mode**
+- [x] standalone mode
+- [x] cluster mode
+
+**Data Type**
+- [x] String
+- [x] List
+- [x] Set
+- [x] Sorted Set
+- [x] Hash
+- [x] Stream
+
+**Explorer**
+- [x] Key scan(Fuzzy/Pattern)
+- [x] Keys tree
+- [x] Key create, rename, delete
+- [x] Async query & render
+- [x] Highlight & format for raw data
+- [x] Table view for list, set, sorted set, hash
+
+**Command line tool**
+- [x] Auto Completion
+- [x] Command history
+- [x] Command execution
+- [x] Monitor/(P)Subscribe listening
+- [x] Output format
+
+**Misc**
+- [x] Logger viewer
+- [x] Non-blocking command execution
+- [x] Configuration persistence
