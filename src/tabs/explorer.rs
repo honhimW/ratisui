@@ -3,12 +3,13 @@ use crate::components::create_key_editor::{Form, KeyType};
 use crate::components::hash_table::HashValue;
 use crate::components::list_table::ListValue;
 use crate::components::popup::Popup;
-use crate::components::raw_value::raw_value_to_highlight_text;
+use crate::components::raw_paragraph::RawParagraph;
 use crate::components::set_table::SetValue;
 use crate::components::zset_table::ZSetValue;
 use crate::redis_opt::{async_redis_opt, spawn_redis_opt};
 use crate::tabs::explorer::CurrentScreen::{KeysTree, ValuesViewer};
 use crate::utils::{bytes_to_string, clean_text_area};
+use crate::utils::{deserialize_bytes, ContentType};
 use anyhow::{anyhow, Context, Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -19,9 +20,8 @@ use ratatui::style::palette::tailwind;
 use ratatui::style::{Color, Modifier};
 use ratatui::text::Span;
 use ratatui::widgets::block::Position;
-use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, Wrap};
+use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
 use ratatui::{symbols, Frame};
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Not;
 use tokio::join;
@@ -44,7 +44,7 @@ pub struct ExplorerTab {
     tree_items: Vec<TreeItem<'static, String>>,
     redis_separator: String,
     selected_key: Option<RedisKey>,
-    selected_string_value: Option<String>,
+    selected_raw_value: Option<RawParagraph<'static>>,
     selected_list_value: Option<ListValue>,
     selected_set_value: Option<SetValue>,
     selected_zset_value: Option<ZSetValue>,
@@ -57,7 +57,7 @@ pub struct ExplorerTab {
 struct Data {
     key_name: String,
     scan_keys_result: (bool, Vec<RedisKey>),
-    selected_string_value: (bool, Option<String>),
+    selected_string_value: (bool, Option<(String, Option<ContentType>)>),
     selected_list_value: (bool, Option<Vec<String>>),
     selected_set_value: (bool, Option<Vec<String>>),
     selected_zset_value: (bool, Option<Vec<(String, f64)>>),
@@ -211,7 +211,7 @@ impl ExplorerTab {
             tree_items: vec![],
             redis_separator: ":".to_string(),
             selected_key: None,
-            selected_string_value: None,
+            selected_raw_value: None,
             selected_list_value: None,
             selected_set_value: None,
             selected_zset_value: None,
@@ -241,19 +241,20 @@ impl ExplorerTab {
                     redis_key.ttl = data.ttl.1;
                 }
                 if data.selected_string_value.0 {
-                    self.selected_string_value = data.selected_string_value.1;
+                    let raw = data.selected_string_value.1.unwrap_or_default();
+                    self.selected_raw_value = Some(RawParagraph::new(raw.0, raw.1));
                 }
                 if data.selected_list_value.0 {
-                    self.selected_list_value = Some(ListValue::new(data.selected_list_value.1.unwrap_or(vec![])));
+                    self.selected_list_value = Some(ListValue::new(data.selected_list_value.1.unwrap_or_default()));
                 }
                 if data.selected_set_value.0 {
-                    self.selected_set_value = Some(SetValue::new(data.selected_set_value.1.unwrap_or(vec![])));
+                    self.selected_set_value = Some(SetValue::new(data.selected_set_value.1.unwrap_or_default()));
                 }
                 if data.selected_zset_value.0 {
-                    self.selected_zset_value = Some(ZSetValue::new(data.selected_zset_value.1.unwrap_or(vec![])));
+                    self.selected_zset_value = Some(ZSetValue::new(data.selected_zset_value.1.unwrap_or_default()));
                 }
                 if data.selected_hash_value.0 {
-                    self.selected_hash_value = Some(HashValue::new(data.selected_hash_value.1.unwrap_or(HashMap::new())));
+                    self.selected_hash_value = Some(HashValue::new(data.selected_hash_value.1.unwrap_or_default()));
                 }
             }
         }
@@ -356,41 +357,31 @@ impl ExplorerTab {
             .padding(Padding::horizontal(1))
             .borders(Borders::ALL)
             .border_style(self.border_color(ValuesViewer));
-        if self.selected_string_value.is_some() {
-            if let Ok(text) = self.get_raw_value() {
-                let values_text = Paragraph::new(text)
-                    .wrap(Wrap { trim: false })
-                    .block(values_block);
-                frame.render_widget(values_text, area);
+        let block_inner_area = values_block.inner(area);
+        frame.render_widget(values_block, area);
+        if self.selected_raw_value.is_some() {
+            if let Some(ref mut raw_value) = self.selected_raw_value {
+                raw_value.render(frame, block_inner_area)?;
             }
         } else if self.selected_list_value.is_some() {
             if let Some(ref mut list_value) = self.selected_list_value {
-                frame.render_widget(values_block.clone(), area.clone());
-                let area = values_block.inner(area);
-                list_value.render_frame(frame, area)?;
+                list_value.render_frame(frame, block_inner_area)?;
             }
         } else if self.selected_set_value.is_some() {
             if let Some(ref mut set_value) = self.selected_set_value {
-                frame.render_widget(values_block.clone(), area.clone());
-                let area = values_block.inner(area);
-                set_value.render_frame(frame, area)?;
+                set_value.render_frame(frame, block_inner_area)?;
             }
         } else if self.selected_zset_value.is_some() {
             if let Some(ref mut set_value) = self.selected_zset_value {
-                frame.render_widget(values_block.clone(), area.clone());
-                let area = values_block.inner(area);
-                set_value.render_frame(frame, area)?;
+                set_value.render_frame(frame, block_inner_area)?;
             }
         } else if self.selected_hash_value.is_some() {
             if let Some(ref mut hash_value) = self.selected_hash_value {
-                frame.render_widget(values_block.clone(), area.clone());
-                let area = values_block.inner(area);
-                hash_value.render_frame(frame, area)?;
+                hash_value.render_frame(frame, block_inner_area)?;
             }
         } else {
-            let values_text = Paragraph::new("N/A")
-                .block(values_block);
-            frame.render_widget(values_text, area);
+            let values_text = Paragraph::new("N/A");
+            frame.render_widget(values_text, block_inner_area);
         }
         Ok(())
     }
@@ -798,14 +789,6 @@ impl ExplorerTab {
         Ok(true)
     }
 
-    fn get_raw_value(&self) -> Result<Text> {
-        if let Some(ref value) = self.selected_string_value {
-            Ok(raw_value_to_highlight_text(Cow::from(value), true))
-        } else {
-            Ok(Text::default())
-        }
-    }
-
     fn handle_tree_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         if key_event.modifiers == KeyModifiers::NONE {
             let current_selected_key = self.selected_key.clone().map(|current| { current.name });
@@ -852,7 +835,7 @@ impl ExplorerTab {
                             id.eq(&redis_key.name)
                         }).cloned();
                         self.selected_key = option;
-                        self.selected_string_value = None;
+                        self.selected_raw_value = None;
                         self.selected_list_value = None;
                         self.selected_set_value = None;
                         self.selected_zset_value = None;
@@ -935,8 +918,8 @@ impl ExplorerTab {
             match key_type.to_ascii_lowercase().as_str() {
                 "string" => {
                     let bytes: Vec<u8> = op.get(key_name_clone).await?;
-                    let string = bytes_to_string(bytes).context("Failed to parse string")?;
-                    data.selected_string_value = (true, Some(string));
+                    let result = deserialize_bytes(bytes).context("Failed to deserialize string")?;
+                    data.selected_string_value = (true, Some((result.0, result.1)));
                 }
                 "list" => {
                     let values: Vec<Vec<u8>> = op.get_list(key_name_clone).await?;
@@ -1097,8 +1080,36 @@ impl Listenable for ExplorerTab {
                 self.toggle_screen(KeysTree);
                 return Ok(true);
             }
-            if let Some(ref mut string_value) = self.selected_string_value {
-
+            if let Some(ref mut raw_value) = self.selected_raw_value {
+                if key_event.modifiers == KeyModifiers::NONE {
+                    match key_event.code {
+                        KeyCode::Char('j') | KeyCode::Down => {
+                            raw_value.scroll_down();
+                            return Ok(true);
+                        }
+                        KeyCode::Char('k') | KeyCode::Up => {
+                            raw_value.scroll_up();
+                            return Ok(true);
+                        }
+                        KeyCode::PageDown => {
+                            raw_value.scroll_page_down();
+                            return Ok(true);
+                        }
+                        KeyCode::PageUp => {
+                            raw_value.scroll_page_up();
+                            return Ok(true);
+                        }
+                        KeyCode::End => {
+                            raw_value.scroll_end();
+                            return Ok(true);
+                        }
+                        KeyCode::Home => {
+                            raw_value.scroll_start();
+                            return Ok(true);
+                        }
+                        _ => {}
+                    }
+                }
             }
             if let Some(ref mut list_value) = self.selected_list_value {
                 let accepted = list_value.handle_key_event(key_event)?;

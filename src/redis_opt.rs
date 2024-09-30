@@ -138,6 +138,7 @@ fn build_pool(database: &Database) -> Result<Pool> {
 
 #[derive(Clone)]
 pub struct RedisOperations {
+    #[allow(unused)]
     pub name: String,
     database: Database,
     client: Client,
@@ -1050,78 +1051,5 @@ pub trait Disposable: Send {
 
 #[cfg(test)]
 mod tests {
-    use crate::configuration::Protocol;
-    use crate::redis_opt::{async_redis_opt, build_client, switch_client, Database, RedisOperations};
-    use anyhow::Result;
-    use redis::Commands;
 
-    #[test]
-    fn test_get_server_info() -> Result<()> {
-        let mut db = Database {
-            host: "10.37.1.132".to_string(),
-            port: 6379,
-            username: None,
-            password: Some("123456".to_string()),
-            use_tls: false,
-            use_ssh_tunnel: false,
-            db: 0,
-            protocol: Protocol::RESP3,
-        };
-
-        let client = build_client(&db)?;
-        let op = RedisOperations::new("", db, client);
-        let option = op.get_server_info("redis_version");
-        print!("redis_version: {:?}", option);
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_initialize_cluster() -> Result<()> {
-        let mut db = Database {
-            host: "10.37.1.133".to_string(),
-            port: 6001,
-            username: None,
-            password: Some("123456".to_string()),
-            use_tls: false,
-            use_ssh_tunnel: false,
-            db: 0,
-            protocol: Protocol::RESP3,
-        };
-
-        let client = build_client(&db)?;
-        let mut op = RedisOperations::new("", db, client);
-        op.initialize()?;
-        assert!(op.is_cluster());
-        let vec = op.scan("*", 100).await?;
-        vec.iter().for_each(|item| {
-            println!("{}", item);
-        });
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_get_key_type() -> Result<()> {
-        let mut db = Database {
-            host: "10.37.1.132".to_string(),
-            port: 6379,
-            username: None,
-            password: Some("123456".to_string()),
-            use_tls: false,
-            use_ssh_tunnel: false,
-            db: 0,
-            protocol: Protocol::RESP3,
-        };
-
-        switch_client("", &db)?;
-        let string1 = async_redis_opt(|op| async move {
-            let string = op.key_type("json").await?;
-            Ok(string)
-        }).await?;
-
-        println!("json: {}", string1);
-
-        Ok(())
-    }
 }

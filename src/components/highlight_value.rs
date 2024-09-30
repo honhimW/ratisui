@@ -3,6 +3,7 @@ use log::{debug};
 use serde_json::{ Value};
 use tree_sitter::{Node, Parser, Tree};
 use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
+use crate::utils::ContentType;
 
 const HIGHLIGHTS_QUERY_JSON: &'static str = r#"
 (pair
@@ -78,25 +79,12 @@ pub enum HighlightKind {
     Unknown,
 }
 
-#[allow(unused)]
-#[derive(Default)]
-pub enum ContentType {
-    String,
-    #[default]
-    Json,
-    Xml,
-    // JavaSerialized,
-    // PhpSerialized,
-    // CSharpSerialized,
-    // Protobuf,
-}
-
 impl HighlightProcessor {
-    pub fn new(source: String) -> Self {
+    pub fn new(source: String, content_type: Option<ContentType>) -> Self {
         Self {
             source: source.replace("\t", "    "), // \t Tab characters may cause some content to remain on the frame.
             fragments: Vec::new(),
-            content_type: None,
+            content_type,
             tree: None,
             do_formatting: true,
         }
@@ -112,6 +100,7 @@ impl HighlightProcessor {
                 ContentType::String => self.process_plain()?,
                 ContentType::Json => self.process_json()?,
                 ContentType::Xml => self.process_xml()?,
+                ContentType::Ron => self.process_ron()?,
             };
             return Ok(());
         }
@@ -326,6 +315,90 @@ impl HighlightProcessor {
         Ok(true)
     }
 
+    fn process_ron(&mut self) -> Result<bool> {
+        let mut parser = Parser::new();
+        parser.set_language(&tree_sitter_ron::language())?;
+
+        let source = &self.source;
+        let tree = parser.parse(source, self.tree.as_ref())
+            .context("parse error")?;
+        let node = tree.root_node();
+        if node.kind() != "source_file" || (
+            if let Some(first_child) = node.child(0) {
+                first_child.kind() == "ERROR"
+            } else {
+                false
+            }
+        ) {
+            debug!("Source value is not a RON: {}, SEXP: {}", self.source, tree.root_node().to_sexp());
+            return Ok(false);
+        }
+        self.tree = Some(tree);
+
+        let mut highlight_config = HighlightConfiguration::new(
+            tree_sitter_ron::language(),
+            "xml",
+            tree_sitter_ron::HIGHLIGHTS_QUERY,
+            "",
+            "",
+        )?;
+
+        let highlight_names = vec![
+            "property",               // 0
+            "type",                   // 1
+            "type.builtin",           // 2
+            "comment",                // 3
+            "constant",               // 4
+            "string",                 // 5
+            "character",              // 6
+            "number",                 // 7
+            "float",                  // 8
+            "boolean",                // 9
+        ];
+        highlight_config.configure(&highlight_names);
+
+        let mut highlighter = Highlighter::new();
+        let highlights = highlighter.highlight(&highlight_config, self.source.as_bytes(), None, |_| None)?;
+        let mut fragments: Vec<HighlightText> = vec![];
+        let mut highlight_text: Option<HighlightText> = None;
+        for event in highlights {
+            match event? {
+                HighlightEvent::Source { start, end } => {
+                    let x = &self.source[start..end];
+                    match highlight_text {
+                        None => {
+                            fragments.push(HighlightText { text: x.to_string(), kind: HighlightKind::Unknown });
+                        }
+                        Some(ref mut ht) => {
+                            ht.text = x.to_string();
+                        }
+                    }
+                }
+                HighlightEvent::HighlightStart(s) => {
+                    let mut ht = HighlightText { text: "".to_string(), kind: HighlightKind::Unknown };
+                    match s.0 {
+                        0 => ht.kind = HighlightKind::Property,
+                        1 | 2 => ht.kind = HighlightKind::Keyword,
+                        5 | 6 => ht.kind = HighlightKind::String,
+                        4 | 9 => ht.kind = HighlightKind::Constant,
+                        7 | 8 => ht.kind = HighlightKind::Number,
+                        3 => ht.kind = HighlightKind::Comment,
+                        _ => ht.kind = HighlightKind::Unknown
+                    }
+                    highlight_text = Some(ht);
+                }
+                HighlightEvent::HighlightEnd => {
+                    if let Some(ref mut ht) = highlight_text {
+                        fragments.push(ht.clone());
+                        highlight_text = None;
+                    }
+                }
+            }
+        }
+        self.fragments = fragments;
+        Ok(true)
+    }
+
     fn process_plain(&mut self) -> Result<bool> {
         let mut fragments = vec![];
         fragments.push(HighlightText { text: self.source.clone(), kind: HighlightKind::String });
@@ -358,7 +431,7 @@ mod high_light_test {
             "tags": ["1", 2, "3"],
         }).to_string();
         assert_eq!(r#"{"tags":["1",2,"3"]}"#, json);
-        let mut processor = super::HighlightProcessor::new(json);
+        let mut processor = super::HighlightProcessor::new(json, Some(super::ContentType::Json));
         let x = processor.process()?;
         assert_eq!(
             r#"{
