@@ -96,11 +96,17 @@ User's data will be stored in `~/.config/ratisui/`:
 - [x] Stream
 
 **Explorer**
-- [x] Key scan(Fuzzy/Pattern)
+- [x] Key scan (Fuzzy/Pattern)
 - [x] Keys tree
 - [x] Key create, rename, delete
 - [x] Async query & render
 - [x] Highlight & format for raw data
+    - [x] UTF-8/Hex deserialization
+    - [x] Java deserialization (jaded)
+    - [x] Protobuf deserialization (protobuf)
+    - [x] JSON highlighter (tree-sitter-json)
+    - [x] XML highlighter (tree-sitter-html)
+    - [x] RON highlighter (tree-sitter-ron)
 - [x] Table view for list, set, sorted set, hash
 
 **Command line tool**
