@@ -18,7 +18,7 @@ use crate::bus::{publish_msg, Message};
 use crate::components::database_editor::Form;
 use crate::components::popup::Popup;
 use crate::configuration::{save_database_configuration, Database, Databases};
-use crate::redis_opt::{redis_operations, switch_client};
+use crate::redis_opt::{switch_client};
 use anyhow::{anyhow, Result};
 use itertools::Itertools;
 use log::info;
@@ -119,14 +119,15 @@ pub struct ServerList {
 impl ServerList {
     pub fn new(databases: &Databases) -> Self {
         let mut vec = vec![];
-        let server_name = redis_operations().map(|ops| { ops.name }).unwrap_or("".to_string());
         for (name, database) in databases.databases.iter() {
+            let mut selected = false;
+            if let Some(ref default) = databases.default_database {
+                if name == default {
+                    selected = true
+                }
+            }
             let data = Data {
-                selected: if &server_name == name {
-                    "*"
-                } else {
-                    ""
-                }.into(),
+                selected: if selected { "*" } else { "" }.into(),
                 name: name.to_string(),
                 location: format!("{}:{}", database.host, database.port),
                 username: database.clone().username.unwrap_or(String::new()),
@@ -446,7 +447,7 @@ impl ServerList {
 
     fn save(&self) -> Result<()> {
         let selected_data = self.selected();
-        let selected_name = selected_data.map(|data| { data.name });
+        let selected_name = selected_data.map(|data| data.name);
         let default_database_changed = selected_name != self.init_database_name;
         if self.have_changed || default_database_changed {
             let mut databases = Databases::empty();

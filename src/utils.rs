@@ -1,5 +1,22 @@
+use std::io::Cursor;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ron::ser::PrettyConfig;
 use tui_textarea::TextArea;
+use jaded::Parser;
+
+#[allow(unused)]
+#[derive(Default, Clone)]
+pub enum ContentType {
+    String,
+    #[default]
+    Json,
+    Xml,
+    Ron,
+    // JavaSerialized,
+    // PhpSerialized,
+    // CSharpSerialized,
+    // Protobuf,
+}
 
 pub fn none_match(key_event: &KeyEvent, key_code: KeyCode) -> bool {
     none_modifier(key_event) && key_event.code == key_code
@@ -34,10 +51,35 @@ pub fn clean_text_area(text_area: &mut TextArea) {
     });
 }
 
+pub fn deserialize_bytes(bytes: Vec<u8>) -> anyhow::Result<(String, Option<ContentType>)> {
+    if let Ok(string) = String::from_utf8(bytes.clone()) {
+        Ok((string, None))
+    } else {
+        let des_result = des_java(bytes.clone());
+        if des_result.is_ok() {
+            let string = des_result?;
+            return Ok((string, Some(ContentType::Ron)));
+        }
+
+        Ok((bytes.iter().map(|&b| {
+            if b.is_ascii() {
+                (b as char).to_string()
+            } else {
+                format!("\\x{:02x}", b)
+            }
+        }).collect::<String>(), None))
+    }
+}
+
 pub fn bytes_to_string(bytes: Vec<u8>) -> anyhow::Result<String> {
     if let Ok(string) = String::from_utf8(bytes.clone()) {
         Ok(string)
     } else {
+        let des_result = des_java(bytes.clone());
+        if des_result.is_ok() {
+            return des_result;
+        }
+
         Ok(bytes.iter().map(|&b| {
             if b.is_ascii() {
                 (b as char).to_string()
@@ -46,6 +88,14 @@ pub fn bytes_to_string(bytes: Vec<u8>) -> anyhow::Result<String> {
             }
         }).collect::<String>())
     }
+}
+
+pub fn des_java(bytes: Vec<u8>) -> anyhow::Result<String> {
+    let cursor = Cursor::new(bytes);
+    let mut parser = Parser::new(cursor)?;
+    let content = parser.read()?;
+    let ron = ron::ser::to_string_pretty(&content, PrettyConfig::default())?;
+    Ok(ron)
 }
 
 pub fn escape_string(s: impl Into<String>) -> String {

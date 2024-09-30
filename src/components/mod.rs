@@ -11,3 +11,4 @@ mod database_editor;
 pub mod create_key_editor;
 pub mod console_output;
 pub mod redis_cli;
+pub mod raw_paragraph;
