@@ -14,7 +14,7 @@ log = "0.4"
 redis = "0.27"
 serde = "1"
 tokio = "1"
-tree-sitter = "0.23"
+tree-sitter = "0.24"
 
 [dependencies]
 anyhow = "1"
@@ -65,9 +65,9 @@ jaded = { path = "ratisui-jaded", features = ["serde"] }
 protobuf = { version = "3.5.1" }
 
 tree-sitter = { workspace = true}
-tree-sitter-highlight = "0.23"
-tree-sitter-json = "0.23"
-tree-sitter-html = "0.23"
+tree-sitter-highlight = "0.24"
+tree-sitter-json = "0.24"
+tree-sitter-html = "0.24"
 tree-sitter-ron = { path = "ratisui-tree-sitter-ron" }
 
 # git crates
