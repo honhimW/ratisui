@@ -199,7 +199,7 @@ impl SetValue {
             lines.push(bar.into());
         }
         lines.push("".into());
-        let heilight_symbol = Text::from(lines);
+        let highlight_symbol = Text::from(lines);
         let t = Table::new(
             rows,
             [
@@ -211,7 +211,7 @@ impl SetValue {
         )
             .header(header)
             .highlight_style(selected_style)
-            .highlight_symbol(heilight_symbol)
+            .highlight_symbol(highlight_symbol)
             .bg(self.colors.buffer_bg)
             .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut self.state);

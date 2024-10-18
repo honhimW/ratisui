@@ -24,10 +24,12 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarO
 use ratatui::{symbols, Frame};
 use std::collections::HashMap;
 use std::ops::Not;
+use redis::Value;
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 use crate::bus::GlobalEvent;
+use crate::components::stream_view::SteamView;
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
@@ -50,6 +52,7 @@ pub struct ExplorerTab {
     selected_set_value: Option<SetValue>,
     selected_zset_value: Option<ZSetValue>,
     selected_hash_value: Option<HashValue>,
+    selected_stream_value: Option<SteamView>,
     data_sender: Sender<Data>,
     data_receiver: Receiver<Data>,
 }
@@ -63,6 +66,7 @@ struct Data {
     selected_set_value: (bool, Option<Vec<String>>),
     selected_zset_value: (bool, Option<Vec<(String, f64)>>),
     selected_hash_value: (bool, Option<HashMap<String, String>>),
+    selected_stream_value: (bool, Option<Vec<(String, Vec<String>)>>),
     key_type: (bool, Option<String>),
     key_size: (bool, Option<usize>),
     length: (bool, Option<usize>),
@@ -217,6 +221,7 @@ impl ExplorerTab {
             selected_set_value: None,
             selected_zset_value: None,
             selected_hash_value: None,
+            selected_stream_value: None,
             data_sender: tx,
             data_receiver: rx,
         }
@@ -256,6 +261,9 @@ impl ExplorerTab {
                 }
                 if data.selected_hash_value.0 {
                     self.selected_hash_value = Some(HashValue::new(data.selected_hash_value.1.unwrap_or_default()));
+                }
+                if data.selected_stream_value.0 {
+                    self.selected_stream_value = Some(SteamView::new(data.selected_stream_value.1.unwrap_or_default()));
                 }
             }
         }
@@ -960,6 +968,15 @@ impl ExplorerTab {
                         (key_str, value_str)
                     }).collect();
                     data.selected_hash_value = (true, Some(hash_value));
+                }
+                "stream" => {
+                    let values: Vec<(Vec<u8>, Vec<Vec<u8>>)> = op.get_stream(key_name_clone).await?;
+                    let hash_value: Vec<(String, Vec<String>)> = values.iter().map(|(key, value)| {
+                        let key_str: String = bytes_to_string(key.clone()).unwrap_or_else(|_| { String::new() });
+                        let values: Vec<String> = value.iter().map(|item| bytes_to_string(item.clone()).unwrap_or_else(|_| { String::new() })).collect();
+                        (key_str, values)
+                    }).collect();
+                    data.selected_stream_value = (true, Some(hash_value));
                 }
                 _ => {}
             }
