@@ -69,6 +69,10 @@ tree-sitter-highlight = "0.23"
 tree-sitter-json = "0.23"
 tree-sitter-html = "0.23"
 tree-sitter-ron = { path = "ratisui-tree-sitter-ron" }
+russh = { version = "0.45.0" }
+russh-keys = "0.45.0"
+async-trait = "0.1.82"
+env_logger = "0.11.5"
 
 # git crates
 
