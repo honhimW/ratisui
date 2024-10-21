@@ -272,8 +272,6 @@ impl Listenable for HashValue {
                     self.previous();
                     true
                 },
-                // KeyCode::Char('l') | KeyCode::Right => self.next_color(),
-                // KeyCode::Char('h') | KeyCode::Left => self.previous_color(),
                 _ => {false},
             };
             return Ok(accepted);

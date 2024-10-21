@@ -90,6 +90,7 @@ pub struct GlobalChannel {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GlobalEvent {
     ClientChanged,
+    #[allow(unused)]
     Dynamic(String),
 }
 

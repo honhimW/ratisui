@@ -24,7 +24,6 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarO
 use ratatui::{symbols, Frame};
 use std::collections::HashMap;
 use std::ops::Not;
-use redis::Value;
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
@@ -368,26 +367,18 @@ impl ExplorerTab {
             .border_style(self.border_color(ValuesViewer));
         let block_inner_area = values_block.inner(area);
         frame.render_widget(values_block, area);
-        if self.selected_raw_value.is_some() {
-            if let Some(ref mut raw_value) = self.selected_raw_value {
-                raw_value.render(frame, block_inner_area)?;
-            }
-        } else if self.selected_list_value.is_some() {
-            if let Some(ref mut list_value) = self.selected_list_value {
-                list_value.render_frame(frame, block_inner_area)?;
-            }
-        } else if self.selected_set_value.is_some() {
-            if let Some(ref mut set_value) = self.selected_set_value {
-                set_value.render_frame(frame, block_inner_area)?;
-            }
-        } else if self.selected_zset_value.is_some() {
-            if let Some(ref mut set_value) = self.selected_zset_value {
-                set_value.render_frame(frame, block_inner_area)?;
-            }
-        } else if self.selected_hash_value.is_some() {
-            if let Some(ref mut hash_value) = self.selected_hash_value {
-                hash_value.render_frame(frame, block_inner_area)?;
-            }
+        if let Some(ref mut raw_value) = self.selected_raw_value {
+            raw_value.render(frame, block_inner_area)?;
+        } else if let Some(ref mut list_value) = self.selected_list_value {
+            list_value.render_frame(frame, block_inner_area)?;
+        } else if let Some(ref mut set_value) = self.selected_set_value {
+            set_value.render_frame(frame, block_inner_area)?;
+        } else if let Some(ref mut set_value) = self.selected_zset_value {
+            set_value.render_frame(frame, block_inner_area)?;
+        } else if let Some(ref mut hash_value) = self.selected_hash_value {
+            hash_value.render_frame(frame, block_inner_area)?;
+        } else if let Some(ref mut stream_view) = self.selected_stream_value {
+            stream_view.render_frame(frame, block_inner_area)?;
         } else {
             let values_text = Paragraph::new("N/A");
             frame.render_widget(values_text, block_inner_area);
@@ -443,12 +434,12 @@ impl ExplorerTab {
     }
 
     fn render_tree(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        let tree = Tree::new(&self.tree_items)
-            .expect("")
+        let tree = Tree::new(&self.tree_items)?
             .block(
                 Block::bordered()
                     .title("Keys")
-                    .title_bottom(""),
+                    .title_bottom("")
+                    .border_style(self.border_color(KeysTree)),
             )
             .experimental_scrollbar(Some(
                 Scrollbar::new(ScrollbarOrientation::VerticalRight)
@@ -849,6 +840,7 @@ impl ExplorerTab {
                         self.selected_set_value = None;
                         self.selected_zset_value = None;
                         self.selected_hash_value = None;
+                        self.selected_stream_value = None;
                         if self.selected_key.is_some() {
                             let sender = self.data_sender.clone();
                             tokio::spawn(async move {
@@ -1006,10 +998,16 @@ impl Renderable for ExplorerTab {
                 self.update_data(data);
             }
         }
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
-            .split(rect);
+        let chunks = match self.current_screen {
+            KeysTree => Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(37), Constraint::Percentage(62)])
+                .split(rect),
+            ValuesViewer => Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
+                .split(rect)
+        };
         self.render_keys_block(frame, chunks[0])?;
         self.render_values_block(frame, chunks[1])?;
 
@@ -1068,6 +1066,12 @@ impl Renderable for ExplorerTab {
                 }
                 if let Some(ref hash_value) = self.selected_hash_value {
                     hash_value.footer_elements().iter().for_each(|(k, v)| {
+                        elements.push((k, v));
+                    });
+                    elements.push(("←/h", "Close"));
+                }
+                if let Some(ref stream_view) = self.selected_stream_value {
+                    stream_view.footer_elements().iter().for_each(|(k, v)| {
                         elements.push((k, v));
                     });
                     elements.push(("←/h", "Close"));
@@ -1149,6 +1153,12 @@ impl Listenable for ExplorerTab {
             }
             if let Some(ref mut hash_value) = self.selected_hash_value {
                 let accepted = hash_value.handle_key_event(key_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut stream_view) = self.selected_stream_value {
+                let accepted = stream_view.handle_key_event(key_event)?;
                 if accepted {
                     return Ok(true);
                 }
