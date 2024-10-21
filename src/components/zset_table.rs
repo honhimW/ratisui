@@ -208,7 +208,7 @@ impl ZSetValue {
             lines.push(bar.into());
         }
         lines.push("".into());
-        let heilight_symbol = Text::from(lines);
+        let highlight_symbol = Text::from(lines);
         let t = Table::new(
             rows,
             [
@@ -221,7 +221,7 @@ impl ZSetValue {
         )
             .header(header)
             .highlight_style(selected_style)
-            .highlight_symbol(heilight_symbol)
+            .highlight_symbol(highlight_symbol)
             .bg(self.colors.buffer_bg)
             .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut self.state);
@@ -274,8 +274,6 @@ impl Listenable for ZSetValue {
                     self.previous();
                     true
                 },
-                // KeyCode::Char('l') | KeyCode::Right => self.next_color(),
-                // KeyCode::Char('h') | KeyCode::Left => self.previous_color(),
                 _ => {false},
             };
             return Ok(accepted);

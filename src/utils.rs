@@ -83,6 +83,9 @@ pub fn deserialize_bytes(bytes: Vec<u8>) -> anyhow::Result<(String, Option<Conte
 }
 
 pub fn bytes_to_string(bytes: Vec<u8>) -> anyhow::Result<String> {
+    if bytes.is_empty() {
+        return Ok("".to_string());
+    }
     let des_result = des_java(bytes.clone());
     if des_result.is_ok() {
         return des_result;

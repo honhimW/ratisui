@@ -28,6 +28,7 @@ use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 use crate::bus::GlobalEvent;
+use crate::components::stream_view::SteamView;
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
@@ -50,6 +51,7 @@ pub struct ExplorerTab {
     selected_set_value: Option<SetValue>,
     selected_zset_value: Option<ZSetValue>,
     selected_hash_value: Option<HashValue>,
+    selected_stream_value: Option<SteamView>,
     data_sender: Sender<Data>,
     data_receiver: Receiver<Data>,
 }
@@ -63,6 +65,7 @@ struct Data {
     selected_set_value: (bool, Option<Vec<String>>),
     selected_zset_value: (bool, Option<Vec<(String, f64)>>),
     selected_hash_value: (bool, Option<HashMap<String, String>>),
+    selected_stream_value: (bool, Option<Vec<(String, Vec<String>)>>),
     key_type: (bool, Option<String>),
     key_size: (bool, Option<usize>),
     length: (bool, Option<usize>),
@@ -217,6 +220,7 @@ impl ExplorerTab {
             selected_set_value: None,
             selected_zset_value: None,
             selected_hash_value: None,
+            selected_stream_value: None,
             data_sender: tx,
             data_receiver: rx,
         }
@@ -256,6 +260,9 @@ impl ExplorerTab {
                 }
                 if data.selected_hash_value.0 {
                     self.selected_hash_value = Some(HashValue::new(data.selected_hash_value.1.unwrap_or_default()));
+                }
+                if data.selected_stream_value.0 {
+                    self.selected_stream_value = Some(SteamView::new(data.selected_stream_value.1.unwrap_or_default()));
                 }
             }
         }
@@ -360,26 +367,18 @@ impl ExplorerTab {
             .border_style(self.border_color(ValuesViewer));
         let block_inner_area = values_block.inner(area);
         frame.render_widget(values_block, area);
-        if self.selected_raw_value.is_some() {
-            if let Some(ref mut raw_value) = self.selected_raw_value {
-                raw_value.render(frame, block_inner_area)?;
-            }
-        } else if self.selected_list_value.is_some() {
-            if let Some(ref mut list_value) = self.selected_list_value {
-                list_value.render_frame(frame, block_inner_area)?;
-            }
-        } else if self.selected_set_value.is_some() {
-            if let Some(ref mut set_value) = self.selected_set_value {
-                set_value.render_frame(frame, block_inner_area)?;
-            }
-        } else if self.selected_zset_value.is_some() {
-            if let Some(ref mut set_value) = self.selected_zset_value {
-                set_value.render_frame(frame, block_inner_area)?;
-            }
-        } else if self.selected_hash_value.is_some() {
-            if let Some(ref mut hash_value) = self.selected_hash_value {
-                hash_value.render_frame(frame, block_inner_area)?;
-            }
+        if let Some(ref mut raw_value) = self.selected_raw_value {
+            raw_value.render(frame, block_inner_area)?;
+        } else if let Some(ref mut list_value) = self.selected_list_value {
+            list_value.render_frame(frame, block_inner_area)?;
+        } else if let Some(ref mut set_value) = self.selected_set_value {
+            set_value.render_frame(frame, block_inner_area)?;
+        } else if let Some(ref mut set_value) = self.selected_zset_value {
+            set_value.render_frame(frame, block_inner_area)?;
+        } else if let Some(ref mut hash_value) = self.selected_hash_value {
+            hash_value.render_frame(frame, block_inner_area)?;
+        } else if let Some(ref mut stream_view) = self.selected_stream_value {
+            stream_view.render_frame(frame, block_inner_area)?;
         } else {
             let values_text = Paragraph::new("N/A");
             frame.render_widget(values_text, block_inner_area);
@@ -435,12 +434,12 @@ impl ExplorerTab {
     }
 
     fn render_tree(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        let tree = Tree::new(&self.tree_items)
-            .expect("")
+        let tree = Tree::new(&self.tree_items)?
             .block(
                 Block::bordered()
                     .title("Keys")
-                    .title_bottom(""),
+                    .title_bottom("")
+                    .border_style(self.border_color(KeysTree)),
             )
             .experimental_scrollbar(Some(
                 Scrollbar::new(ScrollbarOrientation::VerticalRight)
@@ -841,6 +840,7 @@ impl ExplorerTab {
                         self.selected_set_value = None;
                         self.selected_zset_value = None;
                         self.selected_hash_value = None;
+                        self.selected_stream_value = None;
                         if self.selected_key.is_some() {
                             let sender = self.data_sender.clone();
                             tokio::spawn(async move {
@@ -961,6 +961,15 @@ impl ExplorerTab {
                     }).collect();
                     data.selected_hash_value = (true, Some(hash_value));
                 }
+                "stream" => {
+                    let values: Vec<(Vec<u8>, Vec<Vec<u8>>)> = op.get_stream(key_name_clone).await?;
+                    let hash_value: Vec<(String, Vec<String>)> = values.iter().map(|(key, value)| {
+                        let key_str: String = bytes_to_string(key.clone()).unwrap_or_else(|_| { String::new() });
+                        let values: Vec<String> = value.iter().map(|item| bytes_to_string(item.clone()).unwrap_or_else(|_| { String::new() })).collect();
+                        (key_str, values)
+                    }).collect();
+                    data.selected_stream_value = (true, Some(hash_value));
+                }
                 _ => {}
             }
             Ok(data)
@@ -989,10 +998,16 @@ impl Renderable for ExplorerTab {
                 self.update_data(data);
             }
         }
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
-            .split(rect);
+        let chunks = match self.current_screen {
+            KeysTree => Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(37), Constraint::Percentage(62)])
+                .split(rect),
+            ValuesViewer => Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
+                .split(rect)
+        };
         self.render_keys_block(frame, chunks[0])?;
         self.render_values_block(frame, chunks[1])?;
 
@@ -1051,6 +1066,12 @@ impl Renderable for ExplorerTab {
                 }
                 if let Some(ref hash_value) = self.selected_hash_value {
                     hash_value.footer_elements().iter().for_each(|(k, v)| {
+                        elements.push((k, v));
+                    });
+                    elements.push(("←/h", "Close"));
+                }
+                if let Some(ref stream_view) = self.selected_stream_value {
+                    stream_view.footer_elements().iter().for_each(|(k, v)| {
                         elements.push((k, v));
                     });
                     elements.push(("←/h", "Close"));
@@ -1132,6 +1153,12 @@ impl Listenable for ExplorerTab {
             }
             if let Some(ref mut hash_value) = self.selected_hash_value {
                 let accepted = hash_value.handle_key_event(key_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut stream_view) = self.selected_stream_value {
+                let accepted = stream_view.handle_key_event(key_event)?;
                 if accepted {
                     return Ok(true);
                 }
