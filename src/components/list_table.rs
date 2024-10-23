@@ -98,7 +98,7 @@ impl ListValue {
         Self {
             state: TableState::default().with_selected(0),
             longest_item_lens: constraint_len_calculator(&vec),
-            scroll_state: ScrollbarState::new((vec.len() - 1) * ITEM_HEIGHT),
+            scroll_state: ScrollbarState::new((vec.len().saturating_sub(1)) * ITEM_HEIGHT),
             colors: TableColors::new(&tailwind::GRAY),
             items: vec,
         }

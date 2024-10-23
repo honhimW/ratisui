@@ -1,6 +1,6 @@
 use crate::app::{Listenable, Renderable};
 use crate::components::servers::Data;
-use crate::configuration::{Database, Protocol};
+use crate::configuration::{Database, Protocol, SshTunnel};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Percentage};
 use ratatui::layout::{Layout, Rect};
@@ -26,6 +26,11 @@ pub struct Form {
     use_tls: bool,
     db_text_area: TextArea<'static>,
     protocol: Protocol,
+    use_ssh_tunnel: bool,
+    ssh_host_text_area: TextArea<'static>,
+    ssh_port_text_area: TextArea<'static>,
+    ssh_username_text_area: TextArea<'static>,
+    ssh_password_text_area: TextArea<'static>,
 }
 
 #[derive(Default, Eq, PartialEq, EnumCount, EnumIter, Display)]
@@ -49,6 +54,16 @@ enum Editing {
     Db,
     #[strum(serialize = "Protocol")]
     Protocol,
+    #[strum(serialize = "Use SSH Tunnel")]
+    UseSshTunnel,
+    #[strum(serialize = "SSH Host")]
+    SshHost,
+    #[strum(serialize = "SSH Port")]
+    SshPort,
+    #[strum(serialize = "SSH Username")]
+    SshUsername,
+    #[strum(serialize = "SSH Password")]
+    SshPassword,
 }
 
 fn cursor_style() -> Style {
@@ -70,6 +85,11 @@ impl Default for Form {
             use_tls: false,
             db_text_area: TextArea::default(),
             protocol: Protocol::RESP3,
+            use_ssh_tunnel: false,
+            ssh_host_text_area: TextArea::default(),
+            ssh_port_text_area: TextArea::default(),
+            ssh_username_text_area: TextArea::default(),
+            ssh_password_text_area: TextArea::default(),
         };
         form.name_text_area.set_placeholder_text("must not be blank");
         form.name_text_area.set_placeholder_style(Style::default().fg(tailwind::RED.c700).dim());
@@ -78,16 +98,26 @@ impl Default for Form {
         form.username_text_area.set_placeholder_text("");
         form.password_text_area.set_placeholder_text("");
         form.db_text_area.set_placeholder_text("0");
+        form.ssh_host_text_area.set_placeholder_text("127.0.0.1");
+        form.ssh_port_text_area.set_placeholder_text("22");
+        form.ssh_username_text_area.set_placeholder_text("root");
+        form.ssh_password_text_area.set_placeholder_text("");
+
         form.name_text_area.set_cursor_style(Style::default());
         form.host_text_area.set_cursor_style(Style::default());
         form.port_text_area.set_cursor_style(Style::default());
         form.username_text_area.set_cursor_style(Style::default());
         form.password_text_area.set_cursor_style(Style::default());
         form.db_text_area.set_cursor_style(Style::default());
+        form.ssh_host_text_area.set_cursor_style(Style::default());
+        form.ssh_port_text_area.set_cursor_style(Style::default());
+        form.ssh_username_text_area.set_cursor_style(Style::default());
+        form.ssh_password_text_area.set_cursor_style(Style::default());
 
         form.name_text_area.insert_str(Uuid::new_v4().to_string());
         form.name_text_area.select_all();
         form.password_text_area.set_mask_char('•');
+        form.ssh_password_text_area.set_mask_char('•');
 
         form
     }
@@ -107,6 +137,13 @@ impl Form {
         form.use_tls = data.database.use_tls;
         form.db_text_area.insert_str(data.db.clone());
         form.protocol = data.database.protocol.clone();
+        form.use_ssh_tunnel = data.database.use_ssh_tunnel;
+        if let Some(ref ssh_tunnel) = data.database.ssh_tunnel {
+            form.ssh_host_text_area.insert_str(ssh_tunnel.host.clone());
+            form.ssh_port_text_area.insert_str(ssh_tunnel.port.to_string());
+            form.ssh_username_text_area.insert_str(ssh_tunnel.username.clone());
+            form.ssh_password_text_area.insert_str(ssh_tunnel.password.clone());
+        }
         form
     }
 
@@ -127,15 +164,29 @@ impl Form {
         let use_tls = self.use_tls;
         let db = self.db_text_area.lines().get(0).cloned().filter(|x| !x.is_empty()).unwrap_or(self.db_text_area.placeholder_text().to_string()).parse::<u32>().unwrap_or(0);
         let protocol = self.protocol.clone();
+        let use_ssh_tunnel = self.use_ssh_tunnel;
+        let ssh_tunnel = if use_ssh_tunnel {
+            let ssh_host = self.ssh_host_text_area.lines().get(0).cloned().filter(|x| !x.is_empty()).unwrap_or(self.ssh_host_text_area.placeholder_text().to_string());
+            let ssh_port = self.ssh_port_text_area.lines().get(0).cloned().filter(|x| !x.is_empty()).unwrap_or(self.ssh_port_text_area.placeholder_text().to_string()).parse::<u16>().unwrap_or(6379);
+            let ssh_username = self.ssh_username_text_area.lines().get(0).cloned().filter(|x| !x.is_empty()).unwrap_or(self.ssh_username_text_area.placeholder_text().to_string());
+            let ssh_password = self.ssh_password_text_area.lines().get(0).cloned().filter(|x| !x.is_empty()).unwrap_or_default();
+            Some(SshTunnel {
+                host: ssh_host,
+                port: ssh_port,
+                username: ssh_username,
+                password: ssh_password,
+            })
+        } else { None };
         Database {
             host,
             port,
             username,
             password,
             use_tls,
-            use_ssh_tunnel: false,
             db,
             protocol,
+            use_ssh_tunnel,
+            ssh_tunnel,
         }
     }
 
@@ -148,6 +199,12 @@ impl Form {
                 self.next();
             }
         }
+        if !self.use_ssh_tunnel {
+            let editing = self.current();
+            if editing == Editing::SshHost || editing == Editing::SshPort || editing == Editing::SshUsername || editing == Editing::SshPassword {
+                self.next();
+            }
+        }
         self.change_editing();
     }
 
@@ -157,6 +214,12 @@ impl Form {
         if !self.enabled_authentication {
             let editing = self.current();
             if editing == Editing::Username || editing == Editing::Password {
+                self.prev();
+            }
+        }
+        if !self.use_ssh_tunnel {
+            let editing = self.current();
+            if editing == Editing::SshHost || editing == Editing::SshPort || editing == Editing::SshUsername || editing == Editing::SshPassword {
                 self.prev();
             }
         }
@@ -291,12 +354,70 @@ impl Form {
         frame.render_widget(value, rc[1]);
     }
 
+    fn render_use_ssh_tunnel(&self, frame: &mut Frame, rect: Rect) {
+        let horizontal = Layout::horizontal([Length(18), Fill(0)]);
+        let rc = horizontal.split(rect);
+        let key = self.span(Editing::UseSshTunnel);
+        let value = Span::raw(if self.use_ssh_tunnel { "◄ Yes ►" } else { "◄ No ►" }).style(key.style);
+        frame.render_widget(key, rc[0]);
+        frame.render_widget(value, rc[1]);
+    }
+
+    fn render_ssh_host_port(&mut self, frame: &mut Frame, rect: Rect) {
+        let horizontal = Layout::horizontal([Percentage(65), Percentage(35)]);
+        let rc = horizontal.split(rect);
+        let host_area = Layout::horizontal([Length(18), Fill(0)]).split(rc[0]);
+        let port_area = Layout::horizontal([Length(9), Fill(0)]).split(rc[1]);
+        {
+            let key = self.span(Editing::SshHost);
+            self.ssh_host_text_area.set_style(key.style);
+            let value = &self.ssh_host_text_area;
+            frame.render_widget(key, host_area[0]);
+            frame.render_widget(value, host_area[1]);
+        }
+        {
+            let key = self.span(Editing::SshPort);
+            self.ssh_port_text_area.set_style(key.style);
+            let value = &self.ssh_port_text_area;
+            frame.render_widget(key, port_area[0]);
+            frame.render_widget(value, port_area[1]);
+        }
+    }
+
+    fn render_ssh_username(&mut self, frame: &mut Frame, rect: Rect) {
+        let horizontal = Layout::horizontal([Length(18), Fill(0)]);
+        let rc = horizontal.split(rect);
+        let key = self.span(Editing::SshUsername);
+        self.ssh_username_text_area.set_style(key.style);
+        let value = &self.ssh_username_text_area;
+        frame.render_widget(key, rc[0]);
+        frame.render_widget(value, rc[1]);
+    }
+
+    fn render_ssh_password(&mut self, frame: &mut Frame, rect: Rect) {
+        let horizontal = Layout::horizontal([Length(18), Fill(0)]);
+        let rc = horizontal.split(rect);
+        let key = self.span(Editing::SshPassword);
+        self.ssh_password_text_area.set_style(key.style);
+        let value = &self.ssh_password_text_area;
+        frame.render_widget(key, rc[0]);
+        frame.render_widget(value, rc[1]);
+    }
+
 }
 
 impl Renderable for Form {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> anyhow::Result<()> {
-        let blank_length = (rect.height - 10) / 2;
-        let area = Layout::vertical([Length(blank_length), Length(10), Length(blank_length)]).split(rect)[1];
+        let mut total_height = 9;
+        if self.enabled_authentication {
+            total_height += 2;
+        }
+        let ssh_height = 3;
+        if self.use_ssh_tunnel {
+            total_height += ssh_height;
+        }
+        let blank_length = (rect.height - total_height) / 2;
+        let area = Layout::vertical([Length(blank_length), Length(total_height), Length(blank_length)]).split(rect)[1];
         let area = Layout::horizontal([Percentage(20), Percentage(60), Percentage(20)]).split(area)[1];
         // let area = centered_rect(50, 70, rect);
         frame.render_widget(Clear::default(), area);
@@ -306,6 +427,13 @@ impl Renderable for Form {
         let block_inner_area = block
             .inner(area);
         let block_inner_area = Layout::horizontal([Length(1), Fill(0), Length(1)]).split(block_inner_area)[1];
+        let inner_area_vertical = Layout::vertical([Fill(0), Length(ssh_height)]).split(block_inner_area);
+        let base_area = if self.use_ssh_tunnel {
+            inner_area_vertical[0]
+        } else {
+            block_inner_area
+        };
+
         if !self.enabled_authentication {
             let vertical = Layout::vertical([
                 Length(1), // name
@@ -314,14 +442,16 @@ impl Renderable for Form {
                 Length(1), // tls
                 Length(1), // db
                 Length(1), // protocol
+                Length(1), // use ssh
             ]);
-            let rc = vertical.split(block_inner_area);
+            let rc = vertical.split(base_area);
             self.render_name(frame, rc[0]);
             self.render_host_port(frame, rc[1]);
             self.render_enabled_auth(frame, rc[2]);
             self.render_use_tls(frame, rc[3]);
             self.render_db(frame, rc[4]);
             self.render_protocol(frame, rc[5]);
+            self.render_use_ssh_tunnel(frame, rc[6]);
         } else {
             let vertical = Layout::vertical([
                 Length(1), // name
@@ -332,8 +462,9 @@ impl Renderable for Form {
                 Length(1), // tls
                 Length(1), // db
                 Length(1), // protocol
+                Length(1), // use ssh
             ]);
-            let rc = vertical.split(block_inner_area);
+            let rc = vertical.split(base_area);
             self.render_name(frame, rc[0]);
             self.render_host_port(frame, rc[1]);
             self.render_enabled_auth(frame, rc[2]);
@@ -342,6 +473,18 @@ impl Renderable for Form {
             self.render_use_tls(frame, rc[5]);
             self.render_db(frame, rc[6]);
             self.render_protocol(frame, rc[7]);
+            self.render_use_ssh_tunnel(frame, rc[8]);
+        }
+
+        if self.use_ssh_tunnel {
+            let rc = Layout::vertical([
+                Length(1), // host + port
+                Length(1), // username
+                Length(1), // password
+            ]).split(inner_area_vertical[1]);
+            self.render_ssh_host_port(frame, rc[0]);
+            self.render_ssh_username(frame, rc[1]);
+            self.render_ssh_password(frame, rc[2]);
         }
         frame.render_widget(block, area);
         Ok(())
@@ -387,6 +530,10 @@ impl Listenable for Form {
             Editing::Username => Some(&mut self.username_text_area),
             Editing::Password => Some(&mut self.password_text_area),
             Editing::Db => Some(&mut self.db_text_area),
+            Editing::SshHost => Some(&mut self.ssh_host_text_area),
+            Editing::SshPort => Some(&mut self.ssh_port_text_area),
+            Editing::SshUsername => Some(&mut self.ssh_username_text_area),
+            Editing::SshPassword => Some(&mut self.ssh_password_text_area),
             _ => None,
         };
         if let Some(text_area) = editor {
@@ -411,7 +558,7 @@ impl Listenable for Form {
                     text_area.redo();
                 }
                 input => {
-                    if editing == Editing::Port || editing == Editing::Db {
+                    if editing == Editing::Port || editing == Editing::Db || editing == Editing::SshPort {
                         if input.code == KeyCode::Backspace {
                             text_area.input(input);
                         } else {
@@ -454,6 +601,9 @@ impl Listenable for Form {
             Ok(true)
         } else {
             match key_event.code {
+                KeyCode::Esc => {
+                    return Ok(false);
+                },
                 KeyCode::Char('h') | KeyCode::Left => {
                     match editing {
                         Editing::EnabledAuthentication => self.enabled_authentication = !self.enabled_authentication,
@@ -462,6 +612,7 @@ impl Listenable for Form {
                             Protocol::RESP2 => Protocol::RESP3,
                             Protocol::RESP3 => Protocol::RESP2,
                         },
+                        Editing::UseSshTunnel => self.use_ssh_tunnel = !self.use_ssh_tunnel,
                         _ => {}
                     }
                 }
@@ -473,6 +624,7 @@ impl Listenable for Form {
                             Protocol::RESP2 => Protocol::RESP3,
                             Protocol::RESP3 => Protocol::RESP2,
                         },
+                        Editing::UseSshTunnel => self.use_ssh_tunnel = !self.use_ssh_tunnel,
                         _ => {}
                     }
                 }

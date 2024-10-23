@@ -10,6 +10,7 @@ mod tabs;
 mod components;
 mod utils;
 mod bus;
+mod ssh_tunnel;
 
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
 use crate::components::fps::FpsCalculator;
@@ -50,6 +51,7 @@ async fn main() -> Result<()> {
         if let Some(database) = db_config.databases.get(&db) {
             let database_clone = database.clone();
             tokio::spawn(async move {
+                info!("{:?}", &database_clone);
                 match switch_client(db.clone(), &database_clone) {
                     Ok(_) => {
                         info!("Successfully connected to default database '{db}'");
