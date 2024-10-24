@@ -369,13 +369,31 @@ impl RedisOperations {
                 futures.push(future)
             }
             let results = join_all(futures).await;
+            let mut cluster_urls = vec![];
             for result in results {
                 let (id, node_holder) = result?;
+                let host;
+                let port;
+                if let Some(ref ssh_tunnel) = node_holder.ssh_tunnel {
+                    host = ssh_tunnel.host.clone();
+                    port = ssh_tunnel.port;
+                } else {
+                    match &node_holder.pool.manager().client.get_connection_info().addr {
+                        Tcp(h, p) => {
+                            host = h.clone();
+                            port = *p;
+                        }
+                        TcpTls { host: h, port: p, .. } => {
+                            host = h.clone();
+                            port = *p;
+                        }
+                        _ => {
+                            return Err(anyhow!("Not supported connection type"))
+                        }
+                    }
+                }
                 node_holders.insert(id, node_holder);
-            }
-            self.nodes = node_holders;
-            let mut cluster_urls = vec![];
-            for (host, port, _) in redis_nodes.clone() {
+
                 let addr: ConnectionAddr;
                 if self.database.use_tls {
                     addr = TcpTls {
@@ -398,6 +416,7 @@ impl RedisOperations {
                 };
                 cluster_urls.push(deadpool_redis::ConnectionInfo::from(info))
             }
+            self.nodes = node_holders;
             let config = deadpool_redis::cluster::Config {
                 urls: None,
                 connections: Some(cluster_urls),
@@ -838,6 +857,35 @@ impl RedisOperations {
         }
     }
 
+    pub async fn mem_usage<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<i64> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: Value = cmd("MEMORY").arg("USAGE")
+                .arg(key)
+                .arg("SAMPLES").arg("0")
+                .query_async(&mut connection)
+                .await?;
+            if let Value::Int(int) = v {
+                Ok(int)
+            } else {
+                Ok(0)
+            }
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: Value = cmd("MEMORY").arg("USAGE")
+                .arg(key)
+                .arg("SAMPLES").arg("0")
+                .query_async(&mut connection)
+                .await?;
+            if let Value::Int(int) = v {
+                Ok(int)
+            } else {
+                Ok(0)
+            }
+        }
+    }
+
     pub async fn expire<K: ToRedisArgs + Send + Sync>(&self, key: K, seconds: i64) -> Result<()> {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
@@ -963,35 +1011,6 @@ impl RedisOperations {
     //         Ok(vec)
     //     }
     // }
-
-    pub async fn mem_usage<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<i64> {
-        if self.is_cluster() {
-            let pool = &self.cluster_pool.clone().context("should be cluster")?;
-            let mut connection = pool.get().await?;
-            let v: Value = cmd("MEMORY").arg("USAGE")
-                .arg(key)
-                .arg("SAMPLES").arg("0")
-                .query_async(&mut connection)
-                .await?;
-            if let Value::Int(int) = v {
-                Ok(int)
-            } else {
-                Ok(0)
-            }
-        } else {
-            let mut connection = self.pool.get().await?;
-            let v: Value = cmd("MEMORY").arg("USAGE")
-                .arg(key)
-                .arg("SAMPLES").arg("0")
-                .query_async(&mut connection)
-                .await?;
-            if let Value::Int(int) = v {
-                Ok(int)
-            } else {
-                Ok(0)
-            }
-        }
-    }
 
     pub async fn del<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<()> {
         if self.is_cluster() {

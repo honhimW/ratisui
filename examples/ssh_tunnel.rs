@@ -98,11 +98,9 @@ async fn main() -> Result<()> {
     let mut connection = pool.get().await?;
     let pong: String = cmd("PING").query_async(&mut connection).await?;
     assert!("PONG".eq_ignore_ascii_case(pong.as_str()));
-    drop(connection);
     let mut connection = pool.get().await?;
     let pong: String = cmd("PING").query_async(&mut connection).await?;
     assert!("PONG".eq_ignore_ascii_case(pong.as_str()));
-    drop(connection);
     let mut connection = pool.get().await?;
     let pong: String = cmd("PING").query_async(&mut connection).await?;
     assert!("PONG".eq_ignore_ascii_case(pong.as_str()));
