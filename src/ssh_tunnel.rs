@@ -39,7 +39,7 @@ impl SshTunnel {
         }
     }
 
-    pub async fn open_ssh_tunnel(&mut self) -> Result<SocketAddr> {
+    pub async fn open(&mut self) -> Result<SocketAddr> {
         let mut ssh_client = russh::client::connect(
             Arc::new(Config::default()),
             format!("{}:{}", self.host, self.port),

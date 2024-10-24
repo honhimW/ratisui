@@ -156,7 +156,7 @@ async fn build_pool(database: &Database) -> Result<(Pool, Option<SshTunnel>)> {
             database.host.clone(),
             database.port,
         );
-        let addr = ssh_tunnel.open_ssh_tunnel().await?;
+        let addr = ssh_tunnel.open().await?;
         info!("SSH-Tunnel listening on: {} <==> {}:{}", addr, tunnel.host, tunnel.port);
         ssh_tunnel_option = Some(ssh_tunnel);
 

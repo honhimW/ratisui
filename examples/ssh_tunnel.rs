@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
         REDIS_PORT,
     );
 
-    let addr = ssh_tunnel.open_ssh_tunnel().await?;
+    let addr = ssh_tunnel.open().await?;
     println!("{}", addr);
 
     let pool = build_pool(common::client::Config {
