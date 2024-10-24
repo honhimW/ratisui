@@ -34,46 +34,6 @@ impl Handler for IHandler {
     }
 }
 
-// #[tokio::main]
-// async fn main() -> Result<()> {
-//     let mut client = russh::client::connect(
-//         Arc::new(Config::default()),
-//         format!("{SSH_HOST}:{SSH_PORT}"),
-//         IHandler {},
-//     ).await?;
-//
-//     client.authenticate_password(SSH_USER, SSH_PASSWORD).await?;
-//     let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).await?;
-//     let addr = listener.local_addr()?;
-//
-//     let channel = client.channel_open_direct_tcpip(
-//         REDIS_HOST,
-//         REDIS_PORT as u32,
-//         LOCAL_HOST,
-//         addr.port() as u32,
-//     ).await?;
-//
-//     let mut remote_stream = channel.into_stream();
-//     tokio::spawn(async move {
-//         if let Ok((mut local_stream, _)) = listener.accept().await {
-//             tokio::io::copy_bidirectional_with_sizes(&mut local_stream, &mut remote_stream, 255, 8 * 1024).await?;
-//         }
-//         Ok::<(), Error>(())
-//     });
-//
-//     let pool = build_pool(common::client::Config {
-//         port: addr.port(),
-//         username: Some(String::from("default")),
-//         password: Some("9JRCAjglNSTc4pXWOggLT7BKljwuoSSy".to_string()),
-//         ..Default::default()
-//     })?;
-//     let mut connection = pool.get().await?;
-//     let pong: String = cmd("PING").query_async(&mut connection).await?;
-//     assert!("PONG".eq_ignore_ascii_case(pong.as_str()));
-//
-//     Ok(())
-// }
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let mut ssh_tunnel = SshTunnel::new(
