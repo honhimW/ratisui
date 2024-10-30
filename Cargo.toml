@@ -66,7 +66,7 @@ protobuf = { version = "3.5.1" }
 
 tree-sitter = { workspace = true}
 tree-sitter-highlight = "0.23"
-tree-sitter-json = "0.23"
+tree-sitter-json = "0.24"
 tree-sitter-html = "0.23"
 tree-sitter-ron = { path = "ratisui-tree-sitter-ron" }
 russh = { version = "0.45.0", default-features = false }
