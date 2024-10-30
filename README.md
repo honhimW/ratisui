@@ -93,7 +93,7 @@ User's data will be stored in `~/.config/ratisui/`:
 - [x] Set
 - [x] Sorted Set
 - [x] Hash
-- [ ] Stream
+- [x] Stream
 
 **Explorer**
 - [x] Key scan (Fuzzy/Pattern)
@@ -120,6 +120,7 @@ User's data will be stored in `~/.config/ratisui/`:
 - [x] Logger viewer
 - [x] Non-blocking command execution
 - [x] Configuration persistence
+- [x] Use SSH tunnel
 
 **TODO**
-- [ ] Use SSH tunnel
+- [ ] nothing to do...🤔
