@@ -15,5 +15,11 @@ async fn main() -> Result<()> {
     let mut connection = pool.get().await?;
     let x: Value = cmd("ping").query_async(&mut connection).await?;
     dbg!(x);
+    let mut connection = pool.get().await?;
+    let x: Value = cmd("ping").query_async(&mut connection).await?;
+    dbg!(x);
+    let mut connection = pool.get().await?;
+    let x: Value = cmd("ping").query_async(&mut connection).await?;
+    dbg!(x);
     Ok(())
 }

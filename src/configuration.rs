@@ -110,27 +110,48 @@ impl Databases {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Database {
     pub host: String,
     pub port: u16,
     pub username: Option<String>,
-    #[serde(default, serialize_with = "to_base64", deserialize_with = "from_base64")]
+    #[serde(default, serialize_with = "to_base64_option", deserialize_with = "from_base64_option")]
     pub password: Option<String>,
     pub use_tls: bool,
     pub use_ssh_tunnel: bool,
     pub db: u32,
     pub protocol: Protocol,
+    pub ssh_tunnel: Option<SshTunnel>,
 }
 
-fn to_base64<S: Serializer>(password: &Option<String>, s: S) -> Result<S::Ok, S::Error> {
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SshTunnel {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    #[serde(default, serialize_with = "to_base64", deserialize_with = "from_base64")]
+    pub password: String,
+}
+
+fn to_base64<S: Serializer>(password: &String, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(BASE64_STANDARD.encode(password).as_str())
+}
+
+fn from_base64<'d, S: Deserializer<'d>>(deserializer: S) -> Result<String, S::Error> {
+    let base64 = String::deserialize(deserializer)?;
+    let bytes = BASE64_STANDARD.decode(base64).map_err(|_| S::Error::custom("decode base64 error"))?;
+    let string = String::from_utf8(bytes).map_err(|_| S::Error::custom("decode utf-8 error"))?;
+    Ok(string)
+}
+
+fn to_base64_option<S: Serializer>(password: &Option<String>, s: S) -> Result<S::Ok, S::Error> {
     match password {
         Some(p) => s.serialize_some(&BASE64_STANDARD.encode(p)),
         None => s.serialize_none(),
     }
 }
 
-fn from_base64<'d, S: Deserializer<'d>>(deserializer: S) -> Result<Option<String>, S::Error> {
+fn from_base64_option<'d, S: Deserializer<'d>>(deserializer: S) -> Result<Option<String>, S::Error> {
     let option = Option::<String>::deserialize(deserializer)?;
     match option {
         Some(p) => {

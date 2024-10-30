@@ -1,18 +1,20 @@
+use crate::bus::{publish_event, publish_msg, GlobalEvent, Message};
 use crate::configuration::{to_protocol_version, Database};
+use crate::ssh_tunnel::SshTunnel;
 use crate::utils::split_args;
-use crate::bus::{publish_event, GlobalEvent};
 use anyhow::{anyhow, Context, Error, Result};
-use crossbeam_channel::{Sender};
+use crossbeam_channel::Sender;
 use deadpool_redis::redis::cmd;
 use deadpool_redis::{Pool, Runtime};
+use futures::future::join_all;
 use futures::StreamExt;
 use log::{info};
 use once_cell::sync::Lazy;
-use redis::cluster::ClusterClient;
 use redis::ConnectionAddr::{Tcp, TcpTls};
 use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value, VerbatimFormat};
 use std::collections::HashMap;
 use std::future::Future;
+use std::ops::DerefMut;
 use std::sync::RwLock;
 use std::task::Poll;
 use std::time::{Duration, Instant};
@@ -87,24 +89,42 @@ pub fn redis_operations() -> Option<RedisOperations> {
 }
 
 pub fn switch_client(name: impl Into<String>, database: &Database) -> Result<()> {
-    let client = build_client(&database)?;
     let name = name.into();
-    let mut operation = RedisOperations::new(name, database.clone(), client);
-    operation.initialize()?;
+    let database = database.clone();
+    tokio::spawn(async move {
+        let result = async {
+            let (pool, tunnel) = build_pool(&database).await?;
+            let mut operation = RedisOperations::new(name, database.clone(), pool, tunnel)?;
+            operation.initialize().await?;
+            let result = REDIS_OPERATIONS.write();
+            match result {
+                Ok(mut x) => {
+                    if let Some(o) = x.deref_mut() {
+                        o.close();
+                    }
+                    *x = Some(operation);
+                }
+                Err(e) => {
+                    return Err(anyhow!("Failed to switch client: {}", e));
+                }
+            }
+            let _ = publish_event(GlobalEvent::ClientChanged);
+            Ok::<(), Error>(())
+        }.await;
 
-    let result = REDIS_OPERATIONS.write();
-    match result {
-        Ok(mut x) => {
-            *x = Some(operation);
+        match result {
+            Ok(_) => {
+                let _ = publish_msg(Message::info("Connected".to_string()));
+            }
+            Err(e) => {
+                let _ = publish_msg(Message::error(format!("Failed to switch client: {}", e)));
+            }
         }
-        Err(e) => {
-            return Err(anyhow!("Failed to switch client: {}", e));
-        }
-    }
-    let _ = publish_event(GlobalEvent::ClientChanged);
+    });
     Ok(())
 }
 
+#[allow(unused)]
 fn build_client(database: &Database) -> Result<Client> {
     let mut client = Client::open(ConnectionInfo {
         addr: Tcp(database.host.clone(), database.port),
@@ -122,19 +142,45 @@ fn build_client(database: &Database) -> Result<Client> {
     }
 }
 
-fn build_pool(database: &Database) -> Result<Pool> {
-    let info = ConnectionInfo {
-        addr: Tcp(database.host.clone(), database.port),
-        redis: RedisConnectionInfo {
-            db: database.db as i64,
-            username: database.username.clone(),
-            password: database.password.clone(),
-            protocol: to_protocol_version(database.protocol.clone()),
-        },
+async fn build_pool(database: &Database) -> Result<(Pool, Option<SshTunnel>)> {
+    let mut ssh_tunnel_option = None;
+    let info = if database.use_ssh_tunnel && database.ssh_tunnel.is_some() {
+        let tunnel = database.ssh_tunnel.clone().unwrap();
+        let mut ssh_tunnel = SshTunnel::new(
+            tunnel.host.clone(),
+            tunnel.port,
+            tunnel.username.clone(),
+            tunnel.password.clone(),
+            database.host.clone(),
+            database.port,
+        );
+        let addr = ssh_tunnel.open().await?;
+        info!("SSH-Tunnel listening on: {} <==> {}:{}", addr, tunnel.host, tunnel.port);
+        ssh_tunnel_option = Some(ssh_tunnel);
+
+        ConnectionInfo {
+            addr: Tcp(addr.ip().to_string(), addr.port()),
+            redis: RedisConnectionInfo {
+                db: database.db as i64,
+                username: database.username.clone(),
+                password: database.password.clone(),
+                protocol: to_protocol_version(database.protocol.clone()),
+            },
+        }
+    } else {
+        ConnectionInfo {
+            addr: Tcp(database.host.clone(), database.port),
+            redis: RedisConnectionInfo {
+                db: database.db as i64,
+                username: database.username.clone(),
+                password: database.password.clone(),
+                protocol: to_protocol_version(database.protocol.clone()),
+            },
+        }
     };
     let config = deadpool_redis::Config::from_connection_info(deadpool_redis::ConnectionInfo::from(info));
     let pool = config.create_pool(Some(Runtime::Tokio1))?;
-    Ok(pool)
+    Ok((pool, ssh_tunnel_option))
 }
 
 #[derive(Clone)]
@@ -142,35 +188,54 @@ pub struct RedisOperations {
     #[allow(unused)]
     pub name: String,
     database: Database,
-    client: Client,
     pool: Pool,
+    ssh_tunnel: Option<SshTunnel>,
     server_info: Option<String>,
-    cluster_client: Option<ClusterClient>,
+    is_cluster: bool,
     nodes: HashMap<String, NodeClientHolder>,
     cluster_pool: Option<deadpool_redis::cluster::Pool>,
 }
 
 #[derive(Clone, Debug)]
 struct NodeClientHolder {
-    node_client: Client,
     pool: Pool,
+    ssh_tunnel: Option<SshTunnel>,
     is_master: bool,
 }
 
 impl RedisOperations {
-    fn new(name: impl Into<String>, database: Database, client: Client) -> Self {
-        let info = deadpool_redis::ConnectionInfo::from(client.get_connection_info().clone());
-        let config = deadpool_redis::Config::from_connection_info(info);
-        let pool = config.create_pool(Some(Runtime::Tokio1)).unwrap();
-        Self {
+    fn new(name: impl Into<String>, database: Database, pool: Pool, tunnel: Option<SshTunnel>) -> Result<Self> {
+        Ok(Self {
             name: name.into(),
             database,
-            client,
             pool,
+            ssh_tunnel: tunnel,
             server_info: None,
-            cluster_client: None,
+            is_cluster: false,
             nodes: HashMap::new(),
             cluster_pool: None,
+        })
+    }
+
+    fn close(&mut self) {
+        self.pool.close();
+        if let Some(ref ssh_tunnel) = self.ssh_tunnel {
+            let mut tunnel = ssh_tunnel.clone();
+            tokio::spawn(async move {
+                tunnel.close().await
+            });
+        }
+        if let Some(ref mut cluster_pool) = self.cluster_pool {
+            cluster_pool.close();
+        }
+        for (_, node_holder) in self.nodes.iter_mut() {
+            node_holder.pool.close();
+            if let Some(ref ssh_tunnel) = node_holder.ssh_tunnel {
+                let mut tunnel = ssh_tunnel.clone();
+                tokio::spawn(async move {
+                    tunnel.close().await
+                });
+            }
         }
     }
 
@@ -190,7 +255,7 @@ impl RedisOperations {
     // }
 
     pub fn is_cluster(&self) -> bool {
-        self.cluster_client.is_some()
+        self.is_cluster
     }
 
     fn print(&self) {
@@ -198,25 +263,22 @@ impl RedisOperations {
             info!("Cluster mode");
             info!("Cluster nodes: {}", self.nodes.len());
             for (s, node) in self.nodes.iter() {
-                info!("{s} - location: {} - master: {}", node.node_client.get_connection_info().addr, node.is_master);
+                info!("{s} - location: {} - master: {}", node.pool.manager().client.get_connection_info().addr, node.is_master);
             }
         } else {
-            info!("Standalone mode: {}", self.client.get_connection_info().addr);
+            info!("Standalone mode: {}", self.pool.manager().client.get_connection_info().addr);
         }
     }
 
-    fn initialize(&mut self) -> Result<()> {
-        let mut connection = self.client.get_connection()?;
-        let value = connection.req_command(&Cmd::new().arg("INFO").arg("SERVER"))?;
+    async fn initialize(&mut self) -> Result<()> {
+        let mut connection = self.pool.get().await?;
+        let value: Value = Cmd::new().arg("INFO").arg("SERVER").query_async(&mut connection).await?;
+        drop(connection);
         if let Value::VerbatimString { text, .. } = value { // RESP3
             self.server_info = Some(text);
             let redis_mode = self.get_server_info("redis_mode").context("there will always contain redis_mode property")?;
             if redis_mode == "cluster" {
-                self.initialize_cluster()?;
-            } else {
-                let config = deadpool_redis::Config::from_connection_info(deadpool_redis::ConnectionInfo::from(self.client.get_connection_info().clone()));
-                let pool = config.create_pool(Some(Runtime::Tokio1))?;
-                self.pool = pool;
+                self.initialize_cluster().await?;
             }
             self.print();
             Ok(())
@@ -225,11 +287,7 @@ impl RedisOperations {
             self.server_info = Some(text);
             let redis_mode = self.get_server_info("redis_mode").context("there will always contain redis_mode property")?;
             if redis_mode == "cluster" {
-                self.initialize_cluster()?;
-            } else {
-                let config = deadpool_redis::Config::from_connection_info(deadpool_redis::ConnectionInfo::from(self.client.get_connection_info().clone()));
-                let pool = config.create_pool(Some(Runtime::Tokio1))?;
-                self.pool = pool;
+                self.initialize_cluster().await?;
             }
             self.print();
             Ok(())
@@ -238,9 +296,10 @@ impl RedisOperations {
         }
     }
 
-    fn initialize_cluster(&mut self) -> Result<()> {
-        let mut connection = self.client.get_connection()?;
-        let cluster_slots = connection.req_command(&Cmd::new().arg("CLUSTER").arg("SLOTS"))?;
+    async fn initialize_cluster(&mut self) -> Result<()> {
+        self.is_cluster = true;
+        let mut connection = self.pool.get().await?;
+        let cluster_slots: Value = cmd("CLUSTER").arg("SLOTS").query_async(&mut connection).await?;
         if let Value::Array { 0: item, .. } = cluster_slots {
             let mut redis_nodes: Vec<(String, u16, String)> = Vec::new();
             for slot in item {
@@ -272,17 +331,14 @@ impl RedisOperations {
             }
             let mut cluster_client_infos: Vec<ConnectionInfo> = Vec::new();
             let mut node_holders: HashMap<String, NodeClientHolder> = HashMap::new();
-            let connection_info = self.client.get_connection_info();
+            let connection_info = self.pool.manager().client.get_connection_info();
             for (host, port, _) in redis_nodes.clone() {
                 cluster_client_infos.push(ConnectionInfo {
                     addr: Tcp(host.clone(), port.clone()),
                     redis: connection_info.redis.clone(),
                 });
             }
-            let cluster_client = ClusterClient::new(cluster_client_infos)?;
-            self.cluster_client = Some(cluster_client);
-
-            let cluster_nodes = connection.req_command(&Cmd::new().arg("CLUSTER").arg("NODES"))?;
+            let cluster_nodes: Value = cmd("CLUSTER").arg("NODES").query_async(&mut connection).await?;
             let mut node_kind_map: HashMap<String, bool> = HashMap::new();
             if let Value::VerbatimString { text, .. } = cluster_nodes {
                 for line in text.lines() {
@@ -291,22 +347,46 @@ impl RedisOperations {
                     node_kind_map.insert(split[0].to_string(), node_kind.contains("master"));
                 }
             }
+            let mut futures = vec![];
             for (host, port, id) in redis_nodes.clone() {
                 let mut database = Database::from(self.database.clone());
                 database.host = host;
                 database.port = port;
-                let node_client = build_client(&database)?;
-                let pool = build_pool(&database)?;
                 let is_master = node_kind_map.get(&id).unwrap_or(&false);
-                node_holders.insert(id, NodeClientHolder {
-                    node_client,
-                    pool,
-                    is_master: *is_master,
-                });
+                let future = async move {
+                    if let Ok((pool, tunnel)) = build_pool(&database).await {
+                        Ok((id, NodeClientHolder {
+                            pool,
+                            ssh_tunnel: tunnel,
+                            is_master: *is_master,
+                        }))
+                    } else {
+                        Err(anyhow!("Failed to initialize node"))
+                    }
+                };
+                futures.push(future)
             }
-            self.nodes = node_holders;
+            let results = join_all(futures).await;
             let mut cluster_urls = vec![];
-            for (host, port, _) in redis_nodes.clone() {
+            for result in results {
+                let (id, node_holder) = result?;
+                let host;
+                let port;
+                match &node_holder.pool.manager().client.get_connection_info().addr {
+                    Tcp(h, p) => {
+                        host = h.clone();
+                        port = *p;
+                    }
+                    TcpTls { host: h, port: p, .. } => {
+                        host = h.clone();
+                        port = *p;
+                    }
+                    _ => {
+                        return Err(anyhow!("Not supported connection type"))
+                    }
+                }
+                node_holders.insert(id, node_holder);
+
                 let addr: ConnectionAddr;
                 if self.database.use_tls {
                     addr = TcpTls {
@@ -329,6 +409,7 @@ impl RedisOperations {
                 };
                 cluster_urls.push(deadpool_redis::ConnectionInfo::from(info))
             }
+            self.nodes = node_holders;
             let config = deadpool_redis::cluster::Config {
                 urls: None,
                 connections: Some(cluster_urls),
@@ -395,13 +476,13 @@ impl RedisOperations {
         let mut streams = vec![];
         if self.is_cluster() {
             for (_, holder) in self.nodes.iter() {
-                let mut monitor = holder.node_client.get_async_monitor().await?;
+                let mut monitor = holder.pool.manager().client.get_async_monitor().await?;
                 let _ = monitor.monitor().await?;
                 let stream = monitor.into_on_message::<Value>();
                 streams.push(stream);
             }
         } else {
-            let mut monitor = self.client.get_async_monitor().await?;
+            let mut monitor = self.pool.manager().client.get_async_monitor().await?;
             let _ = monitor.monitor().await?;
             let stream = monitor.into_on_message::<Value>();
             streams.push(stream);
@@ -478,14 +559,14 @@ impl RedisOperations {
         if self.is_cluster() {
             for (_, holder) in self.nodes.iter() {
                 if holder.is_master {
-                    let mut pub_sub = holder.node_client.get_async_pubsub().await?;
+                    let mut pub_sub = holder.pool.manager().client.get_async_pubsub().await?;
                     pub_sub.subscribe(&key).await?;
                     let stream = pub_sub.into_on_message();
                     streams.push(stream);
                 }
             }
         } else {
-            let mut pub_sub = self.client.get_async_pubsub().await?;
+            let mut pub_sub = self.pool.manager().client.get_async_pubsub().await?;
             pub_sub.subscribe(&key).await?;
             let stream = pub_sub.into_on_message();
             streams.push(stream);
@@ -565,14 +646,14 @@ impl RedisOperations {
         if self.is_cluster() {
             for (_, holder) in self.nodes.iter() {
                 if holder.is_master {
-                    let mut pub_sub = holder.node_client.get_async_pubsub().await?;
+                    let mut pub_sub = holder.pool.manager().client.get_async_pubsub().await?;
                     pub_sub.psubscribe(&key).await?;
                     let stream = pub_sub.into_on_message();
                     streams.push(stream);
                 }
             }
         } else {
-            let mut pub_sub = self.client.get_async_pubsub().await?;
+            let mut pub_sub = self.pool.manager().client.get_async_pubsub().await?;
             pub_sub.psubscribe(&key).await?;
             let stream = pub_sub.into_on_message();
             streams.push(stream);
@@ -769,6 +850,35 @@ impl RedisOperations {
         }
     }
 
+    pub async fn mem_usage<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<i64> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: Value = cmd("MEMORY").arg("USAGE")
+                .arg(key)
+                .arg("SAMPLES").arg("0")
+                .query_async(&mut connection)
+                .await?;
+            if let Value::Int(int) = v {
+                Ok(int)
+            } else {
+                Ok(0)
+            }
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: Value = cmd("MEMORY").arg("USAGE")
+                .arg(key)
+                .arg("SAMPLES").arg("0")
+                .query_async(&mut connection)
+                .await?;
+            if let Value::Int(int) = v {
+                Ok(int)
+            } else {
+                Ok(0)
+            }
+        }
+    }
+
     pub async fn expire<K: ToRedisArgs + Send + Sync>(&self, key: K, seconds: i64) -> Result<()> {
         if self.is_cluster() {
             let pool = &self.cluster_pool.clone().context("should be cluster")?;
@@ -894,35 +1004,6 @@ impl RedisOperations {
     //         Ok(vec)
     //     }
     // }
-
-    pub async fn mem_usage<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<i64> {
-        if self.is_cluster() {
-            let pool = &self.cluster_pool.clone().context("should be cluster")?;
-            let mut connection = pool.get().await?;
-            let v: Value = cmd("MEMORY").arg("USAGE")
-                .arg(key)
-                .arg("SAMPLES").arg("0")
-                .query_async(&mut connection)
-                .await?;
-            if let Value::Int(int) = v {
-                Ok(int)
-            } else {
-                Ok(0)
-            }
-        } else {
-            let mut connection = self.pool.get().await?;
-            let v: Value = cmd("MEMORY").arg("USAGE")
-                .arg(key)
-                .arg("SAMPLES").arg("0")
-                .query_async(&mut connection)
-                .await?;
-            if let Value::Int(int) = v {
-                Ok(int)
-            } else {
-                Ok(0)
-            }
-        }
-    }
 
     pub async fn del<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<()> {
         if self.is_cluster() {
