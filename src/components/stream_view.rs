@@ -394,9 +394,9 @@ impl Renderable for SteamView {
     fn footer_elements(&self) -> Vec<(&str, &str)> {
         let mut elements = vec![];
         if self.opt_for_id {
-            elements.push(("Enter", "Entry"));
+            elements.push(("→/l", "Entry"));
         } else {
-            elements.push(("Esc", "Id"));
+            elements.push(("←/h", "Id"));
         }
         elements.push(("↑/j", "Up"));
         elements.push(("↓/k", "Down"));
@@ -416,7 +416,7 @@ impl Listenable for SteamView {
                     self.previous();
                     true
                 },
-                KeyCode::Enter => {
+                KeyCode::Char('l') | KeyCode::Right => {
                     if self.opt_for_id {
                         self.opt_for_id = false;
                         true
@@ -424,7 +424,7 @@ impl Listenable for SteamView {
                         false
                     }
                 },
-                KeyCode::Esc => {
+                KeyCode::Char('h') | KeyCode::Left => {
                     if !self.opt_for_id {
                         self.opt_for_id = true;
                         true

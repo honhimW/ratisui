@@ -1098,10 +1098,6 @@ impl Listenable for ExplorerTab {
         }
 
         if ValuesViewer == self.current_screen {
-            if KeyCode::Left == key_event.code || KeyCode::Char('h') == key_event.code {
-                self.toggle_screen(KeysTree);
-                return Ok(true);
-            }
             if let Some(ref mut raw_value) = self.selected_raw_value {
                 if key_event.modifiers == KeyModifiers::NONE {
                     match key_event.code {
@@ -1162,6 +1158,10 @@ impl Listenable for ExplorerTab {
                 if accepted {
                     return Ok(true);
                 }
+            }
+            if KeyCode::Left == key_event.code || KeyCode::Char('h') == key_event.code {
+                self.toggle_screen(KeysTree);
+                return Ok(true);
             }
         }
 
