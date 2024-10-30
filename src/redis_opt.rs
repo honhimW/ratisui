@@ -6,20 +6,18 @@ use anyhow::{anyhow, Context, Error, Result};
 use crossbeam_channel::Sender;
 use deadpool_redis::redis::cmd;
 use deadpool_redis::{Pool, Runtime};
+use futures::future::join_all;
 use futures::StreamExt;
-use log::{debug, error, info};
+use log::{info};
 use once_cell::sync::Lazy;
-use redis::cluster::ClusterClient;
 use redis::ConnectionAddr::{Tcp, TcpTls};
 use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value, VerbatimFormat};
 use std::collections::HashMap;
 use std::future::Future;
 use std::ops::DerefMut;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 use std::task::Poll;
 use std::time::{Duration, Instant};
-use futures::future::join_all;
-use tokio::join;
 use tokio::time::interval;
 
 #[macro_export]
@@ -374,22 +372,17 @@ impl RedisOperations {
                 let (id, node_holder) = result?;
                 let host;
                 let port;
-                if let Some(ref ssh_tunnel) = node_holder.ssh_tunnel {
-                    host = ssh_tunnel.host.clone();
-                    port = ssh_tunnel.port;
-                } else {
-                    match &node_holder.pool.manager().client.get_connection_info().addr {
-                        Tcp(h, p) => {
-                            host = h.clone();
-                            port = *p;
-                        }
-                        TcpTls { host: h, port: p, .. } => {
-                            host = h.clone();
-                            port = *p;
-                        }
-                        _ => {
-                            return Err(anyhow!("Not supported connection type"))
-                        }
+                match &node_holder.pool.manager().client.get_connection_info().addr {
+                    Tcp(h, p) => {
+                        host = h.clone();
+                        port = *p;
+                    }
+                    TcpTls { host: h, port: p, .. } => {
+                        host = h.clone();
+                        port = *p;
+                    }
+                    _ => {
+                        return Err(anyhow!("Not supported connection type"))
                     }
                 }
                 node_holders.insert(id, node_holder);
