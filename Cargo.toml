@@ -69,7 +69,7 @@ tree-sitter-html = { git = "https://github.com/honhimW/tree-sitter-html" }
 tree-sitter-ron = { git = "https://github.com/honhimW/tree-sitter-ron" }
 #tree-sitter-html = "0.23"
 #tree-sitter-ron = { path = "ratisui-tree-sitter-ron" }
-russh = { version = "0.45", default-features = false }
+russh = { version = "0.46", default-features = false }
 async-trait = "0.1.83"
 # git crates
 
