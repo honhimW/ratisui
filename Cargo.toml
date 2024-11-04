@@ -26,7 +26,7 @@ ratatui = { version = "0.28.1", features = [
 ] }
 ratatui-macros = "0.6.0"
 tui-textarea = { version = "0.6.1", features = ["crossterm"] }
-throbber-widgets-tui = "0.7"
+throbber-widgets-tui = "0.8"
 tui-tree-widget = "0.22.0"
 tui-logger = "0.13"
 
