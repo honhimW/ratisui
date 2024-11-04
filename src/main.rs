@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
 }
 
 async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration) -> Result<()> {
-    let fps = cmp::min(config.fps.unwrap_or(30) as usize, 60);
+    let fps = cmp::min(config.fps.clone().unwrap_or(30) as usize, 60);
     let delay_millis = 1000 / fps;
     let delay_duration = Duration::from_millis(delay_millis as u64);
     let mut fps_calculator = FpsCalculator::default();
@@ -121,6 +121,7 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
 
         if app.state == AppState::Preparing {
             app.context.on_app_event(AppEvent::Init)?;
+            app.context.on_app_event(AppEvent::InitConfig(config.clone()))?;
             app.state = AppState::Running;
             continue;
         }

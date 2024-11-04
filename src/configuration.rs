@@ -80,10 +80,11 @@ fn get_file_path(file_name: &str) -> Result<std::path::PathBuf> {
     Ok(dir_path)
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Configuration {
     pub fps: Option<u8>,
     pub scan_size: Option<u16>,
+    pub try_format: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -97,6 +98,7 @@ impl Configuration {
         Self {
             fps: Some(30),
             scan_size: Some(2_000),
+            try_format: Some(false),
         }
     }
 }

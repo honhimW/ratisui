@@ -38,6 +38,7 @@ pub struct ExplorerTab {
     show_delete_popup: bool,
     filter_mod: FilterMod,
     scan_size: u16,
+    try_format: bool,
     filter_text_area: TextArea<'static>,
     create_key_form: Form,
     rename_key_text_area: TextArea<'static>,
@@ -207,6 +208,7 @@ impl ExplorerTab {
             show_delete_popup: false,
             filter_mod: FilterMod::Fuzzy,
             scan_size: 2_000,
+            try_format: false,
             filter_text_area,
             create_key_form: Form::default().title("Create Key"),
             rename_key_text_area,
@@ -247,7 +249,7 @@ impl ExplorerTab {
                 }
                 if data.selected_string_value.0 {
                     let raw = data.selected_string_value.1.unwrap_or_default();
-                    self.selected_raw_value = Some(RawParagraph::new(raw.0, raw.1));
+                    self.selected_raw_value = Some(RawParagraph::new(raw.0, raw.1, self.try_format));
                 }
                 if data.selected_list_value.0 {
                     self.selected_list_value = Some(ListValue::new(data.selected_list_value.1.unwrap_or_default()));
@@ -1214,23 +1216,34 @@ impl Listenable for ExplorerTab {
     }
 
     fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
-        if _app_event == AppEvent::Reset {
-            self.show_delete_popup = false;
-            self.show_filter = false;
-            self.filter_text_area = TextArea::default();
-            if let Some(first_line) = self.get_filter_text() {
-                self.do_scan(first_line)?;
-            }
-        }
-        if let AppEvent::Bus(global_event) = _app_event {
-            match global_event {
-                GlobalEvent::ClientChanged => {
-                    if let Some(first_line) = self.get_filter_text() {
-                        self.do_scan(first_line)?;
-                    }
+        match _app_event {
+            AppEvent::InitConfig(configuration) => {
+                if let Some(scan_size) = configuration.scan_size {
+                    self.scan_size = scan_size;
                 }
-                _ => {}
+                if let Some(try_format) = configuration.try_format {
+                    self.try_format = try_format;
+                }
             }
+            AppEvent::Reset => {
+                self.show_delete_popup = false;
+                self.show_filter = false;
+                self.filter_text_area = TextArea::default();
+                if let Some(first_line) = self.get_filter_text() {
+                    self.do_scan(first_line)?;
+                }
+            }
+            AppEvent::Bus(global_event) => {
+                match global_event {
+                    GlobalEvent::ClientChanged => {
+                        if let Some(first_line) = self.get_filter_text() {
+                            self.do_scan(first_line)?;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
         }
         Ok(())
     }

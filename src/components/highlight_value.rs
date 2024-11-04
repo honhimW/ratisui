@@ -143,7 +143,9 @@ impl HighlightProcessor {
     fn process_json(&mut self) -> Result<bool> {
         if self.do_formatting {
             if let Ok(v) = serde_json::from_str::<Value>(self.source.as_ref()) {
-                self.source = serde_json::to_string_pretty(&v)?;
+                if let Ok(v) = serde_json::to_string_pretty(&v) {
+                    self.source = v;
+                }
             }
         }
 
