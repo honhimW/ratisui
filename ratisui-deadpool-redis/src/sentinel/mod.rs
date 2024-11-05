@@ -10,11 +10,11 @@ use redis::sentinel::{SentinelClient, SentinelNodeConnectionInfo};
 use redis::{aio::ConnectionLike, IntoConnectionInfo, RedisError, RedisResult};
 use tokio::sync::Mutex;
 
+pub use self::config::{Config, ConfigError};
+use crate::log_cmd;
 pub use crate::sentinel::config::SentinelServerType;
 use deadpool::managed;
 pub use deadpool::managed::reexports::*;
-
-pub use self::config::{Config, ConfigError};
 
 mod config;
 

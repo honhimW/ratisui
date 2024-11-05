@@ -19,8 +19,8 @@ pub struct RawParagraph<'a> {
 }
 
 impl<'a> RawParagraph<'a> {
-    pub fn new(raw: String, content_type: Option<ContentType>) -> Self {
-        let text = raw_value_to_highlight_text_with_content_type(Cow::from(raw.clone()), content_type.clone(), false);
+    pub fn new(raw: String, content_type: Option<ContentType>, format: bool) -> Self {
+        let text = raw_value_to_highlight_text_with_content_type(Cow::from(raw.clone()), content_type.clone(), format);
         let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
         Self {
             raw,

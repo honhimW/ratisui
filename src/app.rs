@@ -7,7 +7,7 @@ use ratatui::style::palette::tailwind;
 use ratatui::text::Line;
 use ratatui::Frame;
 use crate::bus::GlobalEvent;
-use crate::configuration::Databases;
+use crate::configuration::{Configuration, Databases};
 
 pub struct App {
     pub state: AppState,
@@ -26,6 +26,7 @@ pub enum AppState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AppEvent {
     Init,
+    InitConfig(Configuration),
     Reset,
     Destroy,
     Bus(GlobalEvent),
