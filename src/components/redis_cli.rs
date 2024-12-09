@@ -362,7 +362,7 @@ fn get_table(rows: Vec<Row>) -> Table {
     let table = Table::new(rows, [Min(1), Length(7), Length(0)])
         // .block(Block::bordered().border_type(BorderType::Rounded))
         .style(Style::default().bg(tailwind::NEUTRAL.c800))
-        .highlight_style(Style::default().bg(tailwind::ZINC.c900).bold());
+        .row_highlight_style(Style::default().bg(tailwind::ZINC.c900).bold());
     table
 }
 

@@ -220,7 +220,7 @@ impl ZSetValue {
             ],
         )
             .header(header)
-            .highlight_style(selected_style)
+            .row_highlight_style(selected_style)
             .highlight_symbol(highlight_symbol)
             .bg(self.colors.buffer_bg)
             .highlight_spacing(HighlightSpacing::Always);

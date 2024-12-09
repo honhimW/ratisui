@@ -265,7 +265,7 @@ impl ServerList {
             ],
         )
             .header(header)
-            .highlight_style(selected_style)
+            .row_highlight_style(selected_style)
             .highlight_symbol(Text::raw(bar))
             .bg(self.colors.buffer_bg)
             .column_spacing(1)
