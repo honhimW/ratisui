@@ -2,7 +2,7 @@ use anyhow::{Error, Result};
 use async_trait::async_trait;
 use log::{error, info, warn};
 use russh::client::{Config, Handler};
-use russh::keys::key;
+use russh::keys::{PublicKey};
 use russh::Disconnect;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
@@ -109,7 +109,8 @@ struct IHandler;
 #[async_trait]
 impl Handler for IHandler {
     type Error = Error;
-    async fn check_server_key(&mut self, _: &key::PublicKey) -> Result<bool, Self::Error> {
+
+    async fn check_server_key(&mut self, _: &PublicKey) -> Result<bool, Self::Error> {
         Ok(true)
     }
 }
