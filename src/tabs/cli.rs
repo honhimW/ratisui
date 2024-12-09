@@ -68,12 +68,12 @@ impl Renderable for CliTab {
         let vertical = Layout::vertical([Length(session_height), Fill(0), Length(1)]).split(rect);
         let session_vertical = Layout::vertical([Length(session_height - input_height), Length(input_height)]).split(vertical[0]);
         self.render_output(frame, session_vertical[0])?;
-        self.render_input(frame, session_vertical[1])?;
         let throbber = Throbber::default()
             .throbber_set(throbber_widgets_tui::BRAILLE_EIGHT_DOUBLE);
         let horizontal = Layout::horizontal([Length(2), Fill(0)]).split(vertical[2]);
         frame.render_stateful_widget(throbber, horizontal[0], &mut self.input_throbber_state);
         frame.render_widget(Span::raw(format!("- {} -", self.mode)), horizontal[1]);
+        self.render_input(frame, session_vertical[1])?;
         Ok(())
     }
 
