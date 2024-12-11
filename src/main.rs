@@ -30,6 +30,7 @@ mod components;
 mod utils;
 mod bus;
 mod ssh_tunnel;
+mod theme;
 
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
 use crate::components::fps::FpsCalculator;

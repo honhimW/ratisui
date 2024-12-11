@@ -3,3 +3,4 @@ pub mod configuration;
 pub mod utils;
 pub mod bus;
 pub mod ssh_tunnel;
+pub mod theme;

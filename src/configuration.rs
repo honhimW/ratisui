@@ -41,6 +41,10 @@ pub fn load_database_configuration() -> Result<Databases> {
     Ok(databases)
 }
 
+pub fn load_theme_configuration() -> Result<String> {
+    Ok(String::new())
+}
+
 #[allow(unused)]
 pub fn save_configuration(config: &Configuration) -> Result<()> {
     let app_config_path = get_file_path("config.ron")?;
