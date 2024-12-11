@@ -1,3 +1,22 @@
+#![forbid(unsafe_code)]
+#![deny(
+    unused_imports,
+    unused_must_use,
+    dead_code,
+    unstable_name_collisions,
+    unused_assignments
+)]
+#![deny(clippy::all, clippy::perf, clippy::nursery, clippy::pedantic)]
+#![deny(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::filetype_is_file,
+    clippy::cargo,
+    clippy::panic,
+    clippy::match_like_matches_macro,
+)]
+
 mod app;
 mod cli;
 mod configuration;
