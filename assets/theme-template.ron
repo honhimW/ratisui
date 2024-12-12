@@ -1,0 +1,99 @@
+(
+    name: "",
+    kind: Dark, // Dark | Light
+    context: (
+        fps_fg: Fallback, // Tailwind(RED, C700) | Rgb(10, 20, 255) | Hex("ffffff") | Default | Fallback
+        icon_bg: Fallback,
+    ),
+    server: (
+        highlight: Fallback,
+        name: Fallback,
+        location: Fallback,
+        db: Fallback,
+        username: Fallback,
+        tls: Fallback,
+        protocol: Fallback,
+    ),
+    table: (
+        buffer_bg: Fallback,
+        header_bg: Fallback,
+        header_fg: Fallback,
+        row_fg: Fallback,
+        normal_row_color: Fallback,
+        alt_row_color: Fallback,
+    ),
+    raw: (
+        string: Fallback,
+        boolean: Fallback,
+        keyword: Fallback,
+        constant: Fallback,
+        null: Fallback,
+        property: Fallback,
+        comment: Fallback,
+        number: Fallback,
+    ),
+    border: (
+        highlight: Fallback,
+        default: Fallback,
+    ),
+    editor: (
+        editing: Fallback,
+        warning: Fallback,
+    ),
+    tab: (
+        title_fg: Fallback,
+        explorer: (
+            accent: Fallback,
+            highlight: Fallback,
+            tree: (
+                highlight: Fallback,
+            ),
+            key_type: (
+                hash: Fallback,
+                list: Fallback,
+                set: Fallback,
+                zset: Fallback,
+                string: Fallback,
+                json: Fallback,
+                stream: Fallback,
+                unknown: Fallback,
+            ),
+        ),
+        cli: (
+            accent: Fallback,
+            highlight: Fallback,
+            console: (
+                cmd: Fallback,
+                out: Fallback,
+                err: Fallback,
+            ),
+            menu: (
+                bg: Fallback,
+                highlight: Fallback,
+                info: Fallback,
+                desc_bg: Fallback,
+                input: Fallback,
+            ),
+            doc: (
+                command: Fallback,
+                attribute: Fallback,
+            ),
+        ),
+        logger: (
+            accent: Fallback,
+            highlight: Fallback,
+            level: (
+                error: Fallback,
+                warn: Fallback,
+                info: Fallback,
+                debug: Fallback,
+                trace: Fallback,
+            ),
+        ),
+    ),
+    toast: (
+        info: Fallback,
+        warn: Fallback,
+        error: Fallback,
+    ),
+)
