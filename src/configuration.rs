@@ -45,17 +45,21 @@ pub fn load_database_configuration() -> Result<Databases> {
 pub fn load_theme_configuration(theme_name: Option<String>) -> Result<Theme> {
     match theme_name {
         Some(theme_name) => {
-            let theme_config_path = get_file_path(format!("theme/{}.ron", theme_name))?;
-            if let Ok(mut file) = File::open(&theme_config_path) {
-                let mut content = String::new();
-                file.read_to_string(&mut content)?;
-                if !content.is_empty() {
-                    let theme: Theme = ron::from_str(&content)?;
-                    info!("Theme '{}' loaded successfully!", theme_name);
-                    return Ok(theme);
-                }
+            if theme_name.is_empty() {
+                warn!("Theme name should not be empty!");
             } else {
-                warn!("Theme '{}' does not exist", theme_name);
+                let theme_config_path = get_file_path(format!("theme/{}.ron", theme_name))?;
+                if let Ok(mut file) = File::open(&theme_config_path) {
+                    let mut content = String::new();
+                    file.read_to_string(&mut content)?;
+                    if !content.is_empty() {
+                        let theme: Theme = ron::from_str(&content)?;
+                        info!("Theme '{}' loaded successfully!", theme_name);
+                        return Ok(theme);
+                    }
+                } else {
+                    warn!("Theme '{}' does not exist", theme_name);
+                }
             }
         }
         None => {

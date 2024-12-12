@@ -58,7 +58,14 @@ async fn main() -> Result<()> {
     tui_logger::set_default_level(log::LevelFilter::Trace);
 
     let app_config = load_app_configuration()?;
-    let theme = load_theme_configuration(app_config.theme.clone())?;
+
+    let theme_name = if arguments.theme.is_some() {
+        arguments.theme.clone()
+    } else {
+        app_config.theme.clone()
+    };
+
+    let theme = load_theme_configuration(theme_name)?;
     theme::set_theme(theme);
 
     let db_config = load_database_configuration()?;
