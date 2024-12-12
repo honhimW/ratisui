@@ -10,8 +10,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Min};
 use ratatui::layout::{Layout, Rect};
 use ratatui::prelude::{Line, Stylize};
-use ratatui::style::palette::tailwind;
-use ratatui::style::Style;
+use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use ratatui::Frame;
 use redis::{Value, VerbatimFormat};
@@ -20,6 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use strum::Display;
 use throbber_widgets_tui::{Throbber, ThrobberState};
+use crate::theme::get_color;
 
 pub struct CliTab {
     mode: Mode,
@@ -45,14 +45,14 @@ pub enum Mode {
 }
 
 impl TabImplementation for CliTab {
-    fn palette(&self) -> tailwind::Palette {
-        tailwind::GREEN
+    fn highlight(&self) -> Color {
+        get_color(|t| &t.tab.cli.highlight)
     }
 
     fn title(&self) -> Line<'static> {
         "    CLI     "
-            .fg(tailwind::SLATE.c200)
-            .bg(self.palette().c900)
+            .fg(get_color(|t| &t.tab.title_fg))
+            .bg(get_color(|t| &t.tab.cli.accent))
             .into()
     }
 }

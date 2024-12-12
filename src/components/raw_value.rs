@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 use ratatui::prelude::Text;
-use ratatui::style::palette::tailwind;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
+use ratisui::theme::get_color;
 use crate::utils::ContentType;
 use crate::components::highlight_value::{HighlightKind, HighlightProcessor, HighlightText};
 
@@ -29,14 +29,14 @@ pub fn raw_value_to_highlight_text_with_content_type(value: Cow<str>, content_ty
     for highlight_text in fragments {
         let fragment = highlight_text.text.clone();
         let style= match highlight_text.kind {
-            HighlightKind::String => Style::default().fg(tailwind::AMBER.c400),
-            HighlightKind::Boolean |
-            HighlightKind::Keyword |
-            HighlightKind::Constant |
-            HighlightKind::Null => Style::default().fg(tailwind::ROSE.c600),
-            HighlightKind::Property => Style::default().fg(tailwind::FUCHSIA.c700),
-            HighlightKind::Comment => Style::default().fg(tailwind::CYAN.c500),
-            HighlightKind::Number => Style::default().fg(tailwind::BLUE.c600),
+            HighlightKind::String => Style::default().fg(get_color(|t| &t.raw.string)),
+            HighlightKind::Boolean => Style::default().fg(get_color(|t| &t.raw.boolean)),
+            HighlightKind::Keyword => Style::default().fg(get_color(|t| &t.raw.keyword)),
+            HighlightKind::Constant => Style::default().fg(get_color(|t| &t.raw.constant)),
+            HighlightKind::Null => Style::default().fg(get_color(|t| &t.raw.null)),
+            HighlightKind::Property => Style::default().fg(get_color(|t| &t.raw.property)),
+            HighlightKind::Comment => Style::default().fg(get_color(|t| &t.raw.comment)),
+            HighlightKind::Number => Style::default().fg(get_color(|t| &t.raw.number)),
             _ => Style::default(),
         };
 

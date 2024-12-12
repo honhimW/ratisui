@@ -4,7 +4,6 @@ use crate::configuration::{Database, Protocol, SshTunnel};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Percentage};
 use ratatui::layout::{Layout, Rect};
-use ratatui::style::palette::tailwind;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, BorderType, Clear};
@@ -12,6 +11,7 @@ use ratatui::Frame;
 use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
 use tui_textarea::TextArea;
 use uuid::Uuid;
+use crate::theme::get_color;
 
 pub struct Form {
     title: String,
@@ -74,7 +74,7 @@ impl Default for Form {
     fn default() -> Self {
         let mut form = Self {
             title: String::from(""),
-            editing_style: Style::default().fg(tailwind::SKY.c700),
+            editing_style: Style::default().fg(get_color(|t| &t.editor.editing)),
             editing: 0,
             name_text_area: TextArea::default(),
             host_text_area: TextArea::default(),
@@ -92,7 +92,7 @@ impl Default for Form {
             ssh_password_text_area: TextArea::default(),
         };
         form.name_text_area.set_placeholder_text("must not be blank");
-        form.name_text_area.set_placeholder_style(Style::default().fg(tailwind::RED.c700).dim());
+        form.name_text_area.set_placeholder_style(Style::default().fg(get_color(|t| &t.editor.warning)).dim());
         form.host_text_area.set_placeholder_text("127.0.0.1");
         form.port_text_area.set_placeholder_text("6379");
         form.username_text_area.set_placeholder_text("");

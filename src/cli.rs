@@ -1,12 +1,13 @@
-use std::collections::BTreeMap;
 use anyhow::Result;
 use clap::{arg, ArgMatches, Command};
+use std::collections::BTreeMap;
 
 pub fn cli() -> Result<Command> {
     let command = Command::new("ratisui")
         .about("Redis TUI build on Ratatui")
         .args([
             arg!(-t --target <TARGET> "named redis target, default read from config file if exist"),
+            arg!(-T --theme <THEME> "theme configuration file name, under ~/.config/ratisui/theme/<THEME>.ron"),
         ]);
 
     Ok(command)
@@ -14,16 +15,21 @@ pub fn cli() -> Result<Command> {
 
 pub struct AppArguments {
     pub target: Option<String>,
+    pub theme: Option<String>,
 }
 
 impl AppArguments {
     pub fn from_matches(arg_matches: &ArgMatches) -> Self {
         let values = Value::from_matches(arg_matches);
-        let mut args = Self { target: None };
+        let mut args = Self { target: None, theme: None };
         for (id, value) in values {
             if id == "target" {
                 if let Value::String(s) = value {
                     args.target = Some(s);
+                }
+            } else if id == "theme" {
+                if let Value::String(s) = value {
+                    args.theme = Some(s);
                 }
             }
         }

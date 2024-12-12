@@ -11,12 +11,12 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Max, Min};
 use ratatui::layout::{Alignment, Layout, Rect};
 use ratatui::prelude::{Color, Span, Style, Stylize, Text};
-use ratatui::style::palette::tailwind;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 use ratatui::{symbols, Frame};
 use std::time::Instant;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
+use crate::theme::get_color;
 
 pub struct Context {
     show_server_switcher: bool,
@@ -96,7 +96,7 @@ impl Context {
     fn render_tabs(&self, frame: &mut Frame, area: Rect) -> Result<()> {
         let titles = self.get_all_tabs().iter().map(|tab| tab.title()).collect::<Vec<_>>();
         let current_tab = self.get_current_tab();
-        let highlight_style = (Color::default(), current_tab.palette().c700);
+        let highlight_style = (Color::default(), current_tab.highlight());
         frame.render_widget(Tabs::new(titles)
                                 .highlight_style(highlight_style)
                                 .select(self.current_tab_index)
@@ -108,7 +108,7 @@ impl Context {
 
     fn render_fps(&self, frame: &mut Frame, area: Rect) -> Result<()> {
         frame.render_widget(Text::from(format!("{:.1}", self.fps))
-                                .style(Style::default().fg(tailwind::GRAY.c500)), area);
+                                .style(Style::default().fg(get_color(|t| &t.context.fps_fg))), area);
         Ok(())
     }
 
@@ -117,7 +117,7 @@ impl Context {
         let block = Block::default()
             .borders(Borders::TOP)
             .border_set(symbols::border::PROPORTIONAL_TALL)
-            .border_style(current_tab.palette().c700);
+            .border_style(current_tab.highlight());
         frame.render_widget(block, area);
 
         Ok(())
@@ -141,7 +141,7 @@ impl Context {
         let mut command_text = Text::default();
         let footers = self.footer_elements();
         for (icon, desc) in footers {
-            let command_icon = Span::styled(format!(" {} ", icon), Style::default().bold().fg(Color::default()).bg(tailwind::YELLOW.c700));
+            let command_icon = Span::styled(format!(" {} ", icon), Style::default().bold().fg(Color::default()).bg(get_color(|t| &t.context.icon_bg)));
             let command_desc = Span::styled(format!(" {} ", desc), Style::default().bold());
             command_text.push_span(command_icon);
             command_text.push_span(command_desc);
@@ -165,9 +165,9 @@ impl Context {
         if let Some(ref toast) = self.toast {
             frame.render_widget(Clear::default(), area);
             let bg_color = match toast.kind {
-                Kind::Error => tailwind::RED.c700,
-                Kind::Warn => tailwind::YELLOW.c700,
-                Kind::Info => tailwind::GREEN.c700,
+                Kind::Error => get_color(|t| &t.toast.error),
+                Kind::Warn => get_color(|t| &t.toast.warn),
+                Kind::Info => get_color(|t| &t.toast.info),
             };
             let mut text = Text::default();
             text.push_line(Line::raw(format!("  {}", toast.msg.clone())));

@@ -3,9 +3,9 @@ use crate::input::Input;
 use anyhow::{Result};
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::palette::tailwind;
 use ratatui::text::Line;
 use ratatui::Frame;
+use ratatui::style::Color;
 use crate::bus::GlobalEvent;
 use crate::configuration::{Configuration, Databases};
 
@@ -33,7 +33,7 @@ pub enum AppEvent {
 }
 
 pub trait TabImplementation: Renderable + Listenable {
-    fn palette(&self) -> tailwind::Palette;
+    fn highlight(&self) -> Color;
     fn title(&self) -> Line<'static>;
 }
 

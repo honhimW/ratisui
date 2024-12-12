@@ -27,36 +27,17 @@ use ratatui::layout::Alignment;
 use ratatui::layout::Constraint::Length;
 use ratatui::widgets::block::Position;
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
-use ratatui::{crossterm::event::{KeyCode, KeyEventKind}, layout::{Margin, Rect}, style::{self, Color, Style, Stylize}, symbols, text::{Line, Text}, widgets::{
+use ratatui::{crossterm::event::{KeyCode, KeyEventKind}, layout::{Margin, Rect}, style::{Style, Stylize}, symbols, text::{Line, Text}, widgets::{
     Cell, HighlightSpacing, Row, Scrollbar, ScrollbarOrientation, ScrollbarState
     , Table, TableState,
 }, Frame};
 use std::cmp;
 use std::string::ToString;
-use style::palette::tailwind;
 use unicode_width::UnicodeWidthStr;
+use ratisui::theme::get_color;
+use crate::components::TableColors;
 
 const ITEM_HEIGHT: usize = 4;
-
-struct TableColors {
-    buffer_bg: Color,
-    header_fg: Color,
-    header_bg: Color,
-    selected_bg: Color,
-    row_fg: Color,
-}
-
-impl TableColors {
-    fn new(color: &tailwind::Palette) -> Self {
-        Self {
-            buffer_bg: Color::default(),
-            header_fg: color.c200,
-            header_bg: color.c900,
-            selected_bg: color.c950,
-            row_fg: color.c200,
-        }
-    }
-}
 
 #[derive(Clone)]
 pub struct Data {
@@ -152,16 +133,16 @@ impl ServerList {
             state: TableState::default().with_selected(default_selected),
             longest_item_lens: constraint_len_calculator(&vec),
             column_styles: [
-                Style::default(),
-                Style::default().fg(tailwind::AMBER.c400),
-                Style::default().fg(tailwind::CYAN.c500),
-                Style::default().fg(tailwind::BLUE.c600),
-                Style::default().fg(tailwind::AMBER.c400),
-                Style::default().fg(tailwind::ROSE.c600),
-                Style::default().fg(tailwind::EMERALD.c600),
+                Style::default().fg(get_color(|t| &t.server.highlight)),
+                Style::default().fg(get_color(|t| &t.server.name)),
+                Style::default().fg(get_color(|t| &t.server.location)),
+                Style::default().fg(get_color(|t| &t.server.db)),
+                Style::default().fg(get_color(|t| &t.server.username)),
+                Style::default().fg(get_color(|t| &t.server.tls)),
+                Style::default().fg(get_color(|t| &t.server.protocol)),
             ],
             scroll_state: ScrollbarState::new((vec.len().saturating_sub(1)) * ITEM_HEIGHT),
-            colors: TableColors::new(&tailwind::GRAY),
+            colors: TableColors::new(),
             items: vec,
             create_form: Form::default().title("New"),
             edit_form: Form::default().title("Edit"),
@@ -226,7 +207,7 @@ impl ServerList {
             .fg(self.colors.header_fg)
             .bg(self.colors.header_bg);
         let selected_style = Style::default()
-            .bg(self.colors.selected_bg)
+            .bg(self.colors.alt_row_color)
             ;
 
         let header = ["", "Name", "Location", "DB", "Username", "TLS", "Protocol"]

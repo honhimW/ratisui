@@ -1,8 +1,10 @@
+use crate::theme::Theme;
 use anyhow::{Context, Result};
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use log::debug;
+use log::{debug, info, warn};
 use redis::ProtocolVersion;
+use ron::ser::PrettyConfig;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
@@ -10,7 +12,6 @@ use std::fmt::{Debug, Display, Formatter};
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
-use ron::ser::PrettyConfig;
 use strum::{Display, EnumCount, EnumIter};
 
 pub fn load_app_configuration() -> Result<Configuration> {
@@ -41,6 +42,33 @@ pub fn load_database_configuration() -> Result<Databases> {
     Ok(databases)
 }
 
+pub fn load_theme_configuration(theme_name: Option<String>) -> Result<Theme> {
+    match theme_name {
+        Some(theme_name) => {
+            if theme_name.is_empty() {
+                warn!("Theme name should not be empty!");
+            } else {
+                let theme_config_path = get_file_path(format!("theme/{}.ron", theme_name))?;
+                if let Ok(mut file) = File::open(&theme_config_path) {
+                    let mut content = String::new();
+                    file.read_to_string(&mut content)?;
+                    if !content.is_empty() {
+                        let theme: Theme = ron::from_str(&content)?;
+                        info!("Theme '{}' loaded successfully!", theme_name);
+                        return Ok(theme);
+                    }
+                } else {
+                    warn!("Theme '{}' does not exist", theme_name);
+                }
+            }
+        }
+        None => {
+            info!("No theme specified");
+        }
+    }
+    Ok(Theme::dark())
+}
+
 #[allow(unused)]
 pub fn save_configuration(config: &Configuration) -> Result<()> {
     let app_config_path = get_file_path("config.ron")?;
@@ -69,12 +97,14 @@ fn get_dir_path() -> Result<std::path::PathBuf> {
     dir_path.push("ratisui");
     let cloned = dir_path.clone();
     if !dir_path.try_exists()? {
-        fs::create_dir_all(dir_path).context("cannot create config directory `~/.config/ratisui`")?;
+        fs::create_dir_all(dir_path)
+            .context("cannot create config directory `~/.config/ratisui`")?;
     }
     Ok(cloned)
 }
 
-fn get_file_path(file_name: &str) -> Result<std::path::PathBuf> {
+fn get_file_path<T: Into<String>>(file_name: T) -> Result<std::path::PathBuf> {
+    let file_name = file_name.into();
     let mut dir_path = get_dir_path()?;
     dir_path.push(file_name);
     Ok(dir_path)
@@ -85,6 +115,7 @@ pub struct Configuration {
     pub fps: Option<u8>,
     pub scan_size: Option<u16>,
     pub try_format: Option<bool>,
+    pub theme: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -99,6 +130,7 @@ impl Configuration {
             fps: Some(30),
             scan_size: Some(2_000),
             try_format: Some(false),
+            theme: None,
         }
     }
 }
@@ -117,7 +149,11 @@ pub struct Database {
     pub host: String,
     pub port: u16,
     pub username: Option<String>,
-    #[serde(default, serialize_with = "to_base64_option", deserialize_with = "from_base64_option")]
+    #[serde(
+        default,
+        serialize_with = "to_base64_option",
+        deserialize_with = "from_base64_option"
+    )]
     pub password: Option<String>,
     pub use_tls: bool,
     pub use_ssh_tunnel: bool,
@@ -131,7 +167,11 @@ pub struct SshTunnel {
     pub host: String,
     pub port: u16,
     pub username: String,
-    #[serde(default, serialize_with = "to_base64", deserialize_with = "from_base64")]
+    #[serde(
+        default,
+        serialize_with = "to_base64",
+        deserialize_with = "from_base64"
+    )]
     pub password: String,
 }
 
@@ -141,7 +181,9 @@ fn to_base64<S: Serializer>(password: &String, s: S) -> Result<S::Ok, S::Error> 
 
 fn from_base64<'d, S: Deserializer<'d>>(deserializer: S) -> Result<String, S::Error> {
     let base64 = String::deserialize(deserializer)?;
-    let bytes = BASE64_STANDARD.decode(base64).map_err(|_| S::Error::custom("decode base64 error"))?;
+    let bytes = BASE64_STANDARD
+        .decode(base64)
+        .map_err(|_| S::Error::custom("decode base64 error"))?;
     let string = String::from_utf8(bytes).map_err(|_| S::Error::custom("decode utf-8 error"))?;
     Ok(string)
 }
@@ -153,15 +195,20 @@ fn to_base64_option<S: Serializer>(password: &Option<String>, s: S) -> Result<S:
     }
 }
 
-fn from_base64_option<'d, S: Deserializer<'d>>(deserializer: S) -> Result<Option<String>, S::Error> {
+fn from_base64_option<'d, S: Deserializer<'d>>(
+    deserializer: S,
+) -> Result<Option<String>, S::Error> {
     let option = Option::<String>::deserialize(deserializer)?;
     match option {
         Some(p) => {
-            let bytes = BASE64_STANDARD.decode(p).map_err(|_| S::Error::custom("decode base64 error"))?;
-            let string = String::from_utf8(bytes).map_err(|_| S::Error::custom("decode utf-8 error"))?;
+            let bytes = BASE64_STANDARD
+                .decode(p)
+                .map_err(|_| S::Error::custom("decode base64 error"))?;
+            let string =
+                String::from_utf8(bytes).map_err(|_| S::Error::custom("decode utf-8 error"))?;
             Ok(Some(string))
         }
-        None => { Ok(None) }
+        None => Ok(None),
     }
 }
 
@@ -171,7 +218,10 @@ impl Display for Database {
             .field("host", &self.host)
             .field("port", &self.port)
             .field("username", &self.username)
-            .field("password", &self.password.clone().map(|p| "*".repeat(p.len())))
+            .field(
+                "password",
+                &self.password.clone().map(|p| "*".repeat(p.len())),
+            )
             .field("use_tls", &self.use_tls)
             .field("use_ssh_tunnel", &self.use_ssh_tunnel)
             .field("db", &self.db)
@@ -195,8 +245,6 @@ pub fn to_protocol_version(protocol: Protocol) -> ProtocolVersion {
 
 impl Database {
     pub fn from(other: Database) -> Self {
-        Self {
-            ..other
-        }
+        Self { ..other }
     }
 }

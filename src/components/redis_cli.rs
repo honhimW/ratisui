@@ -5,7 +5,6 @@ use once_cell::sync::Lazy;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Min};
 use ratatui::layout::{Alignment, Layout, Margin, Rect};
-use ratatui::style::palette::tailwind;
 use ratatui::style::{Style, Stylize};
 use ratatui::symbols::scrollbar::Set;
 use ratatui::text::{Line, Span, Text};
@@ -15,6 +14,7 @@ use serde_json::Value;
 use std::cmp;
 use strum::Display;
 use tui_textarea::{CursorMove, TextArea};
+use ratisui::theme::get_color;
 
 pub struct RedisCli<'a> {
     max_menu_width: u16,
@@ -128,9 +128,6 @@ impl Renderable for RedisCli<'_> {
         Ok(())
     }
 
-    // fn footer_elements(&self) -> Vec<(&str, &str)> {
-    //     todo!()
-    // }
 }
 
 impl Listenable for RedisCli<'_> {
@@ -300,7 +297,7 @@ impl RedisCli<'_> {
     fn render_menu_footer(&mut self, frame: &mut Frame, area: Rect) {
         let horizontal = Layout::horizontal([Fill(1), Length(7)]).split(area);
         let selected = self.table_state.selected().unwrap_or(0);
-        let style = Style::default().bg(tailwind::STONE.c900).italic();
+        let style = Style::default().bg(get_color(|t| &t.tab.cli.menu.info)).italic();
         let info = Line::raw("↑/↓ Tab").style(style);
         let item_count = Line::raw(format!("{}:{}", selected.saturating_add(1), self.completion_items.len()))
             .alignment(Alignment::Right)
@@ -318,7 +315,7 @@ impl RedisCli<'_> {
         let paragraph = Paragraph::new(highlight_doc(&doc))
             .wrap(Wrap { trim: false })
             .block(Block::default().border_set(symbols::border::EMPTY).borders(Borders::from_bits_retain(0b1010)))
-            .style(Style::default().bg(tailwind::NEUTRAL.c800))
+            .style(Style::default().bg(get_color(|t| &t.tab.cli.menu.desc_bg)))
             ;
         let line_count = paragraph.line_count(desc_width - 2); // block width 2
         let desc_height = cmp::min(line_count as u16, self.max_desc_height);
@@ -360,9 +357,8 @@ impl RedisCli<'_> {
 
 fn get_table(rows: Vec<Row>) -> Table {
     let table = Table::new(rows, [Min(1), Length(7), Length(0)])
-        // .block(Block::bordered().border_type(BorderType::Rounded))
-        .style(Style::default().bg(tailwind::NEUTRAL.c800))
-        .row_highlight_style(Style::default().bg(tailwind::ZINC.c900).bold());
+        .style(Style::default().bg(get_color(|t| &t.tab.cli.menu.bg)))
+        .row_highlight_style(Style::default().bg(get_color(|t| &t.tab.cli.menu.highlight)).bold());
     table
 }
 
@@ -373,7 +369,7 @@ fn get_rows(input: impl Into<String>, items: &Vec<CompletionItem>) -> Vec<Row> {
         let mut prompt = Line::default();
         if let Some(pos) = item.label.label.find(input.clone().as_str()) {
             prompt.push_span(Span::raw(&item.label.label[0..pos]));
-            prompt.push_span(Span::raw(input.clone()).style(Style::default().fg(tailwind::AMBER.c500)));
+            prompt.push_span(Span::raw(input.clone()).style(Style::default().fg(get_color(|t| &t.tab.cli.menu.input))));
             prompt.push_span(Span::raw(&item.label.label[pos + input.len()..item.label.label.len()]));
         }
         if let Some(ref detail) = item.label.detail {
@@ -742,24 +738,25 @@ fn split_args(cmd: impl Into<String>) -> Vec<(String, Option<char>, usize, usize
 
 fn highlight_doc(doc: &Doc) -> Text {
     let mut text = Text::default();
-    text.push_line(Line::raw(doc.syntax.clone()).style(Style::default().fg(tailwind::AMBER.c400)));
+    let attr_color = get_color(|t| &t.tab.cli.doc.attribute);
+    text.push_line(Line::raw(doc.syntax.clone()).style(Style::default().fg(get_color(|t| &t.tab.cli.doc.command))));
     text.push_line(Line::raw(""));
     text.push_line(Line::raw(doc.summary.clone()));
     if let Some(since) = &doc.since {
         let mut line = Line::default();
-        line.push_span(Span::raw("since     : ").style(Style::default().fg(tailwind::PINK.c800)));
+        line.push_span(Span::raw("since     : ").style(Style::default().fg(attr_color)));
         line.push_span(since);
         text.push_line(line);
     }
     if let Some(acl) = &doc.acl {
         let mut line = Line::default();
-        line.push_span(Span::raw("acl       : ").style(Style::default().fg(tailwind::PINK.c800)));
+        line.push_span(Span::raw("acl       : ").style(Style::default().fg(attr_color)));
         line.push_span(acl);
         text.push_line(line);
     }
     if let Some(complexity) = &doc.complexity {
         let mut line = Line::default();
-        line.push_span(Span::raw("complexity: ").style(Style::default().fg(tailwind::PINK.c800)));
+        line.push_span(Span::raw("complexity: ").style(Style::default().fg(attr_color)));
         line.push_span(complexity);
         text.push_line(line);
     }

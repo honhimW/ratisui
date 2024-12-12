@@ -3,7 +3,6 @@ use crate::utils::clean_text_area;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Percentage};
 use ratatui::layout::{Layout, Rect};
-use ratatui::style::palette::tailwind;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, BorderType, Clear};
@@ -12,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp;
 use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
 use tui_textarea::TextArea;
+use ratisui::theme::get_color;
 
 pub struct Form {
     title: String,
@@ -53,14 +53,14 @@ impl Default for Form {
     fn default() -> Self {
         let mut form = Self {
             title: String::from(""),
-            editing_style: Style::default().fg(tailwind::SKY.c700),
+            editing_style: Style::default().fg(get_color(|t| &t.editor.editing)),
             editing: 0,
             key_type: 0,
             key_name_text_area: TextArea::default(),
             ttl_text_area: TextArea::default(),
         };
         form.key_name_text_area.set_placeholder_text("must not be blank");
-        form.key_name_text_area.set_placeholder_style(Style::default().fg(tailwind::RED.c700).dim());
+        form.key_name_text_area.set_placeholder_style(Style::default().fg(get_color(|t| &t.editor.warning)).dim());
         form.key_name_text_area.set_cursor_style(Style::default());
         form.ttl_text_area.set_cursor_style(Style::default());
         form

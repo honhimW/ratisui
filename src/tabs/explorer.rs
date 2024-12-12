@@ -16,7 +16,6 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::prelude::{Line, Style, Stylize, Text};
-use ratatui::style::palette::tailwind;
 use ratatui::style::{Color, Modifier};
 use ratatui::text::Span;
 use ratatui::widgets::block::Position;
@@ -29,6 +28,7 @@ use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 use crate::bus::GlobalEvent;
 use crate::components::stream_view::SteamView;
+use crate::theme::get_color;
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
@@ -140,11 +140,8 @@ fn build_tree_items(node: &TreeNode) -> Vec<TreeItem<'static, String>> {
         if child.children.is_empty() {
             if let Some(_type) = &child.key_type {
                 let name_span = Span::raw(key.clone());
-                // let type_span = Span::styled(format!("[{}]", _type.clone()), get_type_color(_type));
                 let mut line = Line::default();
                 line.push_span(name_span);
-                // line.push_span(Span::raw(" "));
-                // line.push_span(type_span);
                 let text = Text::from(line);
                 item = TreeItem::new_leaf(child.id.clone(), text);
             } else {
@@ -164,14 +161,14 @@ fn build_tree_items(node: &TreeNode) -> Vec<TreeItem<'static, String>> {
 
 fn get_type_color(key_type: &str) -> Color {
     match key_type {
-        "Hash" | "hash" => { tailwind::BLUE.c700 }
-        "List" | "list" => { tailwind::GREEN.c700 }
-        "Set" | "set" => { tailwind::ORANGE.c700 }
-        "ZSet" | "zset" => { tailwind::PINK.c700 }
-        "String" | "string" => { tailwind::PURPLE.c700 }
-        "JSON" | "json" => { tailwind::GRAY.c700 }
-        "Stream" | "stream" => { tailwind::YELLOW.c700 }
-        "unknown" => { tailwind::SLATE.c500 }
+        "Hash" | "hash" => { get_color(|t| &t.tab.explorer.key_type.hash) }
+        "List" | "list" => { get_color(|t| &t.tab.explorer.key_type.list) }
+        "Set" | "set" => { get_color(|t| &t.tab.explorer.key_type.set) }
+        "ZSet" | "zset" => { get_color(|t| &t.tab.explorer.key_type.zset) }
+        "String" | "string" => { get_color(|t| &t.tab.explorer.key_type.string) }
+        "JSON" | "json" => { get_color(|t| &t.tab.explorer.key_type.json) }
+        "Stream" | "stream" => { get_color(|t| &t.tab.explorer.key_type.stream) }
+        "unknown" => { get_color(|t| &t.tab.explorer.key_type.unknown) }
         _ => { Color::default() }
     }
 }
@@ -272,9 +269,9 @@ impl ExplorerTab {
 
     fn border_color(&self, screen: CurrentScreen) -> Color {
         if screen == self.current_screen {
-            tailwind::GRAY.c300
+            get_color(|t| &t.border.highlight)
         } else {
-            tailwind::GRAY.c600
+            get_color(|t| &t.border.default)
         }
     }
 
@@ -430,7 +427,7 @@ impl ExplorerTab {
                 .borders(Borders::ALL)
                 .border_set(symbols::border::DOUBLE)
                 .style(Style::default()
-                    .bg(self.palette().c900));
+                    .bg(get_color(|t| &t.tab.explorer.accent)));
             frame.render_widget(delete_popup, popup_area);
         }
     }
@@ -452,7 +449,7 @@ impl ExplorerTab {
             .highlight_style(
                 Style::new()
                     .fg(Color::default())
-                    .bg(self.palette().c700)
+                    .bg(get_color(|t| &t.tab.explorer.tree.highlight))
                     .add_modifier(Modifier::BOLD),
             )
             .node_no_children_symbol("- ")
@@ -980,14 +977,14 @@ impl ExplorerTab {
 }
 
 impl TabImplementation for ExplorerTab {
-    fn palette(&self) -> tailwind::Palette {
-        tailwind::ROSE
+    fn highlight(&self) -> Color {
+        get_color(|t| &t.tab.explorer.highlight)
     }
 
     fn title(&self) -> Line<'static> {
         "  Explorer  "
-            .fg(tailwind::SLATE.c200)
-            .bg(self.palette().c900)
+            .fg(get_color(|t| &t.tab.title_fg))
+            .bg(get_color(|t| &t.tab.explorer.accent))
             .into()
     }
 }
