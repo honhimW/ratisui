@@ -1215,12 +1215,8 @@ impl Listenable for ExplorerTab {
     fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
         match _app_event {
             AppEvent::InitConfig(configuration) => {
-                if let Some(scan_size) = configuration.scan_size {
-                    self.scan_size = scan_size;
-                }
-                if let Some(try_format) = configuration.try_format {
-                    self.try_format = try_format;
-                }
+                self.scan_size = configuration.scan_size;
+                self.try_format = configuration.try_format;
             }
             AppEvent::Reset => {
                 self.show_delete_popup = false;

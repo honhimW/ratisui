@@ -112,11 +112,27 @@ fn get_file_path<T: Into<String>>(file_name: T) -> Result<std::path::PathBuf> {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Configuration {
-    pub fps: Option<u8>,
-    pub scan_size: Option<u16>,
-    pub try_format: Option<bool>,
+    #[serde(default = "fps")]
+    pub fps: u8,
+    #[serde(default = "scan_size")]
+    pub scan_size: u16,
+    #[serde(default = "try_format")]
+    pub try_format: bool,
     pub theme: Option<String>,
 }
+
+fn fps() -> u8 {
+    30
+}
+
+fn scan_size() -> u16 {
+    2_000
+}
+
+fn try_format() -> bool {
+    false
+}
+
 
 #[derive(Serialize, Deserialize)]
 pub struct Databases {
@@ -124,12 +140,12 @@ pub struct Databases {
     pub databases: HashMap<String, Database>,
 }
 
-impl Configuration {
+impl Default for Configuration {
     fn default() -> Self {
         Self {
-            fps: Some(30),
-            scan_size: Some(2_000),
-            try_format: Some(false),
+            fps: fps(),
+            scan_size: scan_size(),
+            try_format: try_format(),
             theme: None,
         }
     }
