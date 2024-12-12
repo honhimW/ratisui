@@ -26,6 +26,7 @@ jobs:
         tag_name: ${{ github.event.inputs.major_version }}
         release_name: v${{ github.event.inputs.major_version }}
         draft: false
+        generateReleaseNotes: true
     - name: Set output
       id: set_output
       run: echo "upload_url=${{ steps.create_release.outputs.upload_url }}" >> "$GITHUB_OUTPUT"
