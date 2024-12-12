@@ -3,10 +3,10 @@ use log::LevelFilter;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::prelude::{Line, Stylize};
-use ratatui::style::palette::tailwind;
-use ratatui::style::Style;
+use ratatui::style::{Color, Style};
 use ratatui::Frame;
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerSmartWidget, TuiWidgetEvent, TuiWidgetState};
+use crate::theme::get_color;
 
 pub struct LoggerTab {
     state: TuiWidgetState,
@@ -23,14 +23,14 @@ impl LoggerTab {
 }
 
 impl TabImplementation for LoggerTab {
-    fn palette(&self) -> tailwind::Palette {
-        tailwind::AMBER
+    fn highlight(&self) -> Color {
+        get_color(|t| &t.tab.logger.highlight)
     }
 
     fn title(&self) -> Line<'static> {
         "   Logger   "
-            .fg(tailwind::SLATE.c200)
-            .bg(self.palette().c900)
+            .fg(get_color(|t| &t.tab.title_fg))
+            .bg(get_color(|t| &t.tab.logger.accent))
             .into()
     }
 }
@@ -41,13 +41,13 @@ impl Renderable for LoggerTab {
         Self: Sized,
     {
         let widget = TuiLoggerSmartWidget::default()
-            .highlight_style(Style::default().bg(self.palette().c700))
-            .style_show(Style::default().bg(self.palette().c700))
-            .style_error(Style::default().fg(tailwind::ROSE.c700))
-            .style_debug(Style::default().fg(tailwind::EMERALD.c700))
-            .style_warn(Style::default().fg(tailwind::AMBER.c700))
-            .style_trace(Style::default().fg(tailwind::VIOLET.c700))
-            .style_info(Style::default().fg(tailwind::CYAN.c700))
+            .highlight_style(Style::default().bg(get_color(|t| &t.tab.logger.highlight)))
+            .style_show(Style::default().bg(get_color(|t| &t.tab.logger.highlight)))
+            .style_error(Style::default().fg(get_color(|t| &t.tab.logger.level.error)))
+            .style_warn(Style::default().fg(get_color(|t| &t.tab.logger.level.warn)))
+            .style_info(Style::default().fg(get_color(|t| &t.tab.logger.level.info)))
+            .style_debug(Style::default().fg(get_color(|t| &t.tab.logger.level.debug)))
+            .style_trace(Style::default().fg(get_color(|t| &t.tab.logger.level.trace)))
             .title_target("Topic")
             .title_log("Log")
             .output_separator(' ')

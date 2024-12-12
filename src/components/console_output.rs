@@ -1,13 +1,13 @@
 use crate::components::console_output::OutputKind::{ERR, STD};
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::Text;
-use ratatui::style::palette::tailwind;
 use ratatui::style::{Style};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui_macros::{line, span};
 use std::cmp;
 use strum::Display;
 use OutputKind::{Else, CMD};
+use crate::theme::get_color;
 
 pub struct ConsoleData<'a> {
     pub lines: Vec<(OutputKind, String)>,
@@ -44,9 +44,10 @@ impl ConsoleData<'_> {
         let mut text = Text::default();
         for (kind, l) in self.lines.iter() {
             let new_line = match kind {
-                CMD => line![span!(Style::default().fg(tailwind::EMERALD.c700); l.clone())],
-                STD => line![span!(l.clone())],
-                ERR => line![span!(Style::default().fg(tailwind::ROSE.c700); l.clone())],
+
+                CMD => line![span!(Style::default().fg(get_color(|t| &t.tab.cli.console.cmd)); l.clone())],
+                STD => line![span!(Style::default().fg(get_color(|t| &t.tab.cli.console.out)); l.clone())],
+                ERR => line![span!(Style::default().fg(get_color(|t| &t.tab.cli.console.err)); l.clone())],
                 Else(style) => line![span!(*style; l.clone())],
             };
             text.push_line(new_line);

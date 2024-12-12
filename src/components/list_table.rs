@@ -15,6 +15,7 @@
 
 use crate::app::{Listenable, Renderable};
 use crate::components::raw_value::raw_value_to_highlight_text;
+use crate::components::TableColors;
 use anyhow::Result;
 use itertools::Itertools;
 use ratatui::crossterm::event::KeyEvent;
@@ -22,7 +23,7 @@ use ratatui::layout::Constraint::{Length, Min};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEventKind},
     layout::{Margin, Rect},
-    style::{self, Color, Style, Stylize},
+    style::{Style, Stylize},
     text::{Line, Text},
     widgets::{
         Cell, HighlightSpacing, Row, Scrollbar, ScrollbarOrientation, ScrollbarState
@@ -32,32 +33,11 @@ use ratatui::{
 };
 use std::borrow::Cow;
 use std::cmp;
-use style::palette::tailwind;
 use unicode_width::UnicodeWidthStr;
 
 const ITEM_HEIGHT: usize = 4;
 
-struct TableColors {
-    buffer_bg: Color,
-    header_bg: Color,
-    header_fg: Color,
-    row_fg: Color,
-    normal_row_color: Color,
-    alt_row_color: Color,
-}
 
-impl TableColors {
-    fn new(color: &tailwind::Palette) -> Self {
-        Self {
-            buffer_bg: Color::default(),
-            header_bg: color.c900,
-            header_fg: color.c200,
-            row_fg: color.c200,
-            normal_row_color: Color::default(),
-            alt_row_color: color.c950,
-        }
-    }
-}
 
 pub struct Data {
     pub index: String,
@@ -99,7 +79,7 @@ impl ListValue {
             state: TableState::default().with_selected(0),
             longest_item_lens: constraint_len_calculator(&vec),
             scroll_state: ScrollbarState::new((vec.len().saturating_sub(1)) * ITEM_HEIGHT),
-            colors: TableColors::new(&tailwind::GRAY),
+            colors: TableColors::new(),
             items: vec,
         }
     }

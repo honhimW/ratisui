@@ -34,7 +34,7 @@ mod theme;
 
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
 use crate::components::fps::FpsCalculator;
-use crate::configuration::{load_app_configuration, load_database_configuration, Configuration};
+use crate::configuration::{load_app_configuration, load_database_configuration, load_theme_configuration, Configuration};
 use crate::input::InputEvent;
 use crate::redis_opt::{switch_client};
 use anyhow::{anyhow, Result};
@@ -54,10 +54,12 @@ async fn main() -> Result<()> {
     let matches = command.get_matches();
     let arguments = cli::AppArguments::from_matches(&matches);
 
-    let app_config = load_app_configuration()?;
-
     tui_logger::init_logger(log::LevelFilter::Trace).map_err(|e| anyhow!(e))?;
     tui_logger::set_default_level(log::LevelFilter::Trace);
+
+    let app_config = load_app_configuration()?;
+    let theme = load_theme_configuration(app_config.theme.clone())?;
+    theme::set_theme(theme);
 
     let db_config = load_database_configuration()?;
 
