@@ -43,6 +43,79 @@ impl Theme {
         let mut theme = Self::default();
         theme.name = "ratisui-light".to_string();
         theme.kind = Kind::Light;
+
+        theme.context.fps = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C500);
+        theme.context.key_bg = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C700);
+
+        theme.server.highlight = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C400);
+        theme.server.name = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C700);
+        theme.server.location = Color::Tailwind(TailwindColor::CYAN, TailwindPalette::C700);
+        theme.server.db = Color::Tailwind(TailwindColor::BLUE, TailwindPalette::C700);
+        theme.server.username = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C700);
+        theme.server.tls = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C600);
+        theme.server.protocol = Color::Tailwind(TailwindColor::EMERALD, TailwindPalette::C600);
+
+        theme.table.bg = Color::Default;
+        theme.table.header_bg = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C300);
+        theme.table.header = Color::Default;
+        theme.table.row = Color::Default;
+        theme.table.odd_row_bg = Color::Default;
+        theme.table.even_row_bg = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C100);
+
+        theme.raw.string = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C700);
+        theme.raw.boolean = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C600);
+        theme.raw.keyword = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C600);
+        theme.raw.constant = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C600);
+        theme.raw.null = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C600);
+        theme.raw.property = Color::Tailwind(TailwindColor::FUCHSIA, TailwindPalette::C700);
+        theme.raw.comment = Color::Tailwind(TailwindColor::CYAN, TailwindPalette::C500);
+        theme.raw.number = Color::Tailwind(TailwindColor::BLUE, TailwindPalette::C600);
+
+        theme.border.highlight = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C700);
+        theme.border.default = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C400);
+
+        theme.editor.editing = Color::Tailwind(TailwindColor::SKY, TailwindPalette::C700);
+        theme.editor.warning = Color::Tailwind(TailwindColor::RED, TailwindPalette::C600);
+
+        theme.tab.title = Color::Tailwind(TailwindColor::SLATE, TailwindPalette::C200);
+
+        theme.tab.explorer.accent = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C800);
+        theme.tab.explorer.highlight = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C400);
+        theme.tab.explorer.tree.highlight = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C400);
+        theme.tab.explorer.key_type.hash = Color::Tailwind(TailwindColor::BLUE, TailwindPalette::C400);
+        theme.tab.explorer.key_type.list = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C400);
+        theme.tab.explorer.key_type.set = Color::Tailwind(TailwindColor::ORANGE, TailwindPalette::C400);
+        theme.tab.explorer.key_type.zset = Color::Tailwind(TailwindColor::PINK, TailwindPalette::C400);
+        theme.tab.explorer.key_type.string = Color::Tailwind(TailwindColor::PURPLE, TailwindPalette::C400);
+        theme.tab.explorer.key_type.json = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C400);
+        theme.tab.explorer.key_type.stream = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C400);
+        theme.tab.explorer.key_type.unknown = Color::Tailwind(TailwindColor::SLATE, TailwindPalette::C500);
+
+        theme.tab.cli.accent = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C800);
+        theme.tab.cli.highlight = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C600);
+        theme.tab.cli.console.cmd = Color::Tailwind(TailwindColor::EMERALD, TailwindPalette::C700);
+        theme.tab.cli.console.out = Color::Default;
+        theme.tab.cli.console.err = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C700);
+        theme.tab.cli.menu.bg = Color::Tailwind(TailwindColor::NEUTRAL, TailwindPalette::C300);
+        theme.tab.cli.menu.highlight = Color::Tailwind(TailwindColor::ZINC, TailwindPalette::C300);
+        theme.tab.cli.menu.info_bg = Color::Tailwind(TailwindColor::STONE, TailwindPalette::C300);
+        theme.tab.cli.menu.input = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C700);
+        theme.tab.cli.doc.bg = Color::Tailwind(TailwindColor::NEUTRAL, TailwindPalette::C300);
+        theme.tab.cli.doc.command = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C800);
+        theme.tab.cli.doc.attribute = Color::Tailwind(TailwindColor::PINK, TailwindPalette::C800);
+
+        theme.tab.logger.accent = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C800);
+        theme.tab.logger.highlight = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C600);
+        theme.tab.logger.level.error = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C700);
+        theme.tab.logger.level.warn = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C700);
+        theme.tab.logger.level.info = Color::Tailwind(TailwindColor::CYAN, TailwindPalette::C700);
+        theme.tab.logger.level.debug = Color::Tailwind(TailwindColor::EMERALD, TailwindPalette::C700);
+        theme.tab.logger.level.trace = Color::Tailwind(TailwindColor::VIOLET, TailwindPalette::C700);
+
+        theme.toast.info = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C500);
+        theme.toast.warn = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C500);
+        theme.toast.error = Color::Tailwind(TailwindColor::RED, TailwindPalette::C500);
+
         theme
     }
 
@@ -54,7 +127,7 @@ impl Theme {
         theme.context.fps = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C500);
         theme.context.key_bg = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C700);
 
-        theme.server.highlight = Color::Default;
+        theme.server.highlight = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C950);
         theme.server.name = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C400);
         theme.server.location = Color::Tailwind(TailwindColor::CYAN, TailwindPalette::C500);
         theme.server.db = Color::Tailwind(TailwindColor::BLUE, TailwindPalette::C600);
@@ -78,10 +151,6 @@ impl Theme {
         theme.raw.comment = Color::Tailwind(TailwindColor::CYAN, TailwindPalette::C500);
         theme.raw.number = Color::Tailwind(TailwindColor::BLUE, TailwindPalette::C600);
 
-        theme.toast.info = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C700);
-        theme.toast.warn = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C700);
-        theme.toast.error = Color::Tailwind(TailwindColor::RED, TailwindPalette::C700);
-
         theme.border.highlight = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C300);
         theme.border.default = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C600);
 
@@ -104,6 +173,9 @@ impl Theme {
 
         theme.tab.cli.accent = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C900);
         theme.tab.cli.highlight = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C700);
+        theme.tab.cli.console.cmd = Color::Tailwind(TailwindColor::EMERALD, TailwindPalette::C700);
+        theme.tab.cli.console.out = Color::Default;
+        theme.tab.cli.console.err = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C700);
         theme.tab.cli.menu.bg = Color::Tailwind(TailwindColor::NEUTRAL, TailwindPalette::C800);
         theme.tab.cli.menu.highlight = Color::Tailwind(TailwindColor::ZINC, TailwindPalette::C900);
         theme.tab.cli.menu.info_bg = Color::Tailwind(TailwindColor::STONE, TailwindPalette::C900);
@@ -111,9 +183,6 @@ impl Theme {
         theme.tab.cli.doc.bg = Color::Tailwind(TailwindColor::NEUTRAL, TailwindPalette::C800);
         theme.tab.cli.doc.command = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C400);
         theme.tab.cli.doc.attribute = Color::Tailwind(TailwindColor::PINK, TailwindPalette::C800);
-        theme.tab.cli.console.cmd = Color::Tailwind(TailwindColor::EMERALD, TailwindPalette::C700);
-        theme.tab.cli.console.out = Color::Default;
-        theme.tab.cli.console.err = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C700);
 
         theme.tab.logger.accent = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C900);
         theme.tab.logger.highlight = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C700);
@@ -122,6 +191,10 @@ impl Theme {
         theme.tab.logger.level.info = Color::Tailwind(TailwindColor::CYAN, TailwindPalette::C700);
         theme.tab.logger.level.debug = Color::Tailwind(TailwindColor::EMERALD, TailwindPalette::C700);
         theme.tab.logger.level.trace = Color::Tailwind(TailwindColor::VIOLET, TailwindPalette::C700);
+
+        theme.toast.info = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C700);
+        theme.toast.warn = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C700);
+        theme.toast.error = Color::Tailwind(TailwindColor::RED, TailwindPalette::C700);
 
         theme
     }

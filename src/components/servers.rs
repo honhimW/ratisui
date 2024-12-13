@@ -34,8 +34,8 @@ use ratatui::{crossterm::event::{KeyCode, KeyEventKind}, layout::{Margin, Rect},
 use std::cmp;
 use std::string::ToString;
 use unicode_width::UnicodeWidthStr;
-use ratisui::theme::get_color;
 use crate::components::TableColors;
+use crate::theme::get_color;
 
 const ITEM_HEIGHT: usize = 4;
 
@@ -133,7 +133,7 @@ impl ServerList {
             state: TableState::default().with_selected(default_selected),
             longest_item_lens: constraint_len_calculator(&vec),
             column_styles: [
-                Style::default().fg(get_color(|t| &t.server.highlight)),
+                Style::default(),
                 Style::default().fg(get_color(|t| &t.server.name)),
                 Style::default().fg(get_color(|t| &t.server.location)),
                 Style::default().fg(get_color(|t| &t.server.db)),
@@ -207,7 +207,7 @@ impl ServerList {
             .fg(self.colors.header_fg)
             .bg(self.colors.header_bg);
         let selected_style = Style::default()
-            .bg(self.colors.alt_row)
+            .bg(get_color(|t| &t.server.highlight))
             ;
 
         let header = ["", "Name", "Location", "DB", "Username", "TLS", "Protocol"]
@@ -247,7 +247,7 @@ impl ServerList {
         )
             .header(header)
             .row_highlight_style(selected_style)
-            .highlight_symbol(Text::raw(bar))
+            .highlight_symbol(Text::raw(bar).style(Style::default()))
             .bg(self.colors.bg)
             .column_spacing(1)
             .highlight_spacing(HighlightSpacing::Always);

@@ -14,7 +14,7 @@ use serde_json::Value;
 use std::cmp;
 use strum::Display;
 use tui_textarea::{CursorMove, TextArea};
-use ratisui::theme::get_color;
+use crate::theme::get_color;
 
 pub struct RedisCli<'a> {
     max_menu_width: u16,

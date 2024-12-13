@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use ratatui::prelude::Text;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratisui::theme::get_color;
+use crate::theme::get_color;
 use crate::utils::ContentType;
 use crate::components::highlight_value::{HighlightKind, HighlightProcessor, HighlightText};
 
