@@ -207,7 +207,7 @@ impl ServerList {
             .fg(self.colors.header_fg)
             .bg(self.colors.header_bg);
         let selected_style = Style::default()
-            .bg(self.colors.alt_row_color)
+            .bg(self.colors.alt_row)
             ;
 
         let header = ["", "Name", "Location", "DB", "Username", "TLS", "Protocol"]
@@ -248,7 +248,7 @@ impl ServerList {
             .header(header)
             .row_highlight_style(selected_style)
             .highlight_symbol(Text::raw(bar))
-            .bg(self.colors.buffer_bg)
+            .bg(self.colors.bg)
             .column_spacing(1)
             .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut self.state);

@@ -297,7 +297,7 @@ impl RedisCli<'_> {
     fn render_menu_footer(&mut self, frame: &mut Frame, area: Rect) {
         let horizontal = Layout::horizontal([Fill(1), Length(7)]).split(area);
         let selected = self.table_state.selected().unwrap_or(0);
-        let style = Style::default().bg(get_color(|t| &t.tab.cli.menu.info)).italic();
+        let style = Style::default().bg(get_color(|t| &t.tab.cli.menu.info_bg)).italic();
         let info = Line::raw("↑/↓ Tab").style(style);
         let item_count = Line::raw(format!("{}:{}", selected.saturating_add(1), self.completion_items.len()))
             .alignment(Alignment::Right)
@@ -315,7 +315,7 @@ impl RedisCli<'_> {
         let paragraph = Paragraph::new(highlight_doc(&doc))
             .wrap(Wrap { trim: false })
             .block(Block::default().border_set(symbols::border::EMPTY).borders(Borders::from_bits_retain(0b1010)))
-            .style(Style::default().bg(get_color(|t| &t.tab.cli.menu.desc_bg)))
+            .style(Style::default().bg(get_color(|t| &t.tab.cli.doc.bg)))
             ;
         let line_count = paragraph.line_count(desc_width - 2); // block width 2
         let desc_height = cmp::min(line_count as u16, self.max_desc_height);

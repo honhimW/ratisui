@@ -108,7 +108,7 @@ impl Context {
 
     fn render_fps(&self, frame: &mut Frame, area: Rect) -> Result<()> {
         frame.render_widget(Text::from(format!("{:.1}", self.fps))
-                                .style(Style::default().fg(get_color(|t| &t.context.fps_fg))), area);
+                                .style(Style::default().fg(get_color(|t| &t.context.fps))), area);
         Ok(())
     }
 
@@ -141,7 +141,7 @@ impl Context {
         let mut command_text = Text::default();
         let footers = self.footer_elements();
         for (icon, desc) in footers {
-            let command_icon = Span::styled(format!(" {} ", icon), Style::default().bold().fg(Color::default()).bg(get_color(|t| &t.context.icon_bg)));
+            let command_icon = Span::styled(format!(" {} ", icon), Style::default().bold().fg(Color::default()).bg(get_color(|t| &t.context.key_bg)));
             let command_desc = Span::styled(format!(" {} ", desc), Style::default().bold());
             command_text.push_span(command_icon);
             command_text.push_span(command_desc);

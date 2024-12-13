@@ -51,8 +51,8 @@ impl Theme {
         theme.name = "ratisui-dark".to_string();
         theme.kind = Kind::Dark;
 
-        theme.context.fps_fg = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C500);
-        theme.context.icon_bg = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C700);
+        theme.context.fps = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C500);
+        theme.context.key_bg = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C700);
 
         theme.server.highlight = Color::Default;
         theme.server.name = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C400);
@@ -62,12 +62,12 @@ impl Theme {
         theme.server.tls = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C600);
         theme.server.protocol = Color::Tailwind(TailwindColor::EMERALD, TailwindPalette::C600);
 
-        theme.table.buffer_bg = Color::Default;
+        theme.table.bg = Color::Default;
         theme.table.header_bg = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C900);
-        theme.table.header_fg = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C200);
-        theme.table.row_fg = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C200);
-        theme.table.normal_row_color = Color::Default;
-        theme.table.alt_row_color = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C950);
+        theme.table.header = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C200);
+        theme.table.row = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C200);
+        theme.table.odd_row_bg = Color::Default;
+        theme.table.even_row_bg = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C950);
 
         theme.raw.string = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C400);
         theme.raw.boolean = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C600);
@@ -88,7 +88,7 @@ impl Theme {
         theme.editor.editing = Color::Tailwind(TailwindColor::SKY, TailwindPalette::C700);
         theme.editor.warning = Color::Tailwind(TailwindColor::RED, TailwindPalette::C700);
 
-        theme.tab.title_fg = Color::Tailwind(TailwindColor::SLATE, TailwindPalette::C200);
+        theme.tab.title = Color::Tailwind(TailwindColor::SLATE, TailwindPalette::C200);
 
         theme.tab.explorer.accent = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C900);
         theme.tab.explorer.highlight = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C700);
@@ -106,9 +106,9 @@ impl Theme {
         theme.tab.cli.highlight = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C700);
         theme.tab.cli.menu.bg = Color::Tailwind(TailwindColor::NEUTRAL, TailwindPalette::C800);
         theme.tab.cli.menu.highlight = Color::Tailwind(TailwindColor::ZINC, TailwindPalette::C900);
-        theme.tab.cli.menu.info = Color::Tailwind(TailwindColor::STONE, TailwindPalette::C900);
-        theme.tab.cli.menu.desc_bg = Color::Tailwind(TailwindColor::NEUTRAL, TailwindPalette::C800);
+        theme.tab.cli.menu.info_bg = Color::Tailwind(TailwindColor::STONE, TailwindPalette::C900);
         theme.tab.cli.menu.input = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C500);
+        theme.tab.cli.doc.bg = Color::Tailwind(TailwindColor::NEUTRAL, TailwindPalette::C800);
         theme.tab.cli.doc.command = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C400);
         theme.tab.cli.doc.attribute = Color::Tailwind(TailwindColor::PINK, TailwindPalette::C800);
         theme.tab.cli.console.cmd = Color::Tailwind(TailwindColor::EMERALD, TailwindPalette::C700);
@@ -129,7 +129,7 @@ impl Theme {
 
 /// Theme configuration
 /// `~/.config/ratisui/theme/{name}.ron`
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(default)]
 pub struct Theme {
     pub name: String,
@@ -146,7 +146,7 @@ pub struct Theme {
 
 /// Base theme kind, used for fallback
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
-pub enum  Kind {
+pub enum Kind {
     Light,
     #[default]
     Dark,
@@ -161,6 +161,44 @@ pub enum Color {
     Default,
     #[default]
     Fallback,
+
+    /// ANSI Color: Black. Foreground: 30, Background: 40
+    Black,
+    /// ANSI Color: Red. Foreground: 31, Background: 41
+    Red,
+    /// ANSI Color: Green. Foreground: 32, Background: 42
+    Green,
+    /// ANSI Color: Yellow. Foreground: 33, Background: 43
+    Yellow,
+    /// ANSI Color: Blue. Foreground: 34, Background: 44
+    Blue,
+    /// ANSI Color: Magenta. Foreground: 35, Background: 45
+    Magenta,
+    /// ANSI Color: Cyan. Foreground: 36, Background: 46
+    Cyan,
+    /// ANSI Color: White. Foreground: 37, Background: 47
+    ///
+    /// Note that this is sometimes called `silver` or `white` but we use `white` for bright white
+    Gray,
+    /// ANSI Color: Bright Black. Foreground: 90, Background: 100
+    ///
+    /// Note that this is sometimes called `light black` or `bright black` but we use `dark gray`
+    DarkGray,
+    /// ANSI Color: Bright Red. Foreground: 91, Background: 101
+    LightRed,
+    /// ANSI Color: Bright Green. Foreground: 92, Background: 102
+    LightGreen,
+    /// ANSI Color: Bright Yellow. Foreground: 93, Background: 103
+    LightYellow,
+    /// ANSI Color: Bright Blue. Foreground: 94, Background: 104
+    LightBlue,
+    /// ANSI Color: Bright Magenta. Foreground: 95, Background: 105
+    LightMagenta,
+    /// ANSI Color: Bright Cyan. Foreground: 96, Background: 106
+    LightCyan,
+    /// ANSI Color: Bright White. Foreground: 97, Background: 107
+    /// Sometimes called `bright white` or `light white` in some terminals
+    White,
 }
 
 /// Tailwind colors
@@ -211,8 +249,8 @@ pub enum TailwindPalette {
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(default)]
 pub struct Context {
-    pub fps_fg: Color,
-    pub icon_bg: Color,
+    pub fps: Color,
+    pub key_bg: Color,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
@@ -230,12 +268,12 @@ pub struct Server {
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(default)]
 pub struct Table {
-    pub buffer_bg: Color,
+    pub bg: Color,
     pub header_bg: Color,
-    pub header_fg: Color,
-    pub row_fg: Color,
-    pub normal_row_color: Color,
-    pub alt_row_color: Color,
+    pub header: Color,
+    pub row: Color,
+    pub odd_row_bg: Color,
+    pub even_row_bg: Color,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
@@ -270,7 +308,7 @@ pub struct Editor {
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(default)]
 pub struct Tab {
-    pub title_fg: Color,
+    pub title: Color,
     pub explorer: Explorer,
     pub cli: Cli,
     pub logger: Logger,
@@ -327,14 +365,14 @@ pub struct Console {
 pub struct Menu {
     pub bg: Color,
     pub highlight: Color,
-    pub info: Color,
-    pub desc_bg: Color,
+    pub info_bg: Color,
     pub input: Color,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(default)]
 pub struct Doc {
+    pub bg: Color,
     pub command: Color,
     pub attribute: Color,
 }
@@ -411,22 +449,30 @@ impl Color {
                     TailwindPalette::C950 => color.c950,
                 })
             }
-            Color::Hex(hex) => {
-                if let Ok(in_u32) = u32::from_str_radix(&hex, 16) {
-                    Some(RColor::from_u32(in_u32))
-                } else {
-                    None
-                }
-            }
-            Color::Rgb(r, g, b) => {
-                Some(RColor::Rgb(*r, *g, *b))
-            }
-            Color::Default => {
-                Some(RColor::default())
-            }
-            Color::Fallback => {
+            Color::Hex(hex) => if let Ok(in_u32) = u32::from_str_radix(&hex, 16) {
+                Some(RColor::from_u32(in_u32))
+            } else {
                 None
-            }
+            },
+            Color::Rgb(r, g, b) => Some(RColor::Rgb(*r, *g, *b)),
+            Color::Default => Some(RColor::default()),
+            Color::Fallback => None,
+            Color::Black => Some(RColor::Black),
+            Color::Red => Some(RColor::Red),
+            Color::Green => Some(RColor::Green),
+            Color::Yellow => Some(RColor::Yellow),
+            Color::Blue => Some(RColor::Blue),
+            Color::Magenta => Some(RColor::Magenta),
+            Color::Cyan => Some(RColor::Cyan),
+            Color::Gray => Some(RColor::Gray),
+            Color::DarkGray => Some(RColor::DarkGray),
+            Color::LightRed => Some(RColor::LightRed),
+            Color::LightGreen => Some(RColor::LightGreen),
+            Color::LightYellow => Some(RColor::LightYellow),
+            Color::LightBlue => Some(RColor::LightBlue),
+            Color::LightMagenta => Some(RColor::LightMagenta),
+            Color::LightCyan => Some(RColor::LightCyan),
+            Color::White => Some(RColor::White),
         }
     }
 }

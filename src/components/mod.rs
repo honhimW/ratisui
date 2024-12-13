@@ -18,23 +18,29 @@ pub mod raw_paragraph;
 pub mod stream_view;
 
 struct TableColors {
-    buffer_bg: Color,
+    // table background
+    bg: Color,
+    // header background
     header_bg: Color,
+    // header foreground
     header_fg: Color,
+    // row foreground
     row_fg: Color,
-    normal_row_color: Color,
-    alt_row_color: Color,
+    // odd-numbered row
+    normal_row: Color,
+    // even-numbered row
+    alt_row: Color,
 }
 
 impl TableColors {
     fn new() -> Self {
         Self {
-            buffer_bg: get_color(|t| &t.table.buffer_bg),
+            bg: get_color(|t| &t.table.bg),
             header_bg: get_color(|t| &t.table.header_bg),
-            header_fg: get_color(|t| &t.table.header_fg),
-            row_fg: get_color(|t| &t.table.row_fg),
-            normal_row_color: get_color(|t| &t.table.normal_row_color),
-            alt_row_color: get_color(|t| &t.table.alt_row_color),
+            header_fg: get_color(|t| &t.table.header),
+            row_fg: get_color(|t| &t.table.row),
+            normal_row: get_color(|t| &t.table.odd_row_bg),
+            alt_row: get_color(|t| &t.table.even_row_bg),
         }
     }
 }

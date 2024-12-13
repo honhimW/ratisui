@@ -145,8 +145,8 @@ impl HashValue {
         let mut selected_height = 5;
         let rows = self.items.iter().enumerate().map(|(i, data)| {
             let color = match i % 2 {
-                0 => self.colors.normal_row_color,
-                _ => self.colors.alt_row_color,
+                0 => self.colors.normal_row,
+                _ => self.colors.alt_row,
             };
             let item;
             let height: u16;
@@ -198,7 +198,7 @@ impl HashValue {
             .header(header)
             .row_highlight_style(selected_style)
             .highlight_symbol(highlight_symbol)
-            .bg(self.colors.buffer_bg)
+            .bg(self.colors.bg)
             .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut self.state);
     }

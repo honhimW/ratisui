@@ -983,7 +983,7 @@ impl TabImplementation for ExplorerTab {
 
     fn title(&self) -> Line<'static> {
         "  Explorer  "
-            .fg(get_color(|t| &t.tab.title_fg))
+            .fg(get_color(|t| &t.tab.title))
             .bg(get_color(|t| &t.tab.explorer.accent))
             .into()
     }

@@ -200,8 +200,8 @@ impl SteamView {
 
         let rows = self.items.iter().enumerate().map(|(i, data)| {
             let color = match i % 2 {
-                0 => self.id_table.colors.normal_row_color,
-                _ => self.id_table.colors.alt_row_color,
+                0 => self.id_table.colors.normal_row,
+                _ => self.id_table.colors.alt_row,
             };
             let item = [&data.key];
 
@@ -222,7 +222,7 @@ impl SteamView {
             .header(header)
             .row_highlight_style(selected_style)
             .highlight_symbol(highlight_symbol)
-            .bg(self.id_table.colors.buffer_bg)
+            .bg(self.id_table.colors.bg)
             .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut self.id_table.state);
     }
@@ -273,8 +273,8 @@ impl SteamView {
         if let Some(data) = self.items.get(i) {
             let rows = data.value.iter().enumerate().map(|(i, (field, value))| {
                 let color = match i % 2 {
-                    0 => self.entry_table.colors.normal_row_color,
-                    _ => self.entry_table.colors.alt_row_color,
+                    0 => self.entry_table.colors.normal_row,
+                    _ => self.entry_table.colors.alt_row,
                 };
                 let item;
                 let height: u16;
@@ -326,7 +326,7 @@ impl SteamView {
                 .header(header)
                 .row_highlight_style(selected_style)
                 .highlight_symbol(highlight_symbol)
-                .bg(self.entry_table.colors.buffer_bg)
+                .bg(self.entry_table.colors.bg)
                 .highlight_spacing(HighlightSpacing::Always);
             frame.render_stateful_widget(t, area, &mut self.entry_table.state);
         }

@@ -29,7 +29,7 @@ impl TabImplementation for LoggerTab {
 
     fn title(&self) -> Line<'static> {
         "   Logger   "
-            .fg(get_color(|t| &t.tab.title_fg))
+            .fg(get_color(|t| &t.tab.title))
             .bg(get_color(|t| &t.tab.logger.accent))
             .into()
     }

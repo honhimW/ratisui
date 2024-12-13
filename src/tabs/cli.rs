@@ -51,7 +51,7 @@ impl TabImplementation for CliTab {
 
     fn title(&self) -> Line<'static> {
         "    CLI     "
-            .fg(get_color(|t| &t.tab.title_fg))
+            .fg(get_color(|t| &t.tab.title))
             .bg(get_color(|t| &t.tab.cli.accent))
             .into()
     }
