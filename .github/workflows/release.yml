@@ -19,12 +19,12 @@ jobs:
     - name: Create Release
       if: github.event_name == 'workflow_dispatch'
       id: create_release
-      uses: actions/create-release@v1.1.4
+      uses: ncipollo/release-action@v1.14.0
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.event.inputs.major_version }}
-        release_name: v${{ github.event.inputs.major_version }}
+        tag: ${{ github.event.inputs.major_version }}
+        name: v${{ github.event.inputs.major_version }}
         draft: false
         generateReleaseNotes: true
     - name: Set output
