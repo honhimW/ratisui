@@ -5,7 +5,7 @@
 /// - Tailwind(RED, C700): https://tailwindcss.com/docs/customizing-colors
 /// - Rgb(10, 20, 255)   : Rgb(u8, u8, u8), u8: 0 ~ 255
 /// - Hex("ffffff")      : Rgb color in radix-16, in the format: 0xRRGGBB
-/// - Default            : Depend on terminal background & foreground
+/// - Default            : Depend on current buffer background & foreground
 /// - Fallback           : Fallback to Light | Dark kind defined color
 /// - Black              : ANSI Color: Black. Foreground: 30, Background: 40
 /// - Red                : ANSI Color: Red. Foreground: 31, Background: 41
