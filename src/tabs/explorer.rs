@@ -448,8 +448,8 @@ impl ExplorerTab {
             ))
             .highlight_style(
                 Style::new()
-                    .fg(Color::default())
-                    .bg(get_color(|t| &t.tab.explorer.tree.highlight))
+                    .fg(get_color(|t| &t.tab.explorer.tree.highlight))
+                    .bg(get_color(|t| &t.tab.explorer.tree.highlight_bg))
                     .add_modifier(Modifier::BOLD),
             )
             .node_no_children_symbol("- ")

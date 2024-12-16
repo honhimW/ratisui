@@ -27,11 +27,12 @@
     name: "ratisui-dark",
     kind: Dark,
     context: (
+        bg: Rgb(0, 0, 0),
         fps: Tailwind(GRAY, C500),
         key_bg: Tailwind(YELLOW, C700),
     ),
     server: (
-        highlight: Default,
+        highlight: Tailwind(GRAY, C950),
         name: Tailwind(AMBER, C400),
         location: Tailwind(CYAN, C500),
         db: Tailwind(BLUE, C600),
@@ -66,12 +67,13 @@
         warning: Tailwind(RED, C700),
     ),
     tab: (
-        title: Tailwind(SLATE, C200),
+        title: Tailwind(SLATE, C100),
         explorer: (
             accent: Tailwind(ROSE, C900),
             highlight: Tailwind(ROSE, C700),
             tree: (
-                highlight: Tailwind(ROSE, C700),
+                highlight: Tailwind(SLATE, C100),
+                highlight_bg: Tailwind(ROSE, C700),
             ),
             key_type: (
                 hash: Tailwind(BLUE, C700),

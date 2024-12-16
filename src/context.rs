@@ -88,6 +88,12 @@ impl Context {
         self.current_tab = CurrentTab::iter().get(self.current_tab_index).unwrap_or(CurrentTab::Explorer);
     }
 
+    fn render_bg(&self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let block = Block::default().style(Style::default().bg(get_color(|t| &t.context.bg)));
+        frame.render_widget(block, area);
+        Ok(())
+    }
+
     fn render_title(&self, frame: &mut Frame, area: Rect) -> Result<()> {
         frame.render_widget("Redis TUI".bold(), area);
         Ok(())
@@ -96,7 +102,8 @@ impl Context {
     fn render_tabs(&self, frame: &mut Frame, area: Rect) -> Result<()> {
         let titles = self.get_all_tabs().iter().map(|tab| tab.title()).collect::<Vec<_>>();
         let current_tab = self.get_current_tab();
-        let highlight_style = (Color::default(), current_tab.highlight());
+        let highlight_style = Style::default().fg(get_color(|t| &t.tab.title))
+            .bg(current_tab.highlight());
         frame.render_widget(Tabs::new(titles)
                                 .highlight_style(highlight_style)
                                 .select(self.current_tab_index)
@@ -199,6 +206,7 @@ impl Renderable for Context {
         let horizontal = Layout::horizontal([Min(0), Length(15), Length(5)]);
         let [tabs_area, title_area, fps_area] = horizontal.areas(header_area);
 
+        self.render_bg(frame, frame.area())?;
         self.render_tabs(frame, tabs_area)?;
         self.render_title(frame, title_area)?;
         self.render_fps(frame, fps_area)?;

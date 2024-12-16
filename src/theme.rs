@@ -44,6 +44,7 @@ impl Theme {
         theme.name = "ratisui-light".to_string();
         theme.kind = Kind::Light;
 
+        theme.context.bg = Color::Rgb(255, 255, 255);
         theme.context.fps = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C500);
         theme.context.key_bg = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C700);
 
@@ -79,9 +80,10 @@ impl Theme {
 
         theme.tab.title = Color::Tailwind(TailwindColor::SLATE, TailwindPalette::C200);
 
-        theme.tab.explorer.accent = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C800);
-        theme.tab.explorer.highlight = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C400);
-        theme.tab.explorer.tree.highlight = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C400);
+        theme.tab.explorer.accent = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C900);
+        theme.tab.explorer.highlight = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C700);
+        theme.tab.explorer.tree.highlight = Color::Tailwind(TailwindColor::SLATE, TailwindPalette::C100);
+        theme.tab.explorer.tree.highlight_bg = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C700);
         theme.tab.explorer.key_type.hash = Color::Tailwind(TailwindColor::BLUE, TailwindPalette::C400);
         theme.tab.explorer.key_type.list = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C400);
         theme.tab.explorer.key_type.set = Color::Tailwind(TailwindColor::ORANGE, TailwindPalette::C400);
@@ -91,8 +93,8 @@ impl Theme {
         theme.tab.explorer.key_type.stream = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C400);
         theme.tab.explorer.key_type.unknown = Color::Tailwind(TailwindColor::SLATE, TailwindPalette::C500);
 
-        theme.tab.cli.accent = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C800);
-        theme.tab.cli.highlight = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C600);
+        theme.tab.cli.accent = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C900);
+        theme.tab.cli.highlight = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C700);
         theme.tab.cli.console.cmd = Color::Tailwind(TailwindColor::EMERALD, TailwindPalette::C700);
         theme.tab.cli.console.out = Color::Default;
         theme.tab.cli.console.err = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C700);
@@ -104,8 +106,8 @@ impl Theme {
         theme.tab.cli.doc.command = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C800);
         theme.tab.cli.doc.attribute = Color::Tailwind(TailwindColor::PINK, TailwindPalette::C800);
 
-        theme.tab.logger.accent = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C800);
-        theme.tab.logger.highlight = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C600);
+        theme.tab.logger.accent = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C900);
+        theme.tab.logger.highlight = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C700);
         theme.tab.logger.level.error = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C700);
         theme.tab.logger.level.warn = Color::Tailwind(TailwindColor::AMBER, TailwindPalette::C700);
         theme.tab.logger.level.info = Color::Tailwind(TailwindColor::CYAN, TailwindPalette::C700);
@@ -124,6 +126,7 @@ impl Theme {
         theme.name = "ratisui-dark".to_string();
         theme.kind = Kind::Dark;
 
+        theme.context.bg = Color::Rgb(0, 0, 0);
         theme.context.fps = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C500);
         theme.context.key_bg = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C700);
 
@@ -157,11 +160,12 @@ impl Theme {
         theme.editor.editing = Color::Tailwind(TailwindColor::SKY, TailwindPalette::C700);
         theme.editor.warning = Color::Tailwind(TailwindColor::RED, TailwindPalette::C700);
 
-        theme.tab.title = Color::Tailwind(TailwindColor::SLATE, TailwindPalette::C200);
+        theme.tab.title = Color::Tailwind(TailwindColor::SLATE, TailwindPalette::C100);
 
         theme.tab.explorer.accent = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C900);
         theme.tab.explorer.highlight = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C700);
-        theme.tab.explorer.tree.highlight = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C700);
+        theme.tab.explorer.tree.highlight = Color::Tailwind(TailwindColor::SLATE, TailwindPalette::C100);
+        theme.tab.explorer.tree.highlight_bg = Color::Tailwind(TailwindColor::ROSE, TailwindPalette::C700);
         theme.tab.explorer.key_type.hash = Color::Tailwind(TailwindColor::BLUE, TailwindPalette::C700);
         theme.tab.explorer.key_type.list = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C700);
         theme.tab.explorer.key_type.set = Color::Tailwind(TailwindColor::ORANGE, TailwindPalette::C700);
@@ -322,6 +326,7 @@ pub enum TailwindPalette {
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(default)]
 pub struct Context {
+    pub bg: Color,
     pub fps: Color,
     pub key_bg: Color,
 }
@@ -400,6 +405,7 @@ pub struct Explorer {
 #[serde(default)]
 pub struct Tree {
     pub highlight: Color,
+    pub highlight_bg: Color,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
