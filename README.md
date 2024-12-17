@@ -115,12 +115,12 @@ User's data will be stored in `~/.config/ratisui/`:
 - [x] Async query & render
 - [x] Highlight & format for raw data
     - [x] UTF-8/Hex deserialization
-    - [x] Java deserialization (jaded)
-    - [x] Protobuf deserialization (protobuf)
-    - [x] JSON highlighter (tree-sitter-json)
-    - [x] XML highlighter (tree-sitter-html)
-    - [x] RON highlighter (tree-sitter-ron)
-- [x] Table view for list, set, sorted set, hash
+    - [x] Java deserialization ([jaded](https://crates.io/crates/jaded))
+    - [x] Protobuf deserialization ([protobuf](https://crates.io/crates/protobuf))
+    - [x] JSON highlighter ([tree-sitter-json](https://crates.io/crates/tree-sitter-json))
+    - [x] XML highlighter ([tree-sitter-html](https://crates.io/crates/tree-sitter-html))
+    - [x] RON highlighter ([tree-sitter-ron](https://crates.io/crates/tree-sitter-ron))
+- [x] Table view for list, set, sorted set, hash, stream
 
 **Command line tool**
 - [x] Auto Completion
@@ -130,10 +130,11 @@ User's data will be stored in `~/.config/ratisui/`:
 - [x] Output format
 
 **Misc**
-- [x] Logger viewer
+- [x] Logger viewer([TuiLogger](https://crates.io/crates/tui-logger))
 - [x] Non-blocking command execution
 - [x] Configuration persistence
-- [x] Use SSH tunnel
+- [x] Use SSH tunnel([russh](https://crates.io/crates/russh))
+- [x] Connection pool([deadpool-redis](https://crates.io/crates/deadpool-redis))
 - [x] Configurable theme
 
 **TODO**
