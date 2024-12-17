@@ -43,8 +43,8 @@ User's data will be stored in `~/.config/ratisui/`:
 // ~/.config/ratisui/config.ron
 (
     fps: 45,                               // tui render fps limitation
-    scan_size: scan_size: 500,           // redis key scan size,
-    try_format: false,                   // fotmat raw data
+    scan_size: 500,                       // redis key scan size,
+    try_format: false,                    // fotmat raw data
     theme: Some("my-dark")                // ～/.config/ratisui/theme/my-dark.ron
 )
 ```
