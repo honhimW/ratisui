@@ -134,6 +134,7 @@ User's data will be stored in `~/.config/ratisui/`:
 - [x] Non-blocking command execution
 - [x] Configuration persistence
 - [x] Use SSH tunnel
+- [x] Configurable theme
 
 **TODO**
 - [ ] nothing to do...🤔
