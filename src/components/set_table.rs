@@ -160,7 +160,7 @@ impl SetValue {
                 .map(|content| {
                     let mut text = Text::default();
                     text.push_line(Line::default());
-                    let highlight_text = raw_value_to_highlight_text(Cow::from(content), false);
+                    let (highlight_text, _) = raw_value_to_highlight_text(Cow::from(content), false);
                     for line in highlight_text.lines {
                         text.push_line(line);
                     }

@@ -265,6 +265,7 @@ impl CliTab {
         self.lock_input = true;
         self.lock_at = Some(Instant::now());
         self.console_data.push(OutputKind::CMD, format!(">_ {}", command));
+        self.scroll_end();
         self.console_data.build_paragraph();
         if command.is_empty() {
             self.lock_input = false;
@@ -466,10 +467,14 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
         }
         Value::BulkString(bulk_string) => {
             let bulk_string = bytes_to_string(bulk_string.clone()).unwrap_or_else(|e| e.to_string());
-            let bulk_string = bulk_string.replace("\t", "\\t");
-            // let bulk_string = format!("\"{}\"", bulk_string);
-            let lines = bulk_string.lines();
-            lines.map(|line| format(line)).collect_vec()
+            if pad == 0 {
+                vec![(OutputKind::Raw, bulk_string)]
+            } else {
+                let bulk_string = bulk_string.replace("\t", "\\t");
+                // let bulk_string = format!("\"{}\"", bulk_string);
+                let lines = bulk_string.lines();
+                lines.map(|line| format(line)).collect_vec()
+            }
         }
         Value::Array(array) => {
             let mut lines = vec![];

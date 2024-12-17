@@ -8,9 +8,10 @@ use ron::ser::PrettyConfig;
 use serde::Serialize;
 use tui_textarea::TextArea;
 use jaded::Parser;
+use strum::Display;
 
 #[allow(unused)]
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Display)]
 pub enum ContentType {
     String,
     #[default]

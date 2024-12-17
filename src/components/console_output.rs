@@ -1,12 +1,13 @@
-use crate::components::console_output::OutputKind::{ERR, STD};
+use std::borrow::Cow;
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::Text;
-use ratatui::style::{Style};
+use ratatui::style::{Style, Stylize};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui_macros::{line, span};
 use std::cmp;
 use strum::Display;
-use OutputKind::{Else, CMD};
+use OutputKind::{ERR, STD, CMD, Else, Raw};
+use crate::components::raw_value::raw_value_to_highlight_text;
 use crate::theme::get_color;
 
 pub struct ConsoleData<'a> {
@@ -24,7 +25,8 @@ pub enum OutputKind {
     CMD,
     STD,
     ERR,
-    Else(Style)
+    Else(Style),
+    Raw,
 }
 
 impl ConsoleData<'_> {
@@ -44,13 +46,23 @@ impl ConsoleData<'_> {
         let mut text = Text::default();
         for (kind, l) in self.lines.iter() {
             let new_line = match kind {
-
                 CMD => line![span!(Style::default().fg(get_color(|t| &t.tab.cli.console.cmd)); l.clone())],
                 STD => line![span!(Style::default().fg(get_color(|t| &t.tab.cli.console.out)); l.clone())],
                 ERR => line![span!(Style::default().fg(get_color(|t| &t.tab.cli.console.err)); l.clone())],
                 Else(style) => line![span!(*style; l.clone())],
+                Raw => line![],
             };
             text.push_line(new_line);
+            if matches!(kind, Raw) {
+                let (highlight_text, content_type) = raw_value_to_highlight_text(Cow::from(l.clone()), true);
+                let ct = content_type.map(|ct| ct.to_string()).unwrap_or_default();
+                text.push_line(line![span!(Style::default().dim(); format!("```{ct}"))]);
+                for x in highlight_text.lines {
+                    text.push_line(x)
+                }
+                text.push_line(line![span!(Style::default().dim(); "```")])
+            }
+
         }
         let mut paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
         paragraph = paragraph.scroll((self.position.y, self.position.x));

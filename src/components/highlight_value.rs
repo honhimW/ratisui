@@ -106,21 +106,29 @@ impl HighlightProcessor {
         }
         let is_json = self.process_json()?;
         if is_json {
+            self.content_type = Some(ContentType::Json);
             return Ok(());
         }
         let is_xml = self.process_xml()?;
         if is_xml {
+            self.content_type = Some(ContentType::Xml);
             return Ok(());
         }
         let is_ron = self.process_ron()?;
         if is_ron {
+            self.content_type = Some(ContentType::Ron);
             return Ok(());
         }
         let is_plain = self.process_plain()?;
         if is_plain {
+            self.content_type = Some(ContentType::String);
             return Ok(());
         }
         Ok(())
+    }
+
+    pub fn get_content_type(&self) -> Option<ContentType> {
+        self.content_type.clone()
     }
 
     #[allow(unused)]
