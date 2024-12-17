@@ -14,10 +14,14 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    - name: Aarch64 toolchain
-      run: sudo apt-get install -y gcc-aarch64-linux-gnu
-    - name: Add aarch64 target
-      run: rustup target add aarch64-unknown-linux-gnu
+    - name: rust-toolchain
+      uses: actions-rs/toolchain@v1.0.6
+      with:
+        target: aarch64-unknown-linux-gnu
+    # - name: Aarch64 toolchain
+    #   run: sudo apt-get install -y gcc-aarch64-linux-gnu
+    # - name: Add aarch64 target
+    #   run: rustup target add aarch64-unknown-linux-gnu
     - name: Build aarch64
       run: cargo build --target aarch64-unknown-linux-gnu
-    
+          
