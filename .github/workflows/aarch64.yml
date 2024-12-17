@@ -1,0 +1,46 @@
+name: Build Aarch64
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.set_output.outputs.upload_url }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Create Release
+      if: github.event_name == 'workflow_dispatch'
+      id: create_release
+      uses: ncipollo/release-action@v1.14.0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag: ${{ github.event.inputs.major_version }}.${{ github.run_number }}
+        release: v${{ github.event.inputs.major_version }}.${{ github.run_number }}
+        draft: false
+        prerelease: true
+    - name: Set output
+      id: set_output
+      run: echo "upload_url=${{ steps.create_release.outputs.upload_url }}" >> "$GITHUB_OUTPUT"
+
+  build:
+    runs-on: ${{ matrix.os }}
+    needs: create_release
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        rust: [stable]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Aarch64 toolchain
+      run: apt-get install -y gcc-aarch64-linux-gnu
+    - name: Add aarch64 target
+      run: rustup target add aarch64-unknown-linux-gnu
+    - name: Build aarch64
+      run: cargo build --target aarch64-unknown-linux-gnu
+    
