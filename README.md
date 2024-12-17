@@ -39,16 +39,17 @@ cargo run
 ## Data storage
 User's data will be stored in `~/.config/ratisui/`:
 
+### Application Configuration
 ```ron
 // ~/.config/ratisui/config.ron
 (
     fps: 45,                               // tui render fps limitation
-    scan_size: 500,                       // redis key scan size,
-    try_format: false,                    // fotmat raw data
-    theme: Some("my-dark")                // ～/.config/ratisui/theme/my-dark.ron
+    scan_size: 500,                        // redis key scan size,
+    try_format: false,                     // fotmat raw data
+    theme: Some("your-theme")              // ～/.config/ratisui/theme/your-theme.ron
 )
 ```
-
+### Databases Configuration
 ```ron
 // ~/.config/ratisui/databases.ron
 (
@@ -64,7 +65,7 @@ User's data will be stored in `~/.config/ratisui/`:
             db: 0,
             protocol: RESP3,
         ),
-        "remote cluster": (
+        "remote cluster": (   // Cluster mode automatically detected
             host: "cluster.host",
             port: 6000,
             username: None,
@@ -75,6 +76,21 @@ User's data will be stored in `~/.config/ratisui/`:
             protocol: RESP3,
         ),
     },
+)
+```
+### Themes Configuration
+
+> [!NOTE]
+> 
+> See [Theme template](./assets/theme-template.ron) for more details.
+```ron
+// ~/.config/ratisui/theme/your-theme.ron
+(
+    toast: (
+        info: Tailwind(GREEN, C700),
+        warn: Yellow,
+        error: Rgb(255, 0, 0),
+    ),
 )
 ```
 
