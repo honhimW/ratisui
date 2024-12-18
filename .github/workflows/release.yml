@@ -87,3 +87,37 @@ jobs:
         asset_path: .\target\release\ratisui-windows-amd64.zip
         asset_name: ratisui-windows-amd64.zip
         asset_content_type: application/octet-stream
+
+
+  build-aarch64:
+    runs-on: ${{ matrix.os }}
+    needs: create_release
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        rust: [stable]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: rust-toolchain
+      uses: dtolnay/rust-toolchain@v1
+      with:
+        toolchain: stable
+        target: aarch64-unknown-linux-gnu
+    - name: Cargo
+      uses: actions-rs/cargo@v1
+      with:
+          use-cross: true
+          command: build
+          args: --target aarch64-unknown-linux-gnu --release
+    - name: Archive
+      run: tar -czvf ./target/aarch64-unknown-linux-gnu/release/ratisui-linux-aarch64.tar.gz LICENSE README.md -C ./target/aarch64-unknown-linux-gnu/release ratisui
+    - name: Upload Release Asset (Linux-aarch64)
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create_release.outputs.upload_url }}
+        asset_path: ./target/aarch64-unknown-linux-gnu/release/ratisui-linux-aarch64.tar.gz
+        asset_name: ratisui-linux-aarch64.tar.gz
+        asset_content_type: application/octet-stream
