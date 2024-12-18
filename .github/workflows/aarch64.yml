@@ -15,13 +15,19 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     - name: rust-toolchain
-      uses: actions-rs/toolchain@v1.0.6
+      uses: dtolnay/rust-toolchain@v1
       with:
         target: aarch64-unknown-linux-gnu
+    - name: Cargo
+      uses: actions-rs/cargo@v1
+      with:
+          use-cross: true
+          command: build
+          args: --target aarch64-unknown-linux-gnu --release
     # - name: Aarch64 toolchain
     #   run: sudo apt-get install -y gcc-aarch64-linux-gnu
     # - name: Add aarch64 target
     #   run: rustup target add aarch64-unknown-linux-gnu
-    - name: Build aarch64
-      run: cargo build --target aarch64-unknown-linux-gnu
+    # - name: Build aarch64
+    #   run: cargo build --target aarch64-unknown-linux-gnu
           
