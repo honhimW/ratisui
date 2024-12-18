@@ -26,7 +26,7 @@ jobs:
           command: build
           args: --target aarch64-unknown-linux-gnu --release
     - name: Print Dir
-      run: ls -lah ./target/release
+      run: ls -lah ./target/aarch64-unknown-linux-gnu/release
     # - name: Add aarch64 target
     #   run: rustup target add aarch64-unknown-linux-gnu
     # - name: Build aarch64
