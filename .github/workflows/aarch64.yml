@@ -25,6 +25,8 @@ jobs:
           use-cross: true
           command: build
           args: --target aarch64-unknown-linux-gnu --release
+    - name: Archive
+      run: tar -czvf ./target/aarch64-unknown-linux-gnu/release/ratisui-linux-aarch64.tar.gz LICENSE README.md -C ./target/aarch64-unknown-linux-gnu/release ratisui
     - name: Print Dir
       run: ls -lah ./target/aarch64-unknown-linux-gnu/release
     # - name: Add aarch64 target
