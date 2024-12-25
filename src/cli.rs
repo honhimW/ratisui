@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 pub fn cli() -> Result<Command> {
     let command = Command::new("ratisui")
-        .about("Redis TUI build on Ratatui")
+        .about("Redis TUI build with Ratatui.")
         .args([
             arg!(-t --target <TARGET> "named redis target, default read from config file if exist"),
             arg!(-T --theme <THEME> "theme configuration file name, under ~/.config/ratisui/theme/<THEME>.ron"),

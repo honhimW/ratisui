@@ -11,7 +11,7 @@ use futures::StreamExt;
 use log::{info};
 use once_cell::sync::Lazy;
 use redis::ConnectionAddr::{Tcp, TcpTls};
-use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value, VerbatimFormat};
+use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, JsonAsyncCommands, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value, VerbatimFormat};
 use std::collections::HashMap;
 use std::future::Future;
 use std::ops::DerefMut;
@@ -980,6 +980,73 @@ impl RedisOperations {
         } else {
             let mut connection = self.pool.get().await?;
             let v: usize = connection.xlen(key).await?;
+            Ok(v)
+        }
+    }
+
+    pub async fn json_type<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<String> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: Vec<String> = connection.json_type(key, ".").await?;
+            let s = v.get(0).cloned().unwrap_or_default();
+            Ok(s)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: Vec<String> = connection.json_type(key, ".").await?;
+            let s = v.get(0).cloned().unwrap_or_default();
+            Ok(s)
+        }
+    }
+
+    pub async fn json_strlen<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<usize> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: usize = connection.json_str_len(key, ".").await?;
+            Ok(v)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: usize = connection.json_str_len(key, ".").await?;
+            Ok(v)
+        }
+    }
+
+    pub async fn json_arrlen<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<usize> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: usize = connection.json_arr_len(key, ".").await?;
+            Ok(v)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: usize = connection.json_arr_len(key, ".").await?;
+            Ok(v)
+        }
+    }
+
+    pub async fn json_objlen<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<usize> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: usize = connection.json_obj_len(key, ".").await?;
+            Ok(v)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: usize = connection.json_obj_len(key, ".").await?;
+            Ok(v)
+        }
+    }
+
+    pub async fn json_get<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K) -> Result<V> {
+        if self.is_cluster() {
+            let pool = &self.cluster_pool.clone().context("should be cluster")?;
+            let mut connection = pool.get().await?;
+            let v: V = connection.json_get(key, ".").await?;
+            Ok(v)
+        } else {
+            let mut connection = self.pool.get().await?;
+            let v: V = connection.json_get(key, ".").await?;
             Ok(v)
         }
     }

@@ -35,6 +35,7 @@ redis = { workspace = true, features = [
     "tokio-comp",
     "tokio-rustls-comp",
     "cluster-async",
+    "json"
 ] }
 deadpool-redis = { git = "https://github.com/honhimW/deadpool.git", branch = "logging", package = "deadpool-redis", features = [
     "serde",
