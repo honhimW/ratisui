@@ -166,7 +166,7 @@ fn get_type_color(key_type: &str) -> Color {
         "Set" | "set" => { get_color(|t| &t.tab.explorer.key_type.set) }
         "ZSet" | "zset" => { get_color(|t| &t.tab.explorer.key_type.zset) }
         "String" | "string" => { get_color(|t| &t.tab.explorer.key_type.string) }
-        "JSON" | "json" => { get_color(|t| &t.tab.explorer.key_type.json) }
+        "JSON" | "json" | "ReJSON-RL" | "ReJSON" => { get_color(|t| &t.tab.explorer.key_type.json) }
         "Stream" | "stream" => { get_color(|t| &t.tab.explorer.key_type.stream) }
         "unknown" => { get_color(|t| &t.tab.explorer.key_type.unknown) }
         _ => { Color::default() }
@@ -889,6 +889,16 @@ impl ExplorerTab {
                     "set" => Ok(op.scard(key_name_clone).await?),
                     "zset" => Ok(op.zcard(key_name_clone).await?),
                     "stream" => Ok(op.xlen(key_name_clone).await?),
+                    "rejson-rl" => {
+                        let json_type = op.json_type(&key_name_clone).await?;
+                        let len = match json_type.to_ascii_lowercase().as_str() {
+                            "object" => op.json_objlen(key_name_clone).await?,
+                            "array" => op.json_arrlen(key_name_clone).await?,
+                            "string" => op.json_strlen(key_name_clone).await?,
+                            _ => 0,
+                        };
+                        Ok(len)
+                    },
                     _ => Ok(0)
                 }
             }).await;
@@ -968,6 +978,11 @@ impl ExplorerTab {
                         (key_str, values)
                     }).collect();
                     data.selected_stream_value = (true, Some(hash_value));
+                }
+                "rejson-rl" => {
+                    let bytes: Vec<u8> = op.json_get(key_name_clone).await?;
+                    let result = deserialize_bytes(bytes).context("Failed to deserialize string")?;
+                    data.selected_string_value = (true, Some((result.0, result.1)));
                 }
                 _ => {}
             }
