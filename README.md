@@ -86,6 +86,7 @@ User's data will be stored in `~/.config/ratisui/`:
 ```ron
 // ~/.config/ratisui/theme/your-theme.ron
 (
+    kind: Dark,
     toast: (
         info: Tailwind(GREEN, C700),
         warn: Yellow,
