@@ -107,6 +107,7 @@ User's data will be stored in `~/.config/ratisui/`:
 - [x] Sorted Set
 - [x] Hash
 - [x] Stream
+- [x] ReJson
 
 **Explorer**
 - [x] Key scan (Fuzzy/Pattern)
