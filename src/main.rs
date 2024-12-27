@@ -31,6 +31,7 @@ mod utils;
 mod bus;
 mod ssh_tunnel;
 mod theme;
+mod marcos;
 
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
 use crate::components::fps::FpsCalculator;
@@ -45,6 +46,7 @@ use std::time::Duration;
 use tokio::time::{interval};
 use crate::app::AppState::Closed;
 use crate::bus::{publish_msg, subscribe_global_channel, try_take_msg, Message};
+use crate::marcos::KeyAsserter;
 use crate::tui::TerminalBackEnd;
 
 #[tokio::main]
@@ -165,7 +167,7 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
                     InputEvent::Input(input) => {
                         if let Event::Key(key_event) = input {
                             if key_event.kind == KeyEventKind::Press {
-                                if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('c') {
+                                if key_event.is_c_c() {
                                     app.state = AppState::Closing;
                                     app.context.on_app_event(AppEvent::Destroy)?;
                                 } else if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::F(5) {

@@ -447,7 +447,7 @@ mod high_light_test {
         }).to_string();
         assert_eq!(r#"{"tags":["1",2,"3"]}"#, json);
         let mut processor = super::HighlightProcessor::new(json, Some(super::ContentType::Json));
-        let x = processor.process()?;
+        let _ = processor.process()?;
         assert_eq!(
             r#"{
   "tags": [
