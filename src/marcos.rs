@@ -5,6 +5,9 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratisui_macros::characterize;
 
 /// Declare key asserter
+/// ```rust
+/// key_asserter!(a);
+/// ```
 /// Macro expansion:
 /// ```rust
 /// pub trait KeyAsserter {

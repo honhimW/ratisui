@@ -45,7 +45,7 @@ use std::cmp;
 use std::time::Duration;
 use tokio::time::{interval};
 use crate::app::AppState::Closed;
-use crate::bus::{publish_msg, subscribe_global_channel, try_take_msg, Message};
+use crate::bus::{publish_event, publish_msg, subscribe_global_channel, try_take_msg, GlobalEvent, Message};
 use crate::marcos::KeyAsserter;
 use crate::tui::TerminalBackEnd;
 
@@ -157,6 +157,11 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
         }
 
         if let Ok(global_event) = global_channel.try_recv() {
+            if matches!(global_event, GlobalEvent::Exit) {
+                app.state = AppState::Closing;
+                app.context.on_app_event(AppEvent::Destroy)?;
+                continue;
+            }
             app.context.on_app_event(AppEvent::Bus(global_event))?;
         }
 
@@ -167,16 +172,20 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
                     InputEvent::Input(input) => {
                         if let Event::Key(key_event) = input {
                             if key_event.kind == KeyEventKind::Press {
-                                if key_event.is_c_c() {
-                                    app.state = AppState::Closing;
-                                    app.context.on_app_event(AppEvent::Destroy)?;
-                                } else if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::F(5) {
+                                if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::F(5) {
                                     app.context.on_app_event(AppEvent::Reset)?
                                 } else {
                                     let handle_result = app.context.handle_key_event(key_event);
-                                    if let Err(e) = handle_result {
-                                        error!("Handle key event error: {:?}", e);
-                                        let _ = publish_msg(Message::error(format!("{}", e)).title("Handle Error"));
+                                    match handle_result {
+                                        Ok(accepted) => {
+                                            if !accepted && key_event.is_c_c() {
+                                                let _ = publish_event(GlobalEvent::Exit);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Handle key event error: {:?}", e);
+                                            let _ = publish_msg(Message::error(format!("{}", e)).title("Handle Error"));
+                                        }
                                     }
                                 }
                             }
