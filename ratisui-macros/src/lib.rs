@@ -1,16 +1,16 @@
-use proc_macro::{Literal, TokenStream, TokenTree};
+use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Ident};
+
+// #[proc_macro]
+// pub fn characterize(input: TokenStream) -> TokenStream {
+//     let input = parse_macro_input!(input as Ident);
+//     let char_lit = input.to_string().chars().next().unwrap();
+//     let expanded = quote! { #char_lit };
+//     TokenStream::from(expanded)
+// }
 
 #[proc_macro]
-pub fn charify(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as Ident);
-    let char_lit = input.to_string().chars().next().unwrap();
-    let expanded = quote! { #char_lit };
-    TokenStream::from(expanded)
-}
-#[proc_macro]
-pub fn charify2(input: TokenStream) -> TokenStream {
+pub fn characterize(input: TokenStream) -> TokenStream {
     let mut iter = input.into_iter();
     match iter.next() {
         None => {
