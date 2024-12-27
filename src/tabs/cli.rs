@@ -19,6 +19,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use strum::Display;
 use throbber_widgets_tui::{Throbber, ThrobberState};
+use crate::bus::{publish_event, GlobalEvent};
+use crate::marcos::KeyAsserter;
 use crate::theme::get_color;
 
 pub struct CliTab {
@@ -99,7 +101,7 @@ impl Listenable for CliTab {
         if self.is_listening() {
             if key_event.kind == KeyEventKind::Press {
                 match key_event {
-                    KeyEvent { code: KeyCode::Esc, .. } => {
+                    KeyEvent { code: KeyCode::Esc, .. } | KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, ..} => {
                         self.do_dispose();
                     }
                     KeyEvent { code: KeyCode::Home, .. } => {
@@ -160,6 +162,18 @@ impl Listenable for CliTab {
                         self.input_throbber_state.calc_next();
                         let handled = self.redis_cli.handle_key_event(key_event)?;
                         if handled {
+                            return Ok(true);
+                        }
+                    }
+                    if key_event.is_c_c() {
+                        let command = self.get_command();
+                        if let Some(command) = command {
+                            self.lock_at = Some(Instant::now());
+                            self.console_data.push(OutputKind::CMD, format!(">_ {}", command));
+                            self.scroll_end();
+                            self.console_data.build_paragraph();
+                            self.redis_cli = RedisCli::new();
+                            self.lock_input = false;
                             return Ok(true);
                         }
                     }
@@ -287,6 +301,9 @@ impl CliTab {
         if "clear".eq_ignore_ascii_case(&command) {
             self.clear_output();
             self.lock_input = false;
+            return;
+        } else if "exit".eq_ignore_ascii_case(&command) {
+            let _ = publish_event(GlobalEvent::Exit);
             return;
         }
 

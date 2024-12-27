@@ -1,14 +1,14 @@
-use std::collections::HashMap;
-use std::io::Cursor;
+use jaded::Parser;
 use protobuf::reflect::MessageDescriptor;
-use protobuf::UnknownValueRef;
 use protobuf::well_known_types::any::Any;
+use protobuf::UnknownValueRef;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ron::ser::PrettyConfig;
 use serde::Serialize;
-use tui_textarea::TextArea;
-use jaded::Parser;
+use std::collections::HashMap;
+use std::io::Cursor;
 use strum::Display;
+use tui_textarea::TextArea;
 
 #[allow(unused)]
 #[derive(Default, Clone, Display)]
@@ -73,13 +73,19 @@ pub fn deserialize_bytes(bytes: Vec<u8>) -> anyhow::Result<(String, Option<Conte
     if let Ok(string) = String::from_utf8(bytes.clone()) {
         Ok((string, None))
     } else {
-        Ok((bytes.iter().map(|&b| {
-            if b.is_ascii() {
-                (b as char).to_string()
-            } else {
-                format!("\\x{:02x}", b)
-            }
-        }).collect::<String>(), None))
+        Ok((
+            bytes
+                .iter()
+                .map(|&b| {
+                    if b.is_ascii() {
+                        (b as char).to_string()
+                    } else {
+                        format!("\\x{:02x}", b)
+                    }
+                })
+                .collect::<String>(),
+            None,
+        ))
     }
 }
 
@@ -99,13 +105,16 @@ pub fn bytes_to_string(bytes: Vec<u8>) -> anyhow::Result<String> {
     if let Ok(string) = String::from_utf8(bytes.clone()) {
         Ok(string)
     } else {
-        Ok(bytes.iter().map(|&b| {
-            if b.is_ascii() {
-                (b as char).to_string()
-            } else {
-                format!("\\x{:02x}", b)
-            }
-        }).collect::<String>())
+        Ok(bytes
+            .iter()
+            .map(|&b| {
+                if b.is_ascii() {
+                    (b as char).to_string()
+                } else {
+                    format!("\\x{:02x}", b)
+                }
+            })
+            .collect::<String>())
     }
 }
 
@@ -129,7 +138,7 @@ pub fn des_protobuf(bytes: Vec<u8>) -> anyhow::Result<String> {
         Fixed32(u32),
         Fixed64(u64),
         Varint(u64),
-        LengthDelimited(String)
+        LengthDelimited(String),
     }
 
     let mut hash_map: HashMap<u32, Field> = HashMap::new();
@@ -139,7 +148,9 @@ pub fn des_protobuf(bytes: Vec<u8>) -> anyhow::Result<String> {
             UnknownValueRef::Fixed32(fixed32) => hash_map.insert(idx, Field::Fixed32(fixed32)),
             UnknownValueRef::Fixed64(fixed64) => hash_map.insert(idx, Field::Fixed64(fixed64)),
             UnknownValueRef::Varint(varint) => hash_map.insert(idx, Field::Varint(varint)),
-            UnknownValueRef::LengthDelimited(ld) => hash_map.insert(idx, Field::LengthDelimited(String::from_utf8(ld.to_vec())?)),
+            UnknownValueRef::LengthDelimited(ld) => {
+                hash_map.insert(idx, Field::LengthDelimited(String::from_utf8(ld.to_vec())?))
+            }
         };
     }
 
@@ -149,8 +160,7 @@ pub fn des_protobuf(bytes: Vec<u8>) -> anyhow::Result<String> {
 
 pub fn escape_string(s: impl Into<String>) -> String {
     let s = s.into();
-    s
-        .replace("\\", "\\\\")
+    s.replace("\\", "\\\\")
         .replace("\t", "\\t")
         .replace("\n", "\\n")
         .replace("\r", "\\r")
@@ -192,4 +202,24 @@ pub fn split_args(cmd: impl Into<String>) -> Vec<String> {
         parts.push(current);
     }
     parts
+}
+
+#[cfg(test)]
+mod test {
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    macro_rules! ctrl {
+    ($name:ident) => {{
+        let chars = stringify!($name);
+        if let Some(c) = chars.chars().next() {
+            KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+        } else {
+            KeyEvent::new(KeyCode::Null, KeyModifiers::CONTROL)
+        }
+    }};
+}
+    #[test]
+    fn test_ctrl_macro() {
+        assert!(matches!(ctrl!(a), KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL,.. }));
+    }
 }

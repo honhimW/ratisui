@@ -130,7 +130,7 @@ mod test {
         tokio::spawn(async move {
             let now = Instant::now();
             loop {
-                if let Ok((mut stream, _)) = listener.accept().await {
+                if let Ok((stream, _)) = listener.accept().await {
                     println!("{:?} {:?}", now.elapsed(), stream);
                 } else {
                     println!("No connection");
@@ -138,13 +138,13 @@ mod test {
             }
         });
         tokio::time::sleep(Duration::from_secs(1)).await;
-        let x = TcpStream::connect(addr).await?;
+        let _ = TcpStream::connect(addr).await?;
         tokio::time::sleep(Duration::from_secs(1)).await;
-        let x = TcpStream::connect(addr).await?;
+        let _ = TcpStream::connect(addr).await?;
         tokio::time::sleep(Duration::from_secs(1)).await;
-        let x = TcpStream::connect(addr).await?;
+        let _ = TcpStream::connect(addr).await?;
         tokio::time::sleep(Duration::from_secs(1)).await;
-        let x = TcpStream::connect(addr).await?;
+        let _ = TcpStream::connect(addr).await?;
         tokio::time::sleep(Duration::from_secs(1)).await;
         Ok(())
     }

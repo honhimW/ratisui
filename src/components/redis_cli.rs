@@ -779,7 +779,19 @@ static COMMANDS: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
         range: (0, -1),
         insert_text: "clear".to_string(),
     };
+    let exit_item = CompletionItem {
+        kind: CompletionItemKind::Other,
+        label: Label {
+            label: "EXIT".to_string(),
+            detail: Some("exit the application".to_string()),
+            description: None,
+        },
+        parameters: vec![],
+        range: (0, -1),
+        insert_text: "exit".to_string(),
+    };
     items.push(clear_item);
+    items.push(exit_item);
     if let Ok(commands) = result {
         for command in commands.iter() {
             let cmd = command.get("command").expect("command is empty");
