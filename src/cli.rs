@@ -1,13 +1,14 @@
 use anyhow::Result;
-use clap::{arg, ArgMatches, Command};
+use clap::{arg, crate_version, ArgMatches, Command};
 use std::collections::BTreeMap;
 
 pub fn cli() -> Result<Command> {
     let command = Command::new("ratisui")
+        .version(crate_version!())
         .about("Redis TUI build with Ratatui.")
         .args([
-            arg!(-t --target <TARGET> "named redis target, default read from config file if exist"),
-            arg!(-T --theme <THEME> "theme configuration file name, under ~/.config/ratisui/theme/<THEME>.ron"),
+            arg!(-t --target <TARGET> "Named redis target in ~/.config/ratisui/databases.ron"),
+            arg!(-T --theme <THEME> "Theme configuration in ~/.config/ratisui/theme/<THEME>.ron"),
         ]);
 
     Ok(command)
