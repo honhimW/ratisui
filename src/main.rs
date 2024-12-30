@@ -49,6 +49,8 @@ use crate::bus::{publish_event, publish_msg, subscribe_global_channel, try_take_
 use crate::marcos::KeyAsserter;
 use crate::tui::TerminalBackEnd;
 
+pub static DATE_FORMAT_PATTERN: &str = "%Y-%m-%dT%H:%M:%S%.3fZ";
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let command = cli::cli()?;
