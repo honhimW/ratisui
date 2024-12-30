@@ -149,9 +149,7 @@ pub fn des_protobuf(bytes: Vec<u8>) -> anyhow::Result<String> {
             UnknownValueRef::Fixed32(fixed32) => hash_map.insert(idx, Field::Fixed32(fixed32)),
             UnknownValueRef::Fixed64(fixed64) => hash_map.insert(idx, Field::Fixed64(fixed64)),
             UnknownValueRef::Varint(varint) => hash_map.insert(idx, Field::Varint(varint)),
-            UnknownValueRef::LengthDelimited(ld) => {
-                hash_map.insert(idx, Field::LengthDelimited(String::from_utf8(ld.to_vec())?))
-            }
+            UnknownValueRef::LengthDelimited(ld) => hash_map.insert(idx, Field::LengthDelimited(String::from_utf8(ld.to_vec())?)),
         };
     }
 
@@ -169,7 +167,8 @@ enum Field {
 
 pub fn escape_string(s: impl Into<String>) -> String {
     let s = s.into();
-    s.replace("\\", "\\\\")
+    s
+        .replace("\\", "\\\\")
         .replace("\t", "\\t")
         .replace("\n", "\\n")
         .replace("\r", "\\r")

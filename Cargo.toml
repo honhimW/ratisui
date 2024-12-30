@@ -1,6 +1,6 @@
 [package]
 name = "ratisui"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 authors = ["honhimw <honhimw@outlook.com>"]
 rust-version = "1.81.0"
@@ -51,7 +51,7 @@ uuid = { version = "1.11.0", features = ["v4"] }
 ron = { version = "0.8.1", features = ["default"] }
 dirs = "5.0.1"
 base64 = "0.22.1"
-clap = "4.5"
+clap = { version = "4.5", features = ["cargo"] }
 tokio = { workspace = true, features = ["full"] }
 chronoutil = "0.2.7"
 itertools = "0.13.0"
