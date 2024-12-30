@@ -282,7 +282,7 @@ impl Listenable for Context {
             self.show_server_switcher = true;
             return Ok(true);
         }
-        Ok(true)
+        Ok(false)
     }
 
     fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {

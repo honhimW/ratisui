@@ -57,7 +57,7 @@ where
         });
         Ok(())
     } else {
-        Ok(())
+        Err(anyhow!("redis not connected"))
     }
 }
 
