@@ -7,6 +7,7 @@ use ron::ser::PrettyConfig;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::io::Cursor;
+use anyhow::anyhow;
 use strum::Display;
 use tui_textarea::TextArea;
 
@@ -129,7 +130,7 @@ pub fn des_java(bytes: Vec<u8>) -> anyhow::Result<String> {
 pub fn des_protobuf(bytes: Vec<u8>) -> anyhow::Result<String> {
     let descriptor = MessageDescriptor::for_type::<Any>();
     let dynamic_message = descriptor.parse_from_bytes(&bytes)?;
-    let any_message: Box<Any> = dynamic_message.downcast_box().expect("");
+    let any_message: Box<Any> = dynamic_message.downcast_box().map_err(|e| anyhow!(e))?;
 
     let fields = any_message.special_fields;
     let unknown_fields = fields.unknown_fields();
