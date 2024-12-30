@@ -52,20 +52,19 @@ impl Value {
                 // ignore groups
                 continue;
             }
-            let value_source = matches
-                .value_source(id.as_str())
-                .expect("id came from matches");
-            if value_source != clap::parser::ValueSource::CommandLine {
-                // Any other source just gets tacked on at the end (like default values)
-                continue;
+            if let Some(value_source) = matches.value_source(id.as_str()) {
+                if value_source != clap::parser::ValueSource::CommandLine {
+                    // Any other source just gets tacked on at the end (like default values)
+                    continue;
+                }
+                if Self::extract::<String>(matches, id, &mut values) {
+                    continue;
+                }
+                if Self::extract::<bool>(matches, id, &mut values) {
+                    continue;
+                }
+                unimplemented!("unknown type for {id}: {matches:?}");
             }
-            if Self::extract::<String>(matches, id, &mut values) {
-                continue;
-            }
-            if Self::extract::<bool>(matches, id, &mut values) {
-                continue;
-            }
-            unimplemented!("unknown type for {id}: {matches:?}");
         }
         values.into_values().collect::<Vec<_>>()
     }
@@ -77,13 +76,14 @@ impl Value {
     ) -> bool {
         match matches.try_get_many::<T>(id.as_str()) {
             Ok(Some(values)) => {
-                for (value, index) in values.zip(
-                    matches
-                        .indices_of(id.as_str())
-                        .expect("id came from matches"),
-                ) {
-                    output.insert(index, (id.clone(), value.clone().into()));
+                if let Some(indices) = matches.indices_of(id.as_str()) {
+                    for (value, index) in values.zip(
+                        indices,
+                    ) {
+                        output.insert(index, (id.clone(), value.clone().into()));
+                    }
                 }
+
                 true
             }
             Ok(None) => {

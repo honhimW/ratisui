@@ -793,87 +793,102 @@ static COMMANDS: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
     items.push(clear_item);
     items.push(exit_item);
     if let Ok(commands) = result {
-        for command in commands.iter() {
-            let cmd = command.get("command").expect("command is empty");
-            let group = command.get("group").expect("group is empty");
-            let syntax = command.get("syntax").expect("syntax is empty");
-            let summary = command.get("summary").expect("summary is empty");
-            let since = command.get("since").expect("since is empty");
-            let complexity = command.get("complexity").expect("complexity is empty");
-            let acl = command.get("acl").expect("acl is empty");
-            let arguments = command.get("arguments").expect("arguments is empty");
-
-            let mut item = CompletionItem::default(value_to_string(cmd));
-
-            let kind: CompletionItemKind = match group.as_str().expect("group is not string") {
-                "generic" => CompletionItemKind::Generic,
-                "string" => CompletionItemKind::String,
-                "list" => CompletionItemKind::List,
-                "set" => CompletionItemKind::Set,
-                "sorted-set" => CompletionItemKind::ZSet,
-                "hash" => CompletionItemKind::Hash,
-                "stream" => CompletionItemKind::Stream,
-                "pubsub" => CompletionItemKind::PubSub,
-                "server" => CompletionItemKind::Server,
-                _ => CompletionItemKind::Other,
-            };
-            item.kind = kind;
-            item = item.description(Doc::default()
-                .syntax(value_to_string(syntax))
-                .summary(value_to_string(summary))
-                .since(value_to_string(since))
-                .complexity(value_to_string(complexity))
-                .acl(value_to_string(acl))
-            );
-            let arguments = arguments.as_array().expect("arguments is not an array");
-            for argument in arguments.iter() {
-                let arg_type = argument.get("type").expect("argument type is empty");
-                if let Value::String(type_str) = arg_type {
-                    match type_str.as_str() {
-                        "flag" => {
-                            let value = argument.get("value").expect("flag value is empty");
-                            let string = value_to_string(value);
-                            item = item.add_param(Parameter::flag(string.clone(), string.clone()));
-                        },
-                        "enum" => {
-                            let values = argument.get("values").expect("enums values is empty");
-                            let values = values.as_array().expect("values is not an array");
-                            let mut vec = vec![];
-                            for value in values {
-                                let string = value_to_string(value);
-                                vec.push((string.clone(), string.clone()));
-                            }
-                            item = item.add_param(Parameter::enums(vec));
-                        },
-                        "arg" => {
-                            let key = argument.get("key").expect("arg key is empty");
-                            let arg = argument.get("arg").expect("arg arg is empty");
-                            let detail = argument.get("detail").expect("arg detail is empty");
-                            let key = value_to_string(key);
-                            let arg = value_to_string(arg);
-                            let detail = value_to_string(detail);
-                            item = item.add_param(Parameter::arg(key, arg, detail));
-                        },
-                        "many" => {
-                            let name = argument.get("name").expect("many name is empty");
-                            let name = value_to_string(name);
-                            item = item.add_param(Parameter::many(name));
-                        },
-                        "single" => {
-                            let name = argument.get("name").expect("many name is empty");
-                            let name = value_to_string(name);
-                            item = item.add_param(Parameter::single(name));
-                        },
-                        _ => {}
-                    }
-                }
-            }
-            item = item.build_label();
-            items.push(item);
-        }
+        resolve_commands(commands, &mut items);
     }
     items
 });
+
+fn resolve_commands(commands: Vec<Value>, items: &mut Vec<CompletionItem>) -> Option<()> {
+    for command in commands.iter() {
+        let cmd = command.get("command")?;
+        let group = command.get("group")?;
+        let syntax = command.get("syntax")?;
+        let summary = command.get("summary")?;
+        let since = command.get("since")?;
+        let complexity = command.get("complexity")?;
+        let acl = command.get("acl")?;
+        let arguments = command.get("arguments")?;
+
+        let mut item = CompletionItem::default(value_to_string(cmd));
+
+        let kind: CompletionItemKind = match group.as_str()? {
+            "generic" => CompletionItemKind::Generic,
+            "string" => CompletionItemKind::String,
+            "list" => CompletionItemKind::List,
+            "set" => CompletionItemKind::Set,
+            "sorted-set" => CompletionItemKind::ZSet,
+            "hash" => CompletionItemKind::Hash,
+            "stream" => CompletionItemKind::Stream,
+            "pubsub" => CompletionItemKind::PubSub,
+            "server" => CompletionItemKind::Server,
+            _ => CompletionItemKind::Other,
+        };
+        item.kind = kind;
+        item = item.description(Doc::default()
+            .syntax(value_to_string(syntax))
+            .summary(value_to_string(summary))
+            .since(value_to_string(since))
+            .complexity(value_to_string(complexity))
+            .acl(value_to_string(acl))
+        );
+        let arguments = arguments.as_array()?;
+        for argument in arguments.iter() {
+            let arg_type = argument.get("type")?;
+            if let Value::String(type_str) = arg_type {
+                match type_str.as_str() {
+                    "flag" => {
+                        let value = argument.get("value")?;
+                        let string = value_to_string(value);
+                        if !string.is_empty() {
+                            item = item.add_param(Parameter::flag(string.clone(), string.clone()));
+                        }
+                    },
+                    "enum" => {
+                        let values = argument.get("values")?;
+                        let values = values.as_array()?;
+                        let mut vec = vec![];
+                        for value in values {
+                            let string = value_to_string(value);
+                            if !string.is_empty() {
+                                vec.push((string.clone(), string.clone()));
+                            }
+                        }
+                        item = item.add_param(Parameter::enums(vec));
+                    },
+                    "arg" => {
+                        let key = argument.get("key")?;
+                        let arg = argument.get("arg")?;
+                        let detail = argument.get("detail")?;
+                        let key = value_to_string(key);
+                        let arg = value_to_string(arg);
+                        let detail = value_to_string(detail);
+                        if !key.is_empty() {
+                            item = item.add_param(Parameter::arg(key, arg, detail));
+                        }
+                    },
+                    "many" => {
+                        let name = argument.get("name")?;
+                        let name = value_to_string(name);
+                        if !name.is_empty() {
+                            item = item.add_param(Parameter::many(name));
+                        }
+                    },
+                    "single" => {
+                        let name = argument.get("name")?;
+                        let name = value_to_string(name);
+                        if !name.is_empty() {
+                            item = item.add_param(Parameter::single(name));
+                        }
+                    },
+                    _ => {}
+                }
+            }
+        }
+        item = item.build_label();
+        items.push(item);
+    }
+    Some(())
+}
 
 fn value_to_string(value: &Value) -> String {
     if let Some(s) = value.as_str() {

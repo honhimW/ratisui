@@ -1,13 +1,16 @@
 use crate::app::{centered_rect, AppEvent, Listenable, Renderable, TabImplementation};
+use crate::bus::GlobalEvent;
 use crate::components::create_key_editor::{Form, KeyType};
 use crate::components::hash_table::HashValue;
 use crate::components::list_table::ListValue;
 use crate::components::popup::Popup;
 use crate::components::raw_paragraph::RawParagraph;
 use crate::components::set_table::SetValue;
+use crate::components::stream_view::SteamView;
 use crate::components::zset_table::ZSetValue;
 use crate::redis_opt::{async_redis_opt, spawn_redis_opt};
 use crate::tabs::explorer::CurrentScreen::{KeysTree, ValuesViewer};
+use crate::theme::get_color;
 use crate::utils::{bytes_to_string, clean_text_area};
 use crate::utils::{deserialize_bytes, ContentType};
 use anyhow::{anyhow, Context, Error, Result};
@@ -26,9 +29,6 @@ use std::ops::Not;
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
-use crate::bus::GlobalEvent;
-use crate::components::stream_view::SteamView;
-use crate::theme::get_color;
 
 pub struct ExplorerTab {
     pub current_screen: CurrentScreen,
@@ -136,24 +136,26 @@ impl TreeNode {
 fn build_tree_items(node: &TreeNode) -> Vec<TreeItem<'static, String>> {
     let mut items = Vec::new();
     for (key, child) in &node.children {
-        let item;
+        let mut  item: Option<TreeItem<String>> = None;
         if child.children.is_empty() {
             if let Some(_type) = &child.key_type {
                 let name_span = Span::raw(key.clone());
                 let mut line = Line::default();
                 line.push_span(name_span);
                 let text = Text::from(line);
-                item = TreeItem::new_leaf(child.id.clone(), text);
+                item = Some(TreeItem::new_leaf(child.id.clone(), text));
             } else {
-                item = TreeItem::new_leaf(child.id.clone(), key.clone());
+                item = Some(TreeItem::new_leaf(child.id.clone(), key.clone()));
             }
         } else {
             let vec = build_tree_items(child);
-            let msg = format!("{:#?}", &vec);
-            item = TreeItem::new(child.id.clone(), key.clone(), vec)
-                .expect(&msg);
+            if let Ok(tree_item) = TreeItem::new(child.id.clone(), key.clone(), vec) {
+                item = Some(tree_item);
+            }
         }
-        items.push(item);
+        if let Some(item) = item {
+            items.push(item);
+        }
     }
     items.sort_by(|x, x1| x.identifier().cmp(x1.identifier()));
     items
