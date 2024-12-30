@@ -475,12 +475,17 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
     let format_err = |str: &str| {
         (OutputKind::ERR, format!("{prepend}{str}"))
     };
+    let format_no_pad = |str: &str| {
+        (OutputKind::STD, format!("{str}"))
+    };
+    use log::warn;
+    warn!("pad: {}, value: {:?}", pad, value);
     match value {
         Value::Nil => {
-            vec![format("(Nil)".as_ref())]
+            vec![format_no_pad("(Nil)")]
         }
         Value::Int(int) => {
-            vec![format(int.to_string().as_ref())]
+            vec![format_no_pad(int.to_string().as_ref())]
         }
         Value::BulkString(bulk_string) => {
             let bulk_string = bytes_to_string(bulk_string.clone()).unwrap_or_else(|e| e.to_string());
@@ -490,7 +495,7 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
                 let bulk_string = bulk_string.replace("\t", "\\t");
                 // let bulk_string = format!("\"{}\"", bulk_string);
                 let lines = bulk_string.lines();
-                lines.map(|line| format(line)).collect_vec()
+                lines.map(|line| format_no_pad(line)).collect_vec()
             }
         }
         Value::Array(array) => {
@@ -501,10 +506,9 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
                 if sub_lines.len() == 1 {
                     if let Some((kind, first_line)) = sub_lines.get(0) {
                         if first_line.len() > 2 {
-                            let x = &first_line[2..];
                             match kind {
-                                OutputKind::STD => lines.push(format(&format!("{i}) {x}"))),
-                                OutputKind::ERR => lines.push(format_err(&format!("{i}) {x}"))),
+                                OutputKind::STD => lines.push(format(&format!("{i}) {first_line}"))),
+                                OutputKind::ERR => lines.push(format_err(&format!("{i}) {first_line}"))),
                                 _ => {}
                             }
                         } else {
@@ -522,10 +526,10 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
         Value::SimpleString(string) => {
             let string = escape_string(string);
             let lines = string.lines();
-            lines.map(|line| format(line.as_ref())).collect_vec()
+            lines.map(|line| format_no_pad(line.as_ref())).collect_vec()
         }
         Value::Okay => {
-            vec![format("Okay")]
+            vec![format_no_pad("Okay")]
         }
         Value::Map(map) => {
             let mut lines = vec![];
@@ -535,10 +539,9 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
                 let v_lines = value_to_lines(value, pad + 2);
                 if k_lines.len() == 1 {
                     if let Some((kind, first_line)) = k_lines.get(0) {
-                        let x = &first_line[2..];
                         match kind {
-                            OutputKind::STD => lines.push(format(&format!("{i}) {x}"))),
-                            OutputKind::ERR => lines.push(format_err(&format!("{i}) {x}"))),
+                            OutputKind::STD => lines.push(format(&format!("{i}) {first_line}"))),
+                            OutputKind::ERR => lines.push(format_err(&format!("{i}) {first_line}"))),
                             _ => {}
                         }
                     }
@@ -549,10 +552,9 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
                 i = i + 1;
                 if v_lines.len() == 1 {
                     if let Some((kind, first_line)) = v_lines.get(0) {
-                        let x = &first_line[2..];
                         match kind {
-                            OutputKind::STD => lines.push(format(&format!("{i}) {x}"))),
-                            OutputKind::ERR => lines.push(format_err(&format!("{i}) {x}"))),
+                            OutputKind::STD => lines.push(format(&format!("{i}) {first_line}"))),
+                            OutputKind::ERR => lines.push(format_err(&format!("{i}) {first_line}"))),
                             _ => {}
                         }
                     }
@@ -565,7 +567,7 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
             lines
         }
         Value::Attribute { .. } => {
-            vec![format_err("Attribute, not supported yet")]
+            vec![format_no_pad("Attribute, not supported yet")]
         }
         Value::Set(set) => {
             let mut lines = vec![];
@@ -574,10 +576,9 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
                 let sub_lines = value_to_lines(value, pad + 2);
                 if sub_lines.len() == 1 {
                     if let Some((kind, first_line)) = sub_lines.get(0) {
-                        let x = &first_line[2..];
                         match kind {
-                            OutputKind::STD => lines.push(format(&format!("{i}) {x}"))),
-                            OutputKind::ERR => lines.push(format_err(&format!("{i}) {x}"))),
+                            OutputKind::STD => lines.push(format(&format!("{i}) {first_line}"))),
+                            OutputKind::ERR => lines.push(format_err(&format!("{i}) {first_line}"))),
                             _ => {}
                         }
                     }
@@ -590,10 +591,10 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
             lines
         }
         Value::Double(double) => {
-            vec![format(&double.to_string())]
+            vec![format_no_pad(&double.to_string())]
         }
         Value::Boolean(boolean) => {
-            vec![format(&boolean.to_string())]
+            vec![format_no_pad(&boolean.to_string())]
         }
         Value::VerbatimString { format: _format, text, .. } => {
             match _format {
@@ -605,16 +606,16 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
                             (OutputKind::Else(Style::default().dim()), format!("{prepend}{line}"))
                         }).collect_vec()
                     } else {
-                        vec![format(format!("\"{}\"", escape_string(s)).as_ref())]
+                        vec![format_no_pad(format!("\"{}\"", escape_string(s)).as_ref())]
                     }
                 }
                 _ => {
-                    text.lines().map(|line| format(line.as_ref())).collect_vec()
+                    text.lines().map(|line| format_no_pad(line.as_ref())).collect_vec()
                 }
             }
         }
         Value::BigNumber(big_number) => {
-            vec![format(&big_number.to_string())]
+            vec![format_no_pad(&big_number.to_string())]
         }
         Value::Push { data, .. } => {
             let mut lines = vec![];
