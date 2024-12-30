@@ -5,7 +5,7 @@ use protobuf::UnknownValueRef;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ron::ser::PrettyConfig;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap};
 use std::io::Cursor;
 use anyhow::anyhow;
 use strum::Display;
@@ -132,17 +132,17 @@ pub fn des_protobuf(bytes: Vec<u8>) -> anyhow::Result<String> {
     let dynamic_message = descriptor.parse_from_bytes(&bytes)?;
     let any_message: Box<Any> = dynamic_message.downcast_box().map_err(|e| anyhow!(e))?;
 
-    let fields = any_message.special_fields;
-    let unknown_fields = fields.unknown_fields();
-    #[derive(Serialize)]
-    enum Field {
-        Fixed32(u32),
-        Fixed64(u64),
-        Varint(u64),
-        LengthDelimited(String),
+    let mut hash_map: BTreeMap<u32, Field> = BTreeMap::new();
+
+    if !any_message.type_url.is_empty() {
+        hash_map.insert(1, Field::LengthDelimited(any_message.type_url.clone()));
+    }
+    if !any_message.value.is_empty() {
+        hash_map.insert(2, Field::LengthDelimited(String::from_utf8(any_message.value.clone().to_vec())?));
     }
 
-    let mut hash_map: HashMap<u32, Field> = HashMap::new();
+    let fields = any_message.special_fields;
+    let unknown_fields = fields.unknown_fields();
 
     for (idx, unknown_field) in unknown_fields.iter() {
         match unknown_field {
@@ -157,6 +157,14 @@ pub fn des_protobuf(bytes: Vec<u8>) -> anyhow::Result<String> {
 
     let ron = ron::ser::to_string_pretty(&hash_map, PrettyConfig::default())?;
     Ok(ron)
+}
+
+#[derive(Serialize)]
+enum Field {
+    Fixed32(u32),
+    Fixed64(u64),
+    Varint(u64),
+    LengthDelimited(String),
 }
 
 pub fn escape_string(s: impl Into<String>) -> String {
