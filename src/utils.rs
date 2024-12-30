@@ -65,29 +65,28 @@ pub fn deserialize_bytes(bytes: Vec<u8>) -> anyhow::Result<(String, Option<Conte
         return Ok((string, Some(ContentType::Ron)));
     }
 
+    let des_utf8 = String::from_utf8(bytes.clone());
+    if let Ok(string) = des_utf8 {
+        return Ok((string, None));
+    }
     let des_result = des_protobuf(bytes.clone());
     if des_result.is_ok() {
         let string = des_result?;
         return Ok((string, Some(ContentType::Ron)));
     }
-
-    if let Ok(string) = String::from_utf8(bytes.clone()) {
-        Ok((string, None))
-    } else {
-        Ok((
-            bytes
-                .iter()
-                .map(|&b| {
-                    if b.is_ascii() {
-                        (b as char).to_string()
-                    } else {
-                        format!("\\x{:02x}", b)
-                    }
-                })
-                .collect::<String>(),
-            None,
-        ))
-    }
+    Ok((
+        bytes
+            .iter()
+            .map(|&b| {
+                if b.is_ascii() {
+                    (b as char).to_string()
+                } else {
+                    format!("\\x{:02x}", b)
+                }
+            })
+            .collect::<String>(),
+        None,
+    ))
 }
 
 pub fn bytes_to_string(bytes: Vec<u8>) -> anyhow::Result<String> {
@@ -99,24 +98,25 @@ pub fn bytes_to_string(bytes: Vec<u8>) -> anyhow::Result<String> {
         return des_result;
     }
 
+    if let Ok(string) = String::from_utf8(bytes.clone()) {
+        return Ok(string);
+    }
+
     let des_result = des_protobuf(bytes.clone());
     if des_result.is_ok() {
         return des_result;
     }
-    if let Ok(string) = String::from_utf8(bytes.clone()) {
-        Ok(string)
-    } else {
-        Ok(bytes
-            .iter()
-            .map(|&b| {
-                if b.is_ascii() {
-                    (b as char).to_string()
-                } else {
-                    format!("\\x{:02x}", b)
-                }
-            })
-            .collect::<String>())
-    }
+
+    Ok(bytes
+        .iter()
+        .map(|&b| {
+            if b.is_ascii() {
+                (b as char).to_string()
+            } else {
+                format!("\\x{:02x}", b)
+            }
+        })
+        .collect::<String>())
 }
 
 pub fn des_java(bytes: Vec<u8>) -> anyhow::Result<String> {

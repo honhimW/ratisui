@@ -964,8 +964,8 @@ impl ExplorerTab {
                 "hash" => {
                     let values: HashMap<Vec<u8>, Vec<u8>> = op.get_hash(key_name_clone).await?;
                     let hash_value: HashMap<String, String> = values.iter().map(|(key, value)| {
-                        let key_str: String = bytes_to_string(key.clone()).unwrap_or_else(|_| { String::new() });
-                        let value_str = bytes_to_string(value.clone()).unwrap_or_else(|_| { String::new() });
+                        let key_str: String = bytes_to_string(key.clone()).unwrap_or_default();
+                        let value_str = bytes_to_string(value.clone()).unwrap_or_default();
                         (key_str, value_str)
                     }).collect();
                     data.selected_hash_value = (true, Some(hash_value));
@@ -973,8 +973,8 @@ impl ExplorerTab {
                 "stream" => {
                     let values: Vec<(Vec<u8>, Vec<Vec<u8>>)> = op.get_stream(key_name_clone).await?;
                     let hash_value: Vec<(String, Vec<String>)> = values.iter().map(|(key, value)| {
-                        let key_str: String = bytes_to_string(key.clone()).unwrap_or_else(|_| { String::new() });
-                        let values: Vec<String> = value.iter().map(|item| bytes_to_string(item.clone()).unwrap_or_else(|_| { String::new() })).collect();
+                        let key_str: String = bytes_to_string(key.clone()).unwrap_or_default();
+                        let values: Vec<String> = value.iter().map(|item| bytes_to_string(item.clone()).unwrap_or_default()).collect();
                         (key_str, values)
                     }).collect();
                     data.selected_stream_value = (true, Some(hash_value));
