@@ -1,6 +1,6 @@
 use crate::app::{Listenable, Renderable};
 use crate::components::servers::Data;
-use crate::configuration::{Database, Protocol, SshTunnel};
+use ratisui_core::configuration::{Database, Protocol, SshTunnel};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Percentage};
 use ratatui::layout::{Layout, Rect};
@@ -11,7 +11,7 @@ use ratatui::Frame;
 use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
 use tui_textarea::TextArea;
 use uuid::Uuid;
-use crate::theme::get_color;
+use ratisui_core::theme::get_color;
 
 pub struct Form {
     title: String,

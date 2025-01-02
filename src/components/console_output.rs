@@ -8,7 +8,7 @@ use std::cmp;
 use strum::Display;
 use OutputKind::{ERR, STD, CMD, Else, Raw};
 use crate::components::raw_value::raw_value_to_highlight_text;
-use crate::theme::get_color;
+use ratisui_core::theme::get_color;
 
 pub struct ConsoleData<'a> {
     pub lines: Vec<(OutputKind, String)>,

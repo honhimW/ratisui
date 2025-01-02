@@ -1,4 +1,5 @@
 use crate::theme::Theme;
+use crate::constants::DATE_FORMAT_PATTERN;
 use anyhow::{Context, Result};
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
@@ -7,12 +8,15 @@ use redis::ProtocolVersion;
 use ron::ser::PrettyConfig;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::{Debug, Display, Formatter};
 use std::fs;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::time::SystemTime;
+use chrono::{DateTime, Local};
 use strum::{Display, EnumCount, EnumIter};
+use itertools::Itertools;
 
 pub fn load_app_configuration() -> Result<Configuration> {
     let mut configuration = Configuration::default();
@@ -69,6 +73,30 @@ pub fn load_theme_configuration(theme_name: Option<String>) -> Result<Theme> {
     Ok(Theme::dark())
 }
 
+pub fn load_history() -> Result<VecDeque<(SystemTime, String)>> {
+    let mut deque = VecDeque::new();
+    let history_path = get_file_path("history.ron")?;
+    if let Ok(file) = File::open(&history_path) {
+        let reader = BufReader::new(file);
+        let lines = reader.lines();
+        for line in lines {
+            let line = line?;
+            let split = line.split(';').collect_vec();
+            if split.len() == 2 {
+                if let Some(time) = split.get(0) {
+                    if let Some(cmd) = split.get(1) {
+                        let native_datetime = chrono::NaiveDateTime::parse_from_str(time, DATE_FORMAT_PATTERN)
+                            .context(format!("failed to parse datetime: {time}"))?;
+                        let datetime: DateTime<Local> = DateTime::from_naive_utc_and_offset(native_datetime, Local::now().offset().clone());
+                        deque.push_back((SystemTime::from(datetime), cmd.to_string()))
+                    }
+                }
+            }
+        }
+    }
+    Ok(deque)
+}
+
 #[allow(unused)]
 pub fn save_configuration(config: &Configuration) -> Result<()> {
     let app_config_path = get_file_path("config.ron")?;
@@ -87,6 +115,18 @@ pub fn save_database_configuration(databases: &Databases) -> Result<()> {
     debug!("{}", &ron_content);
     if let Ok(mut file) = File::create(&db_config_path) {
         file.write_all(ron_content.as_ref())?;
+    }
+    Ok(())
+}
+
+pub fn save_history(histories: VecDeque<(SystemTime, String)>) -> Result<()> {
+    let history_path = get_file_path("history.ron")?;
+    if let Ok(mut file) = File::create(&history_path) {
+        for (system_time, cmd) in histories {
+            let datetime: DateTime<Local> = DateTime::from(system_time);
+            let time = datetime.format(DATE_FORMAT_PATTERN).to_string();
+            writeln!(file, "{time};{cmd}")?;
+        }
     }
     Ok(())
 }
@@ -119,6 +159,8 @@ pub struct Configuration {
     #[serde(default = "try_format")]
     pub try_format: bool,
     pub theme: Option<String>,
+    #[serde(default = "history_size")]
+    pub history_size: u32,
 }
 
 fn fps() -> u8 {
@@ -127,6 +169,10 @@ fn fps() -> u8 {
 
 fn scan_size() -> u16 {
     2_000
+}
+
+fn history_size() -> u32 {
+    1000
 }
 
 fn try_format() -> bool {
@@ -147,6 +193,7 @@ impl Default for Configuration {
             scan_size: scan_size(),
             try_format: try_format(),
             theme: None,
+            history_size: history_size(),
         }
     }
 }

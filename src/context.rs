@@ -1,11 +1,11 @@
 use crate::app::{centered_rect, AppEvent, Listenable, Renderable, TabImplementation};
-use crate::bus::{Kind, Message};
+use ratisui_core::bus::{Kind, Message};
 use crate::components::servers::ServerList;
-use crate::configuration::Databases;
+use ratisui_core::configuration::Databases;
 use crate::tabs::cli::CliTab;
 use crate::tabs::explorer::ExplorerTab;
 use crate::tabs::logger::LoggerTab;
-use crate::utils::none_match;
+use ratisui_core::utils::none_match;
 use anyhow::Result;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Max, Min};
@@ -16,7 +16,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 use ratatui::{symbols, Frame};
 use std::time::Instant;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
-use crate::theme::get_color;
+use ratisui_core::theme::get_color;
 
 pub struct Context {
     show_server_switcher: bool,

@@ -1,0 +1,1 @@
+pub static DATE_FORMAT_PATTERN: &str = "%Y-%m-%dT%H:%M:%S%.3fZ";

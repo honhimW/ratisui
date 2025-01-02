@@ -436,7 +436,7 @@ fn get_node_path(node: Node) -> Vec<String> {
 
 #[cfg(test)]
 mod high_light_test {
-    use crate::components::highlight_value::HighlightKind;
+    use ratisui_core::highlight_value::HighlightKind;
     use anyhow::Result;
     use serde_json::json;
 

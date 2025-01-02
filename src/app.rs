@@ -1,13 +1,13 @@
 use crate::context;
-use crate::input::Input;
+use ratisui_core::input::Input;
 use anyhow::{Result};
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::text::Line;
 use ratatui::Frame;
 use ratatui::style::Color;
-use crate::bus::GlobalEvent;
-use crate::configuration::{Configuration, Databases};
+use ratisui_core::bus::GlobalEvent;
+use ratisui_core::configuration::{Configuration, Databases};
 
 pub struct App {
     pub state: AppState,

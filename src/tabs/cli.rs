@@ -1,8 +1,8 @@
-use crate::app::{Listenable, Renderable, TabImplementation};
+use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::console_output::{ConsoleData, OutputKind};
 use crate::components::redis_cli::RedisCli;
-use crate::redis_opt::{spawn_redis_opt, Disposable};
-use crate::utils::{bytes_to_string, escape_string, split_args};
+use ratisui_core::redis_opt::{spawn_redis_opt, Disposable};
+use ratisui_core::utils::{bytes_to_string, escape_string, split_args};
 use anyhow::{Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use itertools::Itertools;
@@ -15,20 +15,23 @@ use ratatui::text::Span;
 use ratatui::Frame;
 use redis::{Value, VerbatimFormat};
 use std::cmp;
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use strum::Display;
 use throbber_widgets_tui::{Throbber, ThrobberState};
-use crate::bus::{publish_event, GlobalEvent};
-use crate::marcos::KeyAsserter;
-use crate::theme::get_color;
+use ratisui_core::bus::{publish_event, GlobalEvent};
+use ratisui_core::configuration::{load_history, save_history};
+use ratisui_core::marcos::KeyAsserter;
+use ratisui_core::theme::get_color;
 
 pub struct CliTab {
     mode: Mode,
     lock_input: bool,
     lock_at: Option<Instant>,
-    history: Vec<String>,
+    history: Vec<(SystemTime, String)>,
     history_viewpoint: usize,
+    history_max_size: u32,
     redis_cli: RedisCli<'static>,
     // input_text_area: TextArea<'static>,
     console_data: ConsoleData<'static>,
@@ -195,7 +198,7 @@ impl Listenable for CliTab {
                         }
                         KeyEvent { code: KeyCode::Up, .. } => {
                             self.history_viewpoint = self.history_viewpoint.saturating_sub(1);
-                            if let Some(command) = self.history.get(self.history_viewpoint) {
+                            if let Some((_, command)) = self.history.get(self.history_viewpoint) {
                                 self.redis_cli = RedisCli::new();
                                 self.redis_cli.insert_str(command);
                             }
@@ -203,7 +206,7 @@ impl Listenable for CliTab {
                         KeyEvent { code: KeyCode::Down, .. } => {
                             if self.history_viewpoint < self.history.len().saturating_sub(1) {
                                 self.history_viewpoint = self.history_viewpoint.saturating_add(1);
-                                if let Some(command) = self.history.get(self.history_viewpoint) {
+                                if let Some((_, command)) = self.history.get(self.history_viewpoint) {
                                     self.redis_cli = RedisCli::new();
                                     self.redis_cli.insert_str(command);
                                 }
@@ -239,6 +242,32 @@ impl Listenable for CliTab {
 
         Ok(false)
     }
+
+    fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
+        match _app_event {
+            AppEvent::InitConfig(app_config) => {
+                self.history_max_size = app_config.history_size;
+                // Ignore error
+                if let Ok(deque) = load_history() {
+                    self.history.extend(deque);
+                    self.history_viewpoint = self.history.len();
+                }
+            }
+            AppEvent::Destroy => {
+                if self.history_max_size != 0 {
+                    let start_pos = if self.history.len() > self.history_max_size as usize {
+                        self.history.len() - self.history_max_size as usize
+                    } else {
+                        0
+                    };
+                    let deque = VecDeque::from(self.history[start_pos..].to_vec());
+                    save_history(deque)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
 }
 
 impl CliTab {
@@ -250,6 +279,7 @@ impl CliTab {
             lock_at: None,
             history: vec![],
             history_viewpoint: 0,
+            history_max_size: 1000,
             redis_cli: RedisCli::new(),
             console_data: ConsoleData::default(),
             data_sender: tx,
@@ -287,12 +317,12 @@ impl CliTab {
             self.console_data.build_paragraph();
             return;
         }
-        if let Some(last_command) = self.history.last() {
+        if let Some((_, last_command)) = self.history.last() {
             if last_command != command {
-                self.history.push(command.clone())
+                self.history.push((SystemTime::now(), command.clone()))
             }
         } else {
-            self.history.push(command.clone())
+            self.history.push((SystemTime::now(), command.clone()))
         }
         let command = command.trim().to_string();
         self.history_viewpoint = self.history.len();

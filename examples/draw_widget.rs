@@ -11,17 +11,6 @@ fn main() {
     let mut terminal = ratatui::init_with_options(TerminalOptions {
         viewport: Viewport::Inline(10),
     });
-    // for _ in 0..10 {
-    //     sleep(Duration::from_millis(100));
-    //     terminal
-    //         .draw(|frame: &mut Frame| {
-    //             draw_picture(frame);
-    //         })
-    //         .expect("Failed to draw");
-    //     terminal.insert_before(1, |buf| {
-    //         Text::raw("Next.").render(buf.area, buf);
-    //     }).unwrap();
-    // }
     terminal.insert_before(10, |buf| {
         print_picture(buf);
     }).unwrap();
