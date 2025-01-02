@@ -5,7 +5,7 @@ use crate::common::client::build_pool;
 use anyhow::Error;
 use anyhow::Result;
 use async_trait::async_trait;
-use ratisui::ssh_tunnel::SshTunnel;
+use ratisui_core::ssh_tunnel::SshTunnel;
 use redis::cmd;
 use russh::client::Handler;
 use russh::keys::key;

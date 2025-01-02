@@ -5,7 +5,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
 use std::borrow::Cow;
 use std::cmp;
-use crate::utils::ContentType;
+use ratisui_core::utils::ContentType;
 
 pub struct RawParagraph<'a> {
     #[allow(unused)]

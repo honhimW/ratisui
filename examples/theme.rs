@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use ron::ser::PrettyConfig;
-use ratisui::theme::{Color, Tab, Theme};
+use ratisui_core::theme::{Color, Tab, Theme};
 
 fn main() -> Result<()> {
     println!("{}", ron::ser::to_string_pretty(&Theme::dark(), PrettyConfig::default())?);

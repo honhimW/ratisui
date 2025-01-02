@@ -2,9 +2,9 @@ use std::borrow::Cow;
 use ratatui::prelude::Text;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use crate::theme::get_color;
-use crate::utils::ContentType;
-use crate::components::highlight_value::{HighlightKind, HighlightProcessor, HighlightText};
+use ratisui_core::theme::get_color;
+use ratisui_core::utils::ContentType;
+use ratisui_core::highlight_value::{HighlightKind, HighlightProcessor, HighlightText};
 
 pub fn raw_value_to_highlight_text(value: Cow<str>, format: bool) -> (Text, Option<ContentType>) {
     raw_value_to_highlight_text_with_content_type(value, None, format)

@@ -4,7 +4,7 @@ use crate::common::client::dead_pool;
 use anyhow::Result;
 use itertools::Itertools;
 use redis::{Cmd, Value};
-use ratisui::utils::bytes_to_string;
+use ratisui_core::utils::bytes_to_string;
 
 #[tokio::main]
 async fn main() -> Result<()> {

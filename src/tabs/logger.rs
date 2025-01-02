@@ -6,7 +6,7 @@ use ratatui::prelude::{Line, Stylize};
 use ratatui::style::{Color, Style};
 use ratatui::Frame;
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerSmartWidget, TuiWidgetEvent, TuiWidgetState};
-use crate::theme::get_color;
+use ratisui_core::theme::get_color;
 
 pub struct LoggerTab {
     state: TuiWidgetState,

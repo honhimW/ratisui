@@ -1,7 +1,6 @@
 use ratatui::prelude::Color;
-use crate::theme::get_color;
+use ratisui_core::theme::get_color;
 
-pub mod highlight_value;
 pub mod list_table;
 pub mod set_table;
 pub mod zset_table;

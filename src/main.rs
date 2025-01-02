@@ -18,27 +18,16 @@
 )]
 
 mod app;
-mod cli;
-mod configuration;
 mod context;
-mod input;
-mod notify_mutex;
-mod redis_opt;
 mod tui;
 mod tabs;
 mod components;
-mod utils;
-mod bus;
-mod ssh_tunnel;
-mod theme;
-mod marcos;
-mod constants;
 
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
 use crate::components::fps::FpsCalculator;
-use crate::configuration::{load_app_configuration, load_database_configuration, load_theme_configuration, Configuration, Databases};
-use crate::input::InputEvent;
-use crate::redis_opt::switch_client;
+use ratisui_core::configuration::{load_app_configuration, load_database_configuration, load_theme_configuration, Configuration, Databases};
+use ratisui_core::input::InputEvent;
+use ratisui_core::redis_opt::switch_client;
 use anyhow::{anyhow, Result};
 use log::{error, info, warn};
 use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -46,9 +35,10 @@ use std::cmp;
 use std::time::Duration;
 use tokio::time::interval;
 use crate::app::AppState::Closed;
-use crate::bus::{publish_event, publish_msg, subscribe_global_channel, try_take_msg, GlobalEvent, Message};
-use crate::cli::AppArguments;
-use crate::marcos::KeyAsserter;
+use ratisui_core::bus::{publish_event, publish_msg, subscribe_global_channel, try_take_msg, GlobalEvent, Message};
+use ratisui_core::{cli, theme};
+use ratisui_core::cli::AppArguments;
+use ratisui_core::marcos::KeyAsserter;
 use crate::tui::TerminalBackEnd;
 
 #[tokio::main]

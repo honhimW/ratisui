@@ -1,8 +1,8 @@
 use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::console_output::{ConsoleData, OutputKind};
 use crate::components::redis_cli::RedisCli;
-use crate::redis_opt::{spawn_redis_opt, Disposable};
-use crate::utils::{bytes_to_string, escape_string, split_args};
+use ratisui_core::redis_opt::{spawn_redis_opt, Disposable};
+use ratisui_core::utils::{bytes_to_string, escape_string, split_args};
 use anyhow::{Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use itertools::Itertools;
@@ -20,10 +20,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 use strum::Display;
 use throbber_widgets_tui::{Throbber, ThrobberState};
-use crate::bus::{publish_event, GlobalEvent};
-use crate::configuration::{load_history, save_history};
-use crate::marcos::KeyAsserter;
-use crate::theme::get_color;
+use ratisui_core::bus::{publish_event, GlobalEvent};
+use ratisui_core::configuration::{load_history, save_history};
+use ratisui_core::marcos::KeyAsserter;
+use ratisui_core::theme::get_color;
 
 pub struct CliTab {
     mode: Mode,

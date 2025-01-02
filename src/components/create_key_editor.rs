@@ -1,5 +1,5 @@
 use crate::app::{Listenable, Renderable};
-use crate::utils::clean_text_area;
+use ratisui_core::utils::clean_text_area;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Percentage};
 use ratatui::layout::{Layout, Rect};
@@ -7,11 +7,10 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, BorderType, Clear};
 use ratatui::Frame;
-use serde::{Deserialize, Serialize};
 use std::cmp;
 use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
 use tui_textarea::TextArea;
-use crate::theme::get_color;
+use ratisui_core::theme::get_color;
 
 pub struct Form {
     title: String,
@@ -33,7 +32,7 @@ enum Editing {
     TTL,
 }
 
-#[derive(Serialize, Deserialize, Default, Eq, PartialEq, EnumCount, EnumIter, Display)]
+#[derive(Default, Eq, PartialEq, EnumCount, EnumIter, Display)]
 pub enum KeyType {
     #[default]
     String,
