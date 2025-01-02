@@ -1,4 +1,5 @@
 use crate::theme::Theme;
+use crate::constants::DATE_FORMAT_PATTERN;
 use anyhow::{Context, Result};
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
@@ -12,11 +13,10 @@ use std::fmt::{Debug, Display, Formatter};
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::time::{Instant, SystemTime};
+use std::time::SystemTime;
 use chrono::{DateTime, Local};
-use itertools::Itertools;
 use strum::{Display, EnumCount, EnumIter};
-use crate::DATE_FORMAT_PATTERN;
+use itertools::Itertools;
 
 pub fn load_app_configuration() -> Result<Configuration> {
     let mut configuration = Configuration::default();
@@ -76,15 +76,18 @@ pub fn load_theme_configuration(theme_name: Option<String>) -> Result<Theme> {
 pub fn load_history() -> Result<VecDeque<(SystemTime, String)>> {
     let mut deque = VecDeque::new();
     let history_path = get_file_path("history.ron")?;
-    if let Ok(mut file) = File::open(&history_path) {
+    if let Ok(file) = File::open(&history_path) {
         let reader = BufReader::new(file);
-        let lines: Vec<String> = reader.lines()?.collect_vec();
+        let lines = reader.lines();
         for line in lines {
+            let line = line?;
             let split = line.split(';').collect_vec();
             if split.len() == 2 {
                 if let Some(time) = split.get(0) {
                     if let Some(cmd) = split.get(1) {
-                        let datetime = chrono::DateTime::parse_from_str(time, DATE_FORMAT_PATTERN)?;
+                        let native_datetime = chrono::NaiveDateTime::parse_from_str(time, DATE_FORMAT_PATTERN)
+                            .context(format!("failed to parse datetime: {time}"))?;
+                        let datetime: DateTime<Local> = DateTime::from_naive_utc_and_offset(native_datetime, Local::now().offset().clone());
                         deque.push_back((SystemTime::from(datetime), cmd.to_string()))
                     }
                 }
@@ -118,15 +121,12 @@ pub fn save_database_configuration(databases: &Databases) -> Result<()> {
 
 pub fn save_history(histories: VecDeque<(SystemTime, String)>) -> Result<()> {
     let history_path = get_file_path("history.ron")?;
-    let ron_content = ron::ser::to_string_pretty(&histories, PrettyConfig::default())?;
-    debug!("{}", &ron_content);
     if let Ok(mut file) = File::create(&history_path) {
         for (system_time, cmd) in histories {
             let datetime: DateTime<Local> = DateTime::from(system_time);
             let time = datetime.format(DATE_FORMAT_PATTERN).to_string();
             writeln!(file, "{time};{cmd}")?;
         }
-        file.write_all(ron_content.as_ref())?;
     }
     Ok(())
 }
@@ -193,6 +193,7 @@ impl Default for Configuration {
             scan_size: scan_size(),
             try_format: try_format(),
             theme: None,
+            history_size: history_size(),
         }
     }
 }

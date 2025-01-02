@@ -32,71 +32,40 @@ mod bus;
 mod ssh_tunnel;
 mod theme;
 mod marcos;
+mod constants;
 
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
 use crate::components::fps::FpsCalculator;
-use crate::configuration::{load_app_configuration, load_database_configuration, load_theme_configuration, Configuration};
+use crate::configuration::{load_app_configuration, load_database_configuration, load_theme_configuration, Configuration, Databases};
 use crate::input::InputEvent;
-use crate::redis_opt::{switch_client};
+use crate::redis_opt::switch_client;
 use anyhow::{anyhow, Result};
 use log::{error, info, warn};
 use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::cmp;
 use std::time::Duration;
-use tokio::time::{interval};
+use tokio::time::interval;
 use crate::app::AppState::Closed;
 use crate::bus::{publish_event, publish_msg, subscribe_global_channel, try_take_msg, GlobalEvent, Message};
+use crate::cli::AppArguments;
 use crate::marcos::KeyAsserter;
 use crate::tui::TerminalBackEnd;
-
-pub static DATE_FORMAT_PATTERN: &str = "%Y-%m-%dT%H:%M:%S%.3fZ";
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let command = cli::cli()?;
 
     let matches = command.get_matches();
-    let arguments = cli::AppArguments::from_matches(&matches);
+    let arguments = AppArguments::from_matches(&matches);
 
     tui_logger::init_logger(log::LevelFilter::Trace).map_err(|e| anyhow!(e))?;
     tui_logger::set_default_level(log::LevelFilter::Trace);
 
     let app_config = load_app_configuration()?;
-
-    let theme_name = if arguments.theme.is_some() {
-        arguments.theme.clone()
-    } else {
-        app_config.theme.clone()
-    };
-
-    let theme = load_theme_configuration(theme_name)?;
-    theme::set_theme(theme);
-
     let db_config = load_database_configuration()?;
 
-    let mut default_db = db_config.default_database.clone();
-
-    if arguments.target.is_some() {
-        default_db = arguments.target;
-    }
-
-    if let Some(db) = default_db {
-        if let Some(database) = db_config.databases.get(&db) {
-            let database_clone = database.clone();
-            tokio::spawn(async move {
-                match switch_client(db.clone(), &database_clone) {
-                    Ok(_) => {
-                        info!("Successfully connected to default database '{db}'");
-                        info!("{database_clone}");
-                    }
-                    Err(_) => {warn!("Failed to connect to default database.");}
-                };
-            });
-        } else {
-            Err(anyhow!("Unknown database '{db}'."))?;
-        }
-    }
-
+    apply_theme(&arguments, &app_config)?;
+    apply_db(&arguments, &db_config)?;
 
     let terminal = tui::init()?;
     let app = App::new(db_config);
@@ -110,7 +79,7 @@ async fn main() -> Result<()> {
     }
 
     if let Err(e) = app_result {
-        eprintln!("{}", e);
+        eprintln!("{:?}", e);
     }
 
     Ok(())
@@ -204,5 +173,34 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
 
     }
     app.state = Closed;
+    Ok(())
+}
+
+fn apply_theme(app_arguments: &AppArguments, app_config: &Configuration) -> Result<()> {
+    let theme_name = app_arguments.theme.clone().or_else(|| app_config.theme.clone());
+    let theme = load_theme_configuration(theme_name)?;
+    theme::set_theme(theme);
+    Ok(())
+}
+
+fn apply_db(app_arguments: &AppArguments, db_config: &Databases) -> Result<()> {
+    let default_db = app_arguments.target.clone().or_else(|| db_config.default_database.clone());
+
+    if let Some(db) = default_db {
+        if let Some(database) = db_config.databases.get(&db) {
+            let database_clone = database.clone();
+            tokio::spawn(async move {
+                match switch_client(db.clone(), &database_clone) {
+                    Ok(_) => {
+                        info!("Successfully connected to default database '{db}'");
+                        info!("{database_clone}");
+                    }
+                    Err(_) => {warn!("Failed to connect to default database.");}
+                };
+            });
+        } else {
+            Err(anyhow!("Unknown database '{db}'."))?;
+        }
+    };
     Ok(())
 }
