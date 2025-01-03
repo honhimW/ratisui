@@ -161,6 +161,15 @@ pub struct Configuration {
     pub theme: Option<String>,
     #[serde(default = "history_size")]
     pub history_size: u32,
+    #[serde(default = "cli_output_kind")]
+    pub cli_output_format: CliOutputFormatKind,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub enum CliOutputFormatKind {
+    #[default]
+    Redis,
+    Ron,
 }
 
 fn fps() -> u8 {
@@ -179,6 +188,9 @@ fn try_format() -> bool {
     false
 }
 
+fn cli_output_kind() -> CliOutputFormatKind {
+    CliOutputFormatKind::Redis
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct Databases {
@@ -194,6 +206,7 @@ impl Default for Configuration {
             try_format: try_format(),
             theme: None,
             history_size: history_size(),
+            cli_output_format: cli_output_kind(),
         }
     }
 }
