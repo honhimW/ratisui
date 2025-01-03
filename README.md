@@ -10,7 +10,11 @@ cargo install --git=https://github.com/honhimW/ratisui.git
 ```
 
 ### Download
-[Github release](https://github.com/honhimW/ratisui/releases)
+> Currently, only linux_x86_64/linux_aarch64/macOS_aarch64/windows_x86_64 is automatically available.   
+> If you **need** other platforms, you may try to build via [GitHub Actions](./.github/workflows/build-specified-target.yml).  
+> Please **note** that not all platforms can guarantee successful compilation and normal operation.
+
+[Github Release](https://github.com/honhimW/ratisui/releases)
 
 ### Build from source
 ```shell
