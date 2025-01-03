@@ -64,19 +64,18 @@ jobs:
       - name: Create Meta File
         run: |
           echo "License         : MIT" > META-INF
-          echo "Repository URL  : ${GITHUB_REPOSITORY}" >> META-INF
+          echo "Repository URL  : https://github.com/${GITHUB_REPOSITORY}" >> META-INF
           echo "Commit SHA      : ${{ github.sha }}" >> META-INF
           echo "Build At        : $(date)" >> META-INF
-      - name: Checksum
+      - name: Create Temp Dir
         run: |
-          shasum -a 256 ./target/${{ github.event.inputs.target }}/release/ratisui | awk '{ print "Checksum SHA256 : " $1 }' >> META-INF
+          mkdir artifacts
+          mv ./target/${{ github.event.inputs.target }}/release/ratisui ./artifacts
+          mv META-INF ./artifacts
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ratisui-${{ github.event.inputs.target }}
           compression-level: 9
           retention-days: 1
-          path: |
-            META-INF
-            ./target/${{ github.event.inputs.target }}/release/ratisui
-
+          path: ./artifacts/*
