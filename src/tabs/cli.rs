@@ -5,7 +5,6 @@ use ratisui_core::redis_opt::{spawn_redis_opt, Disposable};
 use ratisui_core::utils::{bytes_to_string, escape_string, split_args};
 use anyhow::{Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use itertools::Itertools;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Min};
 use ratatui::layout::{Layout, Rect};
@@ -18,11 +17,13 @@ use std::cmp;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
+use itertools::Itertools;
 use strum::Display;
 use throbber_widgets_tui::{Throbber, ThrobberState};
 use ratisui_core::bus::{publish_event, GlobalEvent};
-use ratisui_core::configuration::{load_history, save_history};
+use ratisui_core::configuration::{load_history, save_history, CliOutputFormatKind};
 use ratisui_core::marcos::KeyAsserter;
+use ratisui_core::serde_wrapper::{to_ron_string};
 use ratisui_core::theme::get_color;
 
 pub struct CliTab {
@@ -40,6 +41,8 @@ pub struct CliTab {
     disposable: Arc<Mutex<Option<Box<dyn Disposable>>>>,
     listen_state: (ThrobberState, Instant),
     input_throbber_state: ThrobberState,
+
+    output_format: CliOutputFormatKind
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Display)]
@@ -258,6 +261,7 @@ impl Listenable for CliTab {
                     self.history.extend(deque);
                     self.history_viewpoint = self.history.len();
                 }
+                self.output_format = app_config.cli_output_format;
             }
             AppEvent::Destroy => {
                 if self.history_max_size != 0 {
@@ -293,6 +297,7 @@ impl CliTab {
             disposable: Arc::new(Mutex::new(None)),
             listen_state: (ThrobberState::default(), Instant::now()),
             input_throbber_state: ThrobberState::default(),
+            output_format: CliOutputFormatKind::default(),
         }
     }
 
@@ -463,7 +468,7 @@ impl CliTab {
             loop {
                 match self.data_receiver.try_recv() {
                     Ok(v) => {
-                        let lines = value_to_lines(&v, 0);
+                        let lines = self.value_to_lines(&v, 0);
                         self.console_data.extend(lines);
                         self.console_data.build_paragraph();
                     }
@@ -477,7 +482,7 @@ impl CliTab {
             loop {
                 match self.data_receiver.try_recv() {
                     Ok(v) => {
-                        let lines = value_to_lines(&v, 0);
+                        let lines = self.value_to_lines(&v, 0);
                         self.console_data.extend(lines);
                         if let Some(lock_at) = self.lock_at {
                             let elapsed = lock_at.elapsed();
@@ -501,9 +506,76 @@ impl CliTab {
     fn get_command(&self) -> Option<String> {
         Some(self.redis_cli.get_input())
     }
+
+    fn value_to_lines(&self, value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
+        match self.output_format {
+            CliOutputFormatKind::Redis => value_to_lines_in_redis(value, pad),
+            CliOutputFormatKind::Ron => value_to_lines_in_ron(value, pad),
+        }
+    }
 }
 
-fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
+fn value_to_lines_in_ron(value: &Value, _: u16) -> Vec<(OutputKind, String)> {
+    match value {
+        Value::BulkString(bulk_string) => {
+            let bulk_string = bytes_to_string(bulk_string.clone()).unwrap_or_else(|e| e.to_string());
+            vec![(OutputKind::Raw, bulk_string)]
+        }
+        Value::Nil => {
+            vec![(OutputKind::STD, "(Nil)".to_string())]
+        }
+        Value::Int(i) => {
+            vec![(OutputKind::STD, format!("{}", i))]
+        }
+        Value::SimpleString(s) => {
+            vec![(OutputKind::STD, s.clone())]
+        }
+        Value::Okay => {
+            vec![(OutputKind::STD, "Okay".to_string())]
+        }
+        Value::Double(d) => {
+            vec![(OutputKind::STD, format!("{}", d))]
+        }
+        Value::Boolean(b) => {
+            vec![(OutputKind::STD, format!("{}", b))]
+        }
+        Value::BigNumber(big_number) => {
+            vec![(OutputKind::STD, format!("{}", big_number))]
+        }
+        Value::ServerError(e) => {
+            vec![(OutputKind::ERR, format!("{:?}", e))]
+        }
+        Value::VerbatimString { format, text, .. } => {
+            match format {
+                VerbatimFormat::Unknown(s) => {
+                    if s == "ERROR" {
+                        text.lines().map(|line| (OutputKind::ERR, format!("{line}"))).collect_vec()
+                    } else if s == "PROMPT" {
+                        text.lines().map(|line| {
+                            (OutputKind::Else(Style::default().dim()), format!("{line}"))
+                        }).collect_vec()
+                    } else {
+                        vec![(OutputKind::STD, format!("\"{}\"", escape_string(s)))]
+                    }
+                }
+                _ => {
+                    text.lines().map(|line| {
+                        (OutputKind::Else(Style::default().dim()), format!("{line}"))
+                    }).collect_vec()
+                }
+            }
+        }
+        value => {
+            if let Ok(s) = to_ron_string(&value) {
+                vec![(OutputKind::Raw, s)]
+            } else {
+                vec![(OutputKind::ERR, format!("Could not convert to RON: {:?}", value))]
+            }
+        }
+    }
+}
+
+fn value_to_lines_in_redis(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
     let prepend = " ".repeat(pad as usize);
     let format = |str: &str| {
         (OutputKind::STD, format!("{prepend}{str}"))
@@ -538,7 +610,7 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
             let mut lines = vec![];
             let mut i = 1;
             for value in array {
-                let sub_lines = value_to_lines(value, pad + 2);
+                let sub_lines = value_to_lines_in_redis(value, pad + 2);
                 if sub_lines.len() == 1 {
                     if let Some((kind, first_line)) = sub_lines.get(0) {
                         if first_line.len() > 2 {
@@ -571,8 +643,8 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
             let mut lines = vec![];
             let mut i = 1;
             for (key, value) in map {
-                let k_lines = value_to_lines(key, pad + 2);
-                let v_lines = value_to_lines(value, pad + 2);
+                let k_lines = value_to_lines_in_redis(key, pad + 2);
+                let v_lines = value_to_lines_in_redis(value, pad + 2);
                 if k_lines.len() == 1 {
                     if let Some((kind, first_line)) = k_lines.get(0) {
                         match kind {
@@ -609,7 +681,7 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
             let mut lines = vec![];
             let mut i = 1;
             for value in set {
-                let sub_lines = value_to_lines(value, pad + 2);
+                let sub_lines = value_to_lines_in_redis(value, pad + 2);
                 if sub_lines.len() == 1 {
                     if let Some((kind, first_line)) = sub_lines.get(0) {
                         match kind {
@@ -656,7 +728,7 @@ fn value_to_lines(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
         Value::Push { data, .. } => {
             let mut lines = vec![];
             for value in data {
-                let sub_lines = value_to_lines(value, pad + 2);
+                let sub_lines = value_to_lines_in_redis(value, pad + 2);
                 lines.extend(sub_lines);
             }
             lines

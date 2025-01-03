@@ -27,5 +27,7 @@ pub mod marcos;
 pub mod constants;
 pub mod cli;
 pub mod input;
-mod notify_mutex;
 pub mod highlight_value;
+pub mod serde_wrapper;
+
+mod notify_mutex;

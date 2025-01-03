@@ -5,13 +5,21 @@ use redis::{Cmd, ConnectionInfo, ProtocolVersion, RedisConnectionInfo};
 
 pub fn dead_pool() -> Result<deadpool_redis::Pool> {
     build_pool(Config {
-        host: "redis-16430.c1.asia-northeast1-1.gce.redns.redis-cloud.com".to_string(),
-        port: 16430,
-        username: Some(String::from("default")),
-        password: Some("9JRCAjglNSTc4pXWOggLT7BKljwuoSSy".to_string()),
+        host: "10.37.1.132".to_string(),
+        port: 6380,
+        username: None,
+        password: Some("123456".to_string()),
         db: 0,
         protocol: ProtocolVersion::RESP3,
     })
+    // build_pool(Config {
+    //     host: "redis-16430.c1.asia-northeast1-1.gce.redns.redis-cloud.com".to_string(),
+    //     port: 16430,
+    //     username: Some(String::from("default")),
+    //     password: Some("9JRCAjglNSTc4pXWOggLT7BKljwuoSSy".to_string()),
+    //     db: 0,
+    //     protocol: ProtocolVersion::RESP3,
+    // })
 }
 
 pub fn build_pool(config: Config) -> Result<deadpool_redis::Pool> {
