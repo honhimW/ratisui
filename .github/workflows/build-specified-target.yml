@@ -61,12 +61,22 @@ jobs:
           use-cross: true
           command: build
           args: --target ${{ github.event.inputs.target }} --release
-      - name: Archive
-        run: tar -czvf ./target/${{ github.event.inputs.target }}/release/ratisui-${{ github.event.inputs.target }}.tar.gz LICENSE README.md -C ./target/${{ github.event.inputs.target }}/release ratisui
+      - name: Create Meta File
+        run: |
+          echo "License         : MIT" > META-INF
+          echo "Repository URL  : ${GITHUB_REPOSITORY}" >> META-INF
+          echo "Commit SHA      : ${{ github.sha }}" >> META-INF
+          echo "Build At        : $(date)" >> META-INF
+      - name: Checksum
+        run: |
+          shasum -a 256 ./target/${{ github.event.inputs.target }}/release/ratisui | awk '{ print "Checksum SHA256 : " $1 }' >> META-INF
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ratisui-${{ github.event.inputs.target }}.tar.gz
+          name: ratisui-${{ github.event.inputs.target }}
+          compression-level: 9
+          retention-days: 1
           path: |
-            ./target/${{ github.event.inputs.target }}/release/ratisui-${{ github.event.inputs.target }}.tar.gz
+            META-INF
+            ./target/${{ github.event.inputs.target }}/release/ratisui
 
