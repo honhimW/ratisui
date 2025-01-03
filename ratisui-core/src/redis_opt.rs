@@ -1037,6 +1037,19 @@ impl RedisOperations {
         }
     }
 
+    pub async fn ft_search<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<Value> {
+        if self.is_cluster() {
+            let mut connection = self.get_cluster_connection().await?;
+            cmd()
+            let v: V = connection.json_get(key, ".").await?;
+            Ok(v)
+        } else {
+            let mut connection = self.get_standalone_connection().await?;
+            let v: V = connection.json_get(key, ".").await?;
+            Ok(v)
+        }
+    }
+
     // pub async fn sscan<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<Vec<String>> {
     //     if self.is_cluster() {
     //         let pool = &self.cluster_pool.clone().context("should be cluster")?;

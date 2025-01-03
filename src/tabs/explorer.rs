@@ -85,6 +85,7 @@ pub enum FilterMod {
     #[default]
     Fuzzy,
     Pattern,
+    FTSearch,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -389,8 +390,9 @@ impl ExplorerTab {
 
     fn render_filter_input(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         match self.filter_mod {
-            FilterMod::Fuzzy => { self.filter_text_area.set_placeholder_text(" Fuzzy "); }
-            FilterMod::Pattern => { self.filter_text_area.set_placeholder_text(" Pattern "); }
+            FilterMod::Fuzzy => self.filter_text_area.set_placeholder_text(" Fuzzy "),
+            FilterMod::Pattern => self.filter_text_area.set_placeholder_text(" Pattern "),
+            FilterMod::FTSearch => self.filter_text_area.set_placeholder_text(" FT.Search "),
         }
         self.filter_text_area.set_block(
             Block::bordered()
@@ -467,6 +469,7 @@ impl ExplorerTab {
     }
 
     fn do_scan(&mut self, filter_text: String) -> Result<()> {
+        let mut use_ft_search = false;
         let pattern = match self.filter_mod {
             FilterMod::Fuzzy => {
                 let mut matcher = filter_text.clone();
@@ -480,21 +483,29 @@ impl ExplorerTab {
             FilterMod::Pattern => {
                 filter_text.clone()
             }
+            FilterMod::FTSearch => {
+                use_ft_search = true;
+                filter_text.clone()
+            }
         };
 
         let sender = self.data_sender.clone();
-        let pattern_clone = pattern.clone();
         let size_clone = self.scan_size.clone();
         spawn_redis_opt(move |operations| async move {
             let mut data = Data::default();
-            let keys = operations.scan(pattern_clone, size_clone as usize).await;
-            if let Ok(keys) = keys {
-                let vec = keys.iter()
-                    .map(|s| RedisKey::new(s, "unknown"))
-                    .collect::<Vec<RedisKey>>();
-                data.scan_keys_result = (true, vec);
+            if !use_ft_search {
+                let keys = operations.scan(pattern, size_clone as usize).await;
+                if let Ok(keys) = keys {
+                    let vec = keys.iter()
+                        .map(|s| RedisKey::new(s, "unknown"))
+                        .collect::<Vec<RedisKey>>();
+                    data.scan_keys_result = (true, vec);
+                }
+                sender.send(data.clone())?;
+            } else {
+                let result = operations.str_cmd(format!("FT.SEARCH {pattern}")).await;
+
             }
-            sender.send(data.clone())?;
             Ok(())
         })?;
         Ok(())
@@ -507,9 +518,8 @@ impl ExplorerTab {
                 self.scan_keys_result.retain(|redis_key| {
                     let contains;
                     match self.filter_mod {
-                        FilterMod::Fuzzy => { contains = redis_key.name.contains(filter_text); }
+                        FilterMod::Fuzzy => contains = redis_key.name.contains(filter_text),
                         FilterMod::Pattern => {
-                            // TODO scan key
                             let fuzzy_start = filter_text.starts_with("*");
                             let fuzzy_end = filter_text.ends_with("*");
                             let mut _filter_text = filter_text.clone();
@@ -529,6 +539,7 @@ impl ExplorerTab {
                                 contains = redis_key.name.eq(&_filter_text);
                             }
                         }
+                        FilterMod::FTSearch => contains = true,
                     }
 
                     contains
@@ -592,8 +603,9 @@ impl ExplorerTab {
             KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
             KeyEvent { code: KeyCode::Char('/'), modifiers: KeyModifiers::CONTROL, .. } => {
                 match self.filter_mod {
-                    FilterMod::Fuzzy => { self.filter_mod = FilterMod::Pattern; }
-                    FilterMod::Pattern => { self.filter_mod = FilterMod::Fuzzy; }
+                    FilterMod::Fuzzy => self.filter_mod = FilterMod::Pattern,
+                    FilterMod::Pattern => self.filter_mod = FilterMod::FTSearch,
+                    FilterMod::FTSearch => self.filter_mod = FilterMod::Fuzzy,
                 }
             }
             KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
@@ -641,6 +653,9 @@ impl ExplorerTab {
                                     matcher
                                 }
                                 FilterMod::Pattern => {
+                                    filter_text.clone()
+                                }
+                                FilterMod::FTSearch => {
                                     filter_text.clone()
                                 }
                             };
