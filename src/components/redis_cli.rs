@@ -22,6 +22,7 @@ pub struct RedisCli<'a> {
     min_desc_width: u16,
     max_desc_width: u16,
     max_desc_height: u16,
+    auto_suggestion: String,
     single_line_text_area: TextArea<'a>,
     table_state: TableState,
     scroll_state: ScrollbarState,
@@ -46,7 +47,8 @@ impl RedisCli<'_> {
             max_menu_height: 11,
             min_desc_width: 35,
             max_desc_width: 50,
-            max_desc_height: 20,
+            max_desc_height: 25,
+            auto_suggestion: "".to_string(),
             single_line_text_area: text_area,
             table_state,
             scroll_state,
@@ -95,6 +97,14 @@ impl Renderable for RedisCli<'_> {
         }
 
         frame.render_widget(&self.single_line_text_area, input_area);
+        let (input_len, auto_suggestion) = self.get_auto_suggestion();
+        if !auto_suggestion.is_empty() {
+            let auto_suggestion_area = Rect {
+                x: input_area.x + input_len as u16,
+                ..input_area
+            };
+            frame.render_widget(Text::raw(&auto_suggestion).style(Style::default().dim()), auto_suggestion_area);
+        }
         if self.show_menu && self.completion_items.len() > 0 {
             frame.render_widget(Clear::default(), menu_area);
             let vertical = Layout::vertical([Fill(1), Length(1)]).split(menu_area);
@@ -183,6 +193,18 @@ impl Listenable for RedisCli<'_> {
                         false
                     }
                 }
+                KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::NONE, .. } => {
+                    let (input_len, auto_suggestion) = self.get_auto_suggestion();
+                    if !auto_suggestion.is_empty() {
+                        let (_, cursor_x) = self.single_line_text_area.cursor();
+                        if cursor_x == input_len {
+                            self.single_line_text_area.insert_str(auto_suggestion);
+                            return Ok(true);
+                        }
+                    }
+                    self.single_line_text_area.move_cursor(CursorMove::Forward);
+                    true
+                }
                 KeyEvent { code: KeyCode::Tab, .. } => {
                     if !self.completion_items.is_empty() && self.show_menu {
                         if let Some(selected) = self.table_state.selected() {
@@ -250,8 +272,17 @@ impl RedisCli<'_> {
         self.single_line_text_area.lines().get(cursor_y).unwrap().clone()
     }
 
+    pub fn set_auto_suggestion(&mut self, s: impl Into<String>) {
+        self.auto_suggestion = s.into();
+    }
+
     pub fn update_frame(&mut self, frame_height: u16, frame_width: u16) {
         self.frame_size = (frame_height, frame_width);
+    }
+
+    fn get_auto_suggestion(&self) -> (usize, String) {
+        let len = self.get_input().len();
+        (len, self.auto_suggestion.chars().skip(len).collect())
     }
 
     fn hide_menu(&mut self) {

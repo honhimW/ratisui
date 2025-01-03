@@ -10,6 +10,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::select;
 
+/// The locally opened TcpListener here can be accessed by other processes, which may not be secure.
 #[derive(Clone, Debug)]
 pub struct SshTunnel {
     pub host: String,
@@ -20,7 +21,7 @@ pub struct SshTunnel {
     pub forwarding_port: u16,
     tx: tokio::sync::watch::Sender<u8>,
     rx: tokio::sync::watch::Receiver<u8>,
-    is_connected: bool,
+    socket_addr: Option<SocketAddr>,
 }
 
 impl SshTunnel {
@@ -35,11 +36,14 @@ impl SshTunnel {
             forwarding_port,
             tx,
             rx,
-            is_connected: false,
+            socket_addr: None,
         }
     }
 
     pub async fn open(&mut self) -> Result<SocketAddr> {
+        if let Some(addr) = self.socket_addr {
+            return Ok(addr);
+        }
         let mut ssh_client = russh::client::connect(
             Arc::new(Config::default()),
             format!("{}:{}", self.host, self.port),
@@ -88,19 +92,19 @@ impl SshTunnel {
             Ok::<(), Error>(())
         });
 
-        self.is_connected = true;
+        self.socket_addr = Some(addr);
         Ok(addr)
     }
 
     pub async fn close(&mut self) -> Result<()> {
         self.tx.send(0)?;
-        self.is_connected = false;
+        self.socket_addr = None;
         Ok(())
     }
 
     #[allow(unused)]
     pub fn is_connected(&self) -> bool {
-        self.is_connected
+        self.socket_addr.is_some()
     }
 }
 

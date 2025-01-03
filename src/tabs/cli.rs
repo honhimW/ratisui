@@ -165,6 +165,12 @@ impl Listenable for CliTab {
                         self.input_throbber_state.calc_next();
                         let handled = self.redis_cli.handle_key_event(key_event)?;
                         if handled {
+                            let current_input = self.redis_cli.get_input();
+                            if let Some((_, history_cmd)) = self.history.iter().rfind(|(_, cmd)| cmd.to_lowercase().starts_with(&current_input.to_lowercase())) {
+                                self.redis_cli.set_auto_suggestion(history_cmd);
+                            } else {
+                                self.redis_cli.set_auto_suggestion("");
+                            }
                             return Ok(true);
                         }
                     }
