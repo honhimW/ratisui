@@ -10,6 +10,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::select;
 
+/// The locally opened TcpListener here can be accessed by other processes, which may not be secure.
 #[derive(Clone, Debug)]
 pub struct SshTunnel {
     pub host: String,
