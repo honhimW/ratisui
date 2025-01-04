@@ -8,13 +8,17 @@ use ratatui::layout::{Alignment, Layout, Margin, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::symbols::scrollbar::Set;
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, TableState, Wrap};
+use ratatui::widgets::{
+    Block, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    Table, TableState, Wrap,
+};
 use ratatui::{symbols, Frame};
+use ratisui_core::theme::get_color;
 use serde_json::Value;
+use substring::Substring;
 use std::cmp;
 use strum::Display;
 use tui_textarea::{CursorMove, TextArea};
-use ratisui_core::theme::get_color;
 
 pub struct RedisCli<'a> {
     max_menu_width: u16,
@@ -93,7 +97,10 @@ impl Renderable for RedisCli<'_> {
             menu_area.x = menu_area.x.saturating_sub(x_offset);
         }
         if menu_area.y + menu_area.height > max_height {
-            menu_area.y = menu_area.y.saturating_sub(menu_area.height).saturating_sub(1);
+            menu_area.y = menu_area
+                .y
+                .saturating_sub(menu_area.height)
+                .saturating_sub(1);
         }
 
         frame.render_widget(&self.single_line_text_area, input_area);
@@ -103,7 +110,10 @@ impl Renderable for RedisCli<'_> {
                 x: input_area.x + input_len as u16,
                 ..input_area
             };
-            frame.render_widget(Text::raw(&auto_suggestion).style(Style::default().dim()), auto_suggestion_area);
+            frame.render_widget(
+                Text::raw(&auto_suggestion).style(Style::default().dim()),
+                auto_suggestion_area,
+            );
         }
         if self.show_menu && self.completion_items.len() > 0 {
             frame.render_widget(Clear::default(), menu_area);
@@ -121,10 +131,14 @@ impl Renderable for RedisCli<'_> {
                     })
                     .begin_symbol(None)
                     .end_symbol(None);
-                frame.render_stateful_widget(scrollbar, vertical[0].inner(Margin {
-                    vertical: 0,
-                    horizontal: 0,
-                }), &mut self.scroll_state);
+                frame.render_stateful_widget(
+                    scrollbar,
+                    vertical[0].inner(Margin {
+                        vertical: 0,
+                        horizontal: 0,
+                    }),
+                    &mut self.scroll_state,
+                );
             }
 
             if let Some(idx) = self.table_state.selected() {
@@ -137,14 +151,15 @@ impl Renderable for RedisCli<'_> {
         }
         Ok(())
     }
-
 }
 
 impl Listenable for RedisCli<'_> {
     fn handle_key_event(&mut self, event: KeyEvent) -> Result<bool> {
         if event.kind == KeyEventKind::Press {
             let accepted = match event {
-                KeyEvent { code: KeyCode::Esc, .. } => {
+                KeyEvent {
+                    code: KeyCode::Esc, ..
+                } => {
                     if self.single_line_text_area.is_selecting() {
                         self.single_line_text_area.cancel_selection();
                         true
@@ -155,29 +170,52 @@ impl Listenable for RedisCli<'_> {
                         false
                     }
                 }
-                KeyEvent { code: KeyCode::Char(' '), modifiers: KeyModifiers::CONTROL, .. } => {
+                KeyEvent {
+                    code: KeyCode::Char(' '),
+                    modifiers: KeyModifiers::CONTROL,
+                    ..
+                } => {
                     self.show_menu = true;
                     true
                 }
-                KeyEvent { code: KeyCode::Char('m') | KeyCode::Enter, modifiers: KeyModifiers::CONTROL, .. } => {
-                    false
-                }
-                KeyEvent { code: KeyCode::Enter, .. } => {
-                    false
-                }
-                KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
+                KeyEvent {
+                    code: KeyCode::Char('m') | KeyCode::Enter,
+                    modifiers: KeyModifiers::CONTROL,
+                    ..
+                } => false,
+                KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                } => false,
+                KeyEvent {
+                    code: KeyCode::Char('a'),
+                    modifiers: KeyModifiers::CONTROL,
+                    ..
+                } => {
                     self.single_line_text_area.select_all();
                     true
                 }
-                KeyEvent { code: KeyCode::Char('z'), modifiers: KeyModifiers::CONTROL, .. } => {
+                KeyEvent {
+                    code: KeyCode::Char('z'),
+                    modifiers: KeyModifiers::CONTROL,
+                    ..
+                } => {
                     self.single_line_text_area.undo();
                     true
                 }
-                KeyEvent { code: KeyCode::Char('y'), modifiers: KeyModifiers::CONTROL, .. } => {
+                KeyEvent {
+                    code: KeyCode::Char('y'),
+                    modifiers: KeyModifiers::CONTROL,
+                    ..
+                } => {
                     self.single_line_text_area.redo();
                     true
                 }
-                KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::NONE, .. } => {
+                KeyEvent {
+                    code: KeyCode::Up,
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                } => {
                     if self.show_menu {
                         self.previous();
                         true
@@ -185,7 +223,11 @@ impl Listenable for RedisCli<'_> {
                         false
                     }
                 }
-                KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::NONE, .. } => {
+                KeyEvent {
+                    code: KeyCode::Down,
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                } => {
                     if self.show_menu {
                         self.next();
                         true
@@ -193,7 +235,11 @@ impl Listenable for RedisCli<'_> {
                         false
                     }
                 }
-                KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::NONE, .. } => {
+                KeyEvent {
+                    code: KeyCode::Right,
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                } => {
                     let (input_len, auto_suggestion) = self.get_auto_suggestion();
                     if !auto_suggestion.is_empty() {
                         let (_, cursor_x) = self.single_line_text_area.cursor();
@@ -205,24 +251,29 @@ impl Listenable for RedisCli<'_> {
                     self.single_line_text_area.move_cursor(CursorMove::Forward);
                     true
                 }
-                KeyEvent { code: KeyCode::Tab, .. } => {
+                KeyEvent {
+                    code: KeyCode::Tab, ..
+                } => {
                     if !self.completion_items.is_empty() && self.show_menu {
                         if let Some(selected) = self.table_state.selected() {
                             if let Some(item) = self.completion_items.get(selected) {
                                 if self.raw_input.is_empty() {
-                                    self.single_line_text_area.insert_str(item.insert_text.clone());
+                                    self.single_line_text_area
+                                        .insert_str(item.insert_text.clone());
                                 } else {
                                     let (s, mut e) = item.range;
                                     if e < 0 {
                                         e = self.raw_input.len() as isize;
                                     }
                                     let (cursor_y, _) = self.single_line_text_area.cursor();
-                                    self.single_line_text_area.move_cursor(CursorMove::Jump(cursor_y as u16, s as u16));
+                                    self.single_line_text_area
+                                        .move_cursor(CursorMove::Jump(cursor_y as u16, s as u16));
                                     self.single_line_text_area.start_selection();
                                     for _ in 0..(e - s) {
                                         self.single_line_text_area.move_cursor(CursorMove::Forward);
                                     }
-                                    self.single_line_text_area.insert_str(item.insert_text.clone());
+                                    self.single_line_text_area
+                                        .insert_str(item.insert_text.clone());
                                 }
                                 self.hide_menu();
                                 true
@@ -246,7 +297,12 @@ impl Listenable for RedisCli<'_> {
                 }
             };
             let (cursor_y, cursor_x) = self.single_line_text_area.cursor();
-            self.raw_input = self.single_line_text_area.lines().get(cursor_y).unwrap().clone();
+            self.raw_input = self
+                .single_line_text_area
+                .lines()
+                .get(cursor_y)
+                .unwrap()
+                .clone();
             let (mut items, segment) = get_items(&self.raw_input, cursor_x);
             sort_commands(&mut items, &segment);
             self.completion_items = items;
@@ -254,7 +310,9 @@ impl Listenable for RedisCli<'_> {
                 self.reset_state();
             }
             self.segment = segment;
-            self.scroll_state = self.scroll_state.content_length(self.completion_items.len());
+            self.scroll_state = self
+                .scroll_state
+                .content_length(self.completion_items.len());
             Ok(accepted)
         } else {
             Ok(false)
@@ -269,7 +327,11 @@ impl RedisCli<'_> {
 
     pub fn get_input(&self) -> String {
         let (cursor_y, _) = self.single_line_text_area.cursor();
-        self.single_line_text_area.lines().get(cursor_y).unwrap().clone()
+        self.single_line_text_area
+            .lines()
+            .get(cursor_y)
+            .unwrap()
+            .clone()
     }
 
     pub fn set_auto_suggestion(&mut self, s: impl Into<String>) {
@@ -328,11 +390,17 @@ impl RedisCli<'_> {
     fn render_menu_footer(&mut self, frame: &mut Frame, area: Rect) {
         let horizontal = Layout::horizontal([Fill(1), Length(7)]).split(area);
         let selected = self.table_state.selected().unwrap_or(0);
-        let style = Style::default().bg(get_color(|t| &t.tab.cli.menu.info_bg)).italic();
+        let style = Style::default()
+            .bg(get_color(|t| &t.tab.cli.menu.info_bg))
+            .italic();
         let info = Line::raw("↑/↓ Tab").style(style);
-        let item_count = Line::raw(format!("{}:{}", selected.saturating_add(1), self.completion_items.len()))
-            .alignment(Alignment::Right)
-            .style(style);
+        let item_count = Line::raw(format!(
+            "{}:{}",
+            selected.saturating_add(1),
+            self.completion_items.len()
+        ))
+        .alignment(Alignment::Right)
+        .style(style);
         frame.render_widget(info, horizontal[0]);
         frame.render_widget(item_count, horizontal[1]);
     }
@@ -341,13 +409,19 @@ impl RedisCli<'_> {
         let (max_height, max_width) = self.frame_size;
         let desc_width = self.min_desc_width;
         let Rect {
-            x, y, height: menu_height, width: menu_width
+            x,
+            y,
+            height: menu_height,
+            width: menu_width,
         } = menu_area;
         let paragraph = Paragraph::new(highlight_doc(&doc))
             .wrap(Wrap { trim: false })
-            .block(Block::default().border_set(symbols::border::EMPTY).borders(Borders::from_bits_retain(0b1010)))
-            .style(Style::default().bg(get_color(|t| &t.tab.cli.doc.bg)))
-            ;
+            .block(
+                Block::default()
+                    .border_set(symbols::border::EMPTY)
+                    .borders(Borders::from_bits_retain(0b1010)),
+            )
+            .style(Style::default().bg(get_color(|t| &t.tab.cli.doc.bg)));
         let line_count = paragraph.line_count(desc_width - 2); // block width 2
         let desc_height = cmp::min(line_count as u16, self.max_desc_height);
 
@@ -376,8 +450,16 @@ impl RedisCli<'_> {
         }
 
         let desc_area = Rect {
-            x: if is_right { x.saturating_add(menu_width) } else { x.saturating_sub(desc_width) },
-            y: if is_bottom { y } else { y.saturating_add(menu_height).saturating_sub(desc_height) },
+            x: if is_right {
+                x.saturating_add(menu_width)
+            } else {
+                x.saturating_sub(desc_width)
+            },
+            y: if is_bottom {
+                y
+            } else {
+                y.saturating_add(menu_height).saturating_sub(desc_height)
+            },
             width: desc_width,
             height: desc_height,
         };
@@ -389,7 +471,11 @@ impl RedisCli<'_> {
 fn get_table(rows: Vec<Row>) -> Table {
     let table = Table::new(rows, [Min(1), Length(7), Length(0)])
         .style(Style::default().bg(get_color(|t| &t.tab.cli.menu.bg)))
-        .row_highlight_style(Style::default().bg(get_color(|t| &t.tab.cli.menu.highlight)).bold());
+        .row_highlight_style(
+            Style::default()
+                .bg(get_color(|t| &t.tab.cli.menu.highlight))
+                .bold(),
+        );
     table
 }
 
@@ -400,17 +486,23 @@ fn get_rows(input: impl Into<String>, items: &Vec<CompletionItem>) -> Vec<Row> {
         let mut prompt = Line::default();
         if let Some(pos) = item.label.label.find(input.clone().as_str()) {
             prompt.push_span(Span::raw(&item.label.label[0..pos]));
-            prompt.push_span(Span::raw(input.clone()).style(Style::default().fg(get_color(|t| &t.tab.cli.menu.input))));
-            prompt.push_span(Span::raw(&item.label.label[pos + input.len()..item.label.label.len()]));
+            prompt.push_span(
+                Span::raw(input.clone())
+                    .style(Style::default().fg(get_color(|t| &t.tab.cli.menu.input))),
+            );
+            prompt.push_span(Span::raw(
+                &item.label.label[pos + input.len()..item.label.label.len()],
+            ));
         }
         if let Some(ref detail) = item.label.detail {
             prompt.push_span(Span::raw(" "));
             prompt.push_span(Span::raw(detail).style(Style::default().dim()));
         }
         let prompt = Cell::new(prompt);
-        let kind = Cell::new(Line::raw(item.kind.to_string())
-            .alignment(Alignment::Right)
-            .style(Style::default().dim())
+        let kind = Cell::new(
+            Line::raw(item.kind.to_string())
+                .alignment(Alignment::Right)
+                .style(Style::default().dim()),
         );
         let row = Row::new(vec![prompt, kind]);
         rows.push(row);
@@ -426,8 +518,14 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
     let mut segment = String::new();
     for (idx, (arg, quote, start_pos, end_pos)) in args.iter().enumerate() {
         if start_pos <= &cursor_x && &cursor_x <= end_pos {
-            current_word = Some((idx, arg.clone(), quote.clone(), start_pos.clone(), end_pos.clone()));
-            segment = (&input[*start_pos..cursor_x]).to_ascii_uppercase();
+            current_word = Some((
+                idx,
+                arg.clone(),
+                quote.clone(),
+                start_pos.clone(),
+                end_pos.clone(),
+            ));
+            segment = input.substring(*start_pos, cursor_x).to_uppercase();
             break;
         }
     }
@@ -444,7 +542,7 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
                 }
             } else {
                 if let Some((cmd, _, start_pos, end_pos)) = args.first() {
-                    if &item.label.label == &cmd.to_ascii_uppercase() {
+                    if &item.label.label == &cmd.to_uppercase() {
                         item_clone.range = (start_pos.clone() as isize, end_pos.clone() as isize);
                         commands.push(item_clone);
                         break;
@@ -453,7 +551,7 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
             }
         } else {
             if let Some((cmd, _, start_pos, end_pos)) = args.first() {
-                if &item.label.label == &cmd.to_ascii_uppercase() {
+                if &item.label.label == &cmd.to_uppercase() {
                     item_clone.range = (start_pos.clone() as isize, end_pos.clone() as isize);
                     commands.push(item.clone());
                     break;
@@ -482,19 +580,26 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
                 match param {
                     Parameter::Flag(flag, detail) => {
                         if flag.contains(&segment) {
-                            parameters.push(CompletionItem::option(flag).detail(detail).range(start, end));
+                            parameters.push(
+                                CompletionItem::option(flag)
+                                    .detail(detail)
+                                    .range(start, end),
+                            );
                         }
                     }
                     Parameter::Enum(es) => {
                         for (e, detail) in es {
                             if e.contains(&segment) {
-                                parameters.push(CompletionItem::option(e).detail(detail).range(start, end));
+                                parameters.push(
+                                    CompletionItem::option(e).detail(detail).range(start, end),
+                                );
                             }
                         }
                     }
                     Parameter::Arg { key, detail, .. } => {
                         if key.contains(&segment) {
-                            parameters.push(CompletionItem::option(key).detail(detail).range(start, end));
+                            parameters
+                                .push(CompletionItem::option(key).detail(detail).range(start, end));
                         }
                     }
                     _ => {}
@@ -531,15 +636,16 @@ struct CompletionItem {
 
 #[derive(Clone, Debug)]
 enum Parameter {
-    Flag(String, String),      // [CH]
+    Flag(String, String),        // [CH]
     Enum(Vec<(String, String)>), // [NX | XX]
-    Arg {              // [match pattern]
-        key: String,   // match
-        arg: String,   // pattern
+    Arg {
+        // [match pattern]
+        key: String, // match
+        arg: String, // pattern
         detail: String,
     },
-    Single(String),    // cursor
-    Many(String),            // score member [score members...], tail
+    Single(String), // cursor
+    Many(String),   // score member [score members...], tail
 }
 
 impl Parameter {
@@ -548,11 +654,19 @@ impl Parameter {
     }
 
     fn enums(vec: Vec<(impl Into<String>, impl Into<String>)>) -> Parameter {
-        Parameter::Enum(vec.into_iter().map(|(s, detail)| (s.into(), detail.into())).collect())
+        Parameter::Enum(
+            vec.into_iter()
+                .map(|(s, detail)| (s.into(), detail.into()))
+                .collect(),
+        )
     }
 
     fn arg(key: impl Into<String>, arg: impl Into<String>, detail: impl Into<String>) -> Parameter {
-        Parameter::Arg { key: key.into(), arg: arg.into(), detail: detail.into() }
+        Parameter::Arg {
+            key: key.into(),
+            arg: arg.into(),
+            detail: detail.into(),
+        }
     }
 
     fn single(s: impl Into<String>) -> Parameter {
@@ -573,7 +687,7 @@ impl Parameter {
             }
             Parameter::Enum(es) => {
                 detail.push('[');
-                detail.push_str(es.iter().map(|(e, _)| { e }).join(" | ").as_str());
+                detail.push_str(es.iter().map(|(e, _)| e).join(" | ").as_str());
                 detail.push(']');
             }
             Parameter::Arg { key, arg, .. } => {
@@ -598,7 +712,6 @@ impl Parameter {
 }
 
 impl CompletionItem {
-
     fn default(s: impl Into<String>) -> CompletionItem {
         Self::new(s, CompletionItemKind::Generic)
     }
@@ -770,7 +883,10 @@ fn split_args(cmd: impl Into<String>) -> Vec<(String, Option<char>, usize, usize
 fn highlight_doc(doc: &Doc) -> Text {
     let mut text = Text::default();
     let attr_color = get_color(|t| &t.tab.cli.doc.attribute);
-    text.push_line(Line::raw(doc.syntax.clone()).style(Style::default().fg(get_color(|t| &t.tab.cli.doc.command))));
+    text.push_line(
+        Line::raw(doc.syntax.clone())
+            .style(Style::default().fg(get_color(|t| &t.tab.cli.doc.command))),
+    );
     text.push_line(Line::raw(""));
     text.push_line(Line::raw(doc.summary.clone()));
     if let Some(since) = &doc.since {
@@ -855,12 +971,13 @@ fn resolve_commands(commands: Vec<Value>, items: &mut Vec<CompletionItem>) -> Op
             _ => CompletionItemKind::Other,
         };
         item.kind = kind;
-        item = item.description(Doc::default()
-            .syntax(value_to_string(syntax))
-            .summary(value_to_string(summary))
-            .since(value_to_string(since))
-            .complexity(value_to_string(complexity))
-            .acl(value_to_string(acl))
+        item = item.description(
+            Doc::default()
+                .syntax(value_to_string(syntax))
+                .summary(value_to_string(summary))
+                .since(value_to_string(since))
+                .complexity(value_to_string(complexity))
+                .acl(value_to_string(acl)),
         );
         let arguments = arguments.as_array()?;
         for argument in arguments.iter() {
@@ -873,7 +990,7 @@ fn resolve_commands(commands: Vec<Value>, items: &mut Vec<CompletionItem>) -> Op
                         if !string.is_empty() {
                             item = item.add_param(Parameter::flag(string.clone(), string.clone()));
                         }
-                    },
+                    }
                     "enum" => {
                         let values = argument.get("values")?;
                         let values = values.as_array()?;
@@ -885,7 +1002,7 @@ fn resolve_commands(commands: Vec<Value>, items: &mut Vec<CompletionItem>) -> Op
                             }
                         }
                         item = item.add_param(Parameter::enums(vec));
-                    },
+                    }
                     "arg" => {
                         let key = argument.get("key")?;
                         let arg = argument.get("arg")?;
@@ -896,21 +1013,21 @@ fn resolve_commands(commands: Vec<Value>, items: &mut Vec<CompletionItem>) -> Op
                         if !key.is_empty() {
                             item = item.add_param(Parameter::arg(key, arg, detail));
                         }
-                    },
+                    }
                     "many" => {
                         let name = argument.get("name")?;
                         let name = value_to_string(name);
                         if !name.is_empty() {
                             item = item.add_param(Parameter::many(name));
                         }
-                    },
+                    }
                     "single" => {
                         let name = argument.get("name")?;
                         let name = value_to_string(name);
                         if !name.is_empty() {
                             item = item.add_param(Parameter::single(name));
                         }
-                    },
+                    }
                     _ => {}
                 }
             }
