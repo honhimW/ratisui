@@ -1,5 +1,7 @@
 use crate::app::{centered_rect, AppEvent, Listenable, Renderable, TabImplementation};
+use log::info;
 use ratisui_core::bus::GlobalEvent;
+use ratisui_core::marcos::KeyAsserter;
 use crate::components::create_key_editor::{Form, KeyType};
 use crate::components::hash_table::HashValue;
 use crate::components::list_table::ListValue;
@@ -8,7 +10,7 @@ use crate::components::raw_paragraph::RawParagraph;
 use crate::components::set_table::SetValue;
 use crate::components::stream_view::SteamView;
 use crate::components::zset_table::ZSetValue;
-use ratisui_core::redis_opt::{async_redis_opt, spawn_redis_opt};
+use ratisui_core::redis_opt::{async_redis_opt, redis_operations, spawn_redis_opt};
 use crate::tabs::explorer::CurrentScreen::{KeysTree, ValuesViewer};
 use ratisui_core::theme::get_color;
 use ratisui_core::utils::{bytes_to_string, clean_text_area};
@@ -36,6 +38,7 @@ pub struct ExplorerTab {
     show_create: bool,
     show_rename: bool,
     show_delete_popup: bool,
+    show_search_popup: bool,
     filter_mod: FilterMod,
     scan_size: u16,
     try_format: bool,
@@ -55,6 +58,8 @@ pub struct ExplorerTab {
     selected_stream_value: Option<SteamView>,
     data_sender: Sender<Data>,
     data_receiver: Receiver<Data>,
+
+    has_search_module: bool,
 }
 
 #[derive(Default, Clone)]
@@ -85,7 +90,6 @@ pub enum FilterMod {
     #[default]
     Fuzzy,
     Pattern,
-    FTSearch,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -206,6 +210,7 @@ impl ExplorerTab {
             show_create: false,
             show_rename: false,
             show_delete_popup: false,
+            show_search_popup: false,
             filter_mod: FilterMod::Fuzzy,
             scan_size: 2_000,
             try_format: false,
@@ -225,6 +230,7 @@ impl ExplorerTab {
             selected_stream_value: None,
             data_sender: tx,
             data_receiver: rx,
+            has_search_module: false,
         }
     }
 
@@ -392,7 +398,6 @@ impl ExplorerTab {
         match self.filter_mod {
             FilterMod::Fuzzy => self.filter_text_area.set_placeholder_text(" Fuzzy "),
             FilterMod::Pattern => self.filter_text_area.set_placeholder_text(" Pattern "),
-            FilterMod::FTSearch => self.filter_text_area.set_placeholder_text(" FT.Search "),
         }
         self.filter_text_area.set_block(
             Block::bordered()
@@ -436,6 +441,24 @@ impl ExplorerTab {
         }
     }
 
+    fn render_search_popup(&mut self, frame: &mut Frame, area: Rect) {
+        let popup_area = centered_rect(30, 15, area);
+        let mut text = Text::default();
+        text.push_line(Line::raw("Search Module is not available yet.")
+            .alignment(Alignment::Center)
+            .bold());
+        let paragraph = Paragraph::new(text)
+            .alignment(Alignment::Center);
+        let search_popup = Popup::new(paragraph)
+            .title(String::from(" [Enter] Confirm | [Esc] Cancel "))
+            .title_position(Position::Bottom)
+            .borders(Borders::ALL)
+            .border_set(symbols::border::DOUBLE)
+            .style(Style::default()
+                .bg(get_color(|t| &t.tab.explorer.accent)));
+        frame.render_widget(search_popup, popup_area);
+    }
+
     fn render_tree(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let tree = Tree::new(&self.tree_items)?
             .block(
@@ -469,7 +492,6 @@ impl ExplorerTab {
     }
 
     fn do_scan(&mut self, filter_text: String) -> Result<()> {
-        let mut use_ft_search = false;
         let pattern = match self.filter_mod {
             FilterMod::Fuzzy => {
                 let mut matcher = filter_text.clone();
@@ -483,29 +505,20 @@ impl ExplorerTab {
             FilterMod::Pattern => {
                 filter_text.clone()
             }
-            FilterMod::FTSearch => {
-                use_ft_search = true;
-                filter_text.clone()
-            }
         };
 
         let sender = self.data_sender.clone();
         let size_clone = self.scan_size.clone();
         spawn_redis_opt(move |operations| async move {
             let mut data = Data::default();
-            if !use_ft_search {
-                let keys = operations.scan(pattern, size_clone as usize).await;
-                if let Ok(keys) = keys {
-                    let vec = keys.iter()
-                        .map(|s| RedisKey::new(s, "unknown"))
-                        .collect::<Vec<RedisKey>>();
-                    data.scan_keys_result = (true, vec);
-                }
-                sender.send(data.clone())?;
-            } else {
-                let result = operations.str_cmd(format!("FT.SEARCH {pattern}")).await;
-
+            let keys = operations.scan(pattern, size_clone as usize).await;
+            if let Ok(keys) = keys {
+                let vec = keys.iter()
+                    .map(|s| RedisKey::new(s, "unknown"))
+                    .collect::<Vec<RedisKey>>();
+                data.scan_keys_result = (true, vec);
             }
+            sender.send(data.clone())?;
             Ok(())
         })?;
         Ok(())
@@ -539,7 +552,6 @@ impl ExplorerTab {
                                 contains = redis_key.name.eq(&_filter_text);
                             }
                         }
-                        FilterMod::FTSearch => contains = true,
                     }
 
                     contains
@@ -604,8 +616,7 @@ impl ExplorerTab {
             KeyEvent { code: KeyCode::Char('/'), modifiers: KeyModifiers::CONTROL, .. } => {
                 match self.filter_mod {
                     FilterMod::Fuzzy => self.filter_mod = FilterMod::Pattern,
-                    FilterMod::Pattern => self.filter_mod = FilterMod::FTSearch,
-                    FilterMod::FTSearch => self.filter_mod = FilterMod::Fuzzy,
+                    FilterMod::Pattern => self.filter_mod = FilterMod::Fuzzy,
                 }
             }
             KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
@@ -653,9 +664,6 @@ impl ExplorerTab {
                                     matcher
                                 }
                                 FilterMod::Pattern => {
-                                    filter_text.clone()
-                                }
-                                FilterMod::FTSearch => {
                                     filter_text.clone()
                                 }
                             };
@@ -730,7 +738,6 @@ impl ExplorerTab {
                         }
                     };
                     let sender = self.data_sender.clone();
-                    let pattern_clone = pattern.clone();
                     let size_clone = self.scan_size.clone();
                     spawn_redis_opt(move |operations| async move {
                         match key_type {
@@ -759,7 +766,7 @@ impl ExplorerTab {
                         }
 
                         let mut data = Data::default();
-                        let keys = operations.scan(pattern_clone, size_clone as usize).await?;
+                        let keys = operations.scan(pattern, size_clone as usize).await?;
                         let vec = keys.iter()
                             .map(|s| RedisKey::new(s, "unknown"))
                             .collect::<Vec<RedisKey>>();
@@ -899,7 +906,7 @@ impl ExplorerTab {
             let key_name_clone = key_name.clone();
             let key_type_clone = key_type.clone();
             let length = async_redis_opt(|op| async move {
-                match key_type_clone.to_ascii_lowercase().as_str() {
+                match key_type_clone.to_lowercase().as_str() {
                     "string" => Ok(op.strlen(key_name_clone).await?),
                     "list" => Ok(op.llen(key_name_clone).await?),
                     "hash" => Ok(op.hlen(key_name_clone).await?),
@@ -908,7 +915,7 @@ impl ExplorerTab {
                     "stream" => Ok(op.xlen(key_name_clone).await?),
                     "rejson-rl" => {
                         let json_type = op.json_type(&key_name_clone).await?;
-                        let len = match json_type.to_ascii_lowercase().as_str() {
+                        let len = match json_type.to_lowercase().as_str() {
                             "object" => op.json_objlen(key_name_clone).await?,
                             "array" => op.json_arrlen(key_name_clone).await?,
                             "string" => op.json_strlen(key_name_clone).await?,
@@ -942,7 +949,7 @@ impl ExplorerTab {
         data.key_name = key_name.clone();
         let key_name_clone = key_name.clone();
         async_redis_opt(|op| async move {
-            match key_type.to_ascii_lowercase().as_str() {
+            match key_type.to_lowercase().as_str() {
                 "string" => {
                     let bytes: Vec<u8> = op.get(key_name_clone).await?;
                     let result = deserialize_bytes(bytes).context("Failed to deserialize string")?;
@@ -997,9 +1004,8 @@ impl ExplorerTab {
                     data.selected_stream_value = (true, Some(hash_value));
                 }
                 "rejson-rl" => {
-                    let bytes: Vec<u8> = op.json_get(key_name_clone).await?;
-                    let result = deserialize_bytes(bytes).context("Failed to deserialize string")?;
-                    data.selected_string_value = (true, Some((result.0, result.1)));
+                    let json_string: String = op.json_get(key_name_clone).await?;
+                    data.selected_string_value = (true, Some((json_string, Some(ContentType::Json))));
                 }
                 _ => {}
             }
@@ -1048,6 +1054,9 @@ impl Renderable for ExplorerTab {
         if self.show_create {
             self.render_create_key_form(frame, frame.area())?;
         }
+        if self.show_search_popup {
+            self.render_search_popup(frame, frame.area());
+        }
 
         Ok(())
     }
@@ -1069,6 +1078,9 @@ impl Renderable for ExplorerTab {
         } else {
             if self.current_screen == KeysTree {
                 elements.push(("/", "Scan"));
+                if self.has_search_module {
+                    elements.push(("^k", "FT.Search"));
+                }
                 elements.push(("c", "Create"));
                 elements.push(("d/Del", "Delete"));
                 elements.push(("r", "Rename"));
@@ -1197,6 +1209,10 @@ impl Listenable for ExplorerTab {
         }
 
         if KeysTree == self.current_screen {
+            if key_event.is_c_k() {
+                self.show_search_popup = true;
+                return Ok(true);
+            }
             if key_event.modifiers == KeyModifiers::NONE {
                 if self.handle_tree_key_event(key_event)? {
                     return Ok(true);
@@ -1244,8 +1260,8 @@ impl Listenable for ExplorerTab {
         Ok(false)
     }
 
-    fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
-        match _app_event {
+    fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
+        match app_event {
             AppEvent::InitConfig(configuration) => {
                 self.scan_size = configuration.scan_size;
                 self.try_format = configuration.try_format;
@@ -1263,6 +1279,10 @@ impl Listenable for ExplorerTab {
                     GlobalEvent::ClientChanged => {
                         if let Some(first_line) = self.get_filter_text() {
                             self.do_scan(first_line)?;
+                            if let Some(ref redis_opt) = redis_operations() {
+                                self.has_search_module = redis_opt.has_module("search")?;
+                                info!("has search module: {}", self.has_search_module);
+                            }
                         }
                     }
                     _ => {}

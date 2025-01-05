@@ -191,6 +191,7 @@ pub struct RedisOperations {
     pool: Pool,
     ssh_tunnel: Option<SshTunnel>,
     server_info: Option<String>,
+    modules_info: Option<String>,
     is_cluster: bool,
     nodes: HashMap<String, NodeClientHolder>,
     cluster_pool: Option<deadpool_redis::cluster::Pool>,
@@ -211,6 +212,7 @@ impl RedisOperations {
             pool,
             ssh_tunnel: tunnel,
             server_info: None,
+            modules_info: None,
             is_cluster: false,
             nodes: HashMap::new(),
             cluster_pool: None,
@@ -272,28 +274,20 @@ impl RedisOperations {
 
     async fn initialize(&mut self) -> Result<()> {
         let mut connection = self.get_standalone_connection().await?;
-        let value: Value = Cmd::new().arg("INFO").arg("SERVER").query_async(&mut connection).await?;
-        drop(connection);
-        if let Value::VerbatimString { text, .. } = value { // RESP3
-            self.server_info = Some(text);
-            let redis_mode = self.get_server_info("redis_mode").context("there will always contain redis_mode property")?;
-            if redis_mode == "cluster" {
-                self.initialize_cluster().await?;
-            }
-            self.print();
-            Ok(())
-        } else if let Value::BulkString { 0: text, .. } = value {  // RESP2
-            let text = String::from_utf8(text)?;
-            self.server_info = Some(text);
-            let redis_mode = self.get_server_info("redis_mode").context("there will always contain redis_mode property")?;
-            if redis_mode == "cluster" {
-                self.initialize_cluster().await?;
-            }
-            self.print();
-            Ok(())
-        } else {
-            Err(anyhow!("Failed to initialize"))
+        // let server: Value = Cmd::new().arg("INFO").arg("SERVER").query_async(&mut connection).await?;
+        let server: String = Cmd::new().arg("INFO").arg("SERVER").query_async(&mut connection).await?;
+        self.server_info = Some(server);
+        let modules: String = Cmd::new().arg("INFO").arg("MODULES").query_async(&mut connection).await?;
+        self.modules_info = Some(modules);
+        if self.modules_info.is_some() {
         }
+        drop(connection);
+        let redis_mode = self.get_server_info("redis_mode").context("there will always contain redis_mode property")?;
+        if redis_mode == "cluster" {
+            self.initialize_cluster().await?;
+        }
+        self.print();
+        Ok(())
     }
 
     async fn initialize_cluster(&mut self) -> Result<()> {
@@ -441,12 +435,33 @@ impl RedisOperations {
         }
         None
     }
-    
+
+    pub fn has_module<T: Into<String>>(&self, s: T) -> Result<bool>{
+        let s = s.into();
+        if let Some(modules_info) = &self.modules_info {
+            for line in modules_info.lines() {
+                if !line.starts_with("#") {
+                    let mut split = line.splitn(2, ":");
+                    if let Some(k) = split.next() {
+                        if k == "module" {
+                            if let Some(v) = split.next() {
+                                if v.starts_with(&format!("name={s}")) {
+                                    return Ok(true);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(false)
+    }
+
     async fn get_cluster_connection(&self) -> Result<deadpool_redis::cluster::Connection> {
         let pool = &self.cluster_pool.clone().context("should be cluster")?;
         Ok(pool.get().await?)
     }
-    
+
     async fn get_standalone_connection(&self) -> Result<deadpool_redis::Connection> {
         Ok(self.pool.get().await?)
     }
@@ -1028,19 +1043,6 @@ impl RedisOperations {
     pub async fn json_get<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K) -> Result<V> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
-            let v: V = connection.json_get(key, ".").await?;
-            Ok(v)
-        } else {
-            let mut connection = self.get_standalone_connection().await?;
-            let v: V = connection.json_get(key, ".").await?;
-            Ok(v)
-        }
-    }
-
-    pub async fn ft_search<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<Value> {
-        if self.is_cluster() {
-            let mut connection = self.get_cluster_connection().await?;
-            cmd()
             let v: V = connection.json_get(key, ".").await?;
             Ok(v)
         } else {
