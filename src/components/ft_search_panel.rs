@@ -70,14 +70,15 @@ impl<'a> FtSearchPanel<'a> {
         let (tx, rx) = unbounded();
         let mut index_area = CompletableTextArea::new();
         index_area.focus();
-        let search_area = CompletableTextArea::new();
+        let mut search_area = CompletableTextArea::new();
+        search_area.blur();
         Self {
             editing: Editing::Index,
             indexes: None,
             index_info: None,
             index_area,
             search_area,
-            index_block: Block::bordered().title("Index").border_type(BorderType::Double),
+            index_block: Block::bordered().title("Index●").border_type(BorderType::Double),
             search_block: Block::bordered().title("Search").border_type(BorderType::Plain),
             data_sender: tx,
             data_receiver: rx,
@@ -112,15 +113,15 @@ impl<'a> FtSearchPanel<'a> {
             Editing::Index => {
                 self.index_area.blur();
                 self.search_area.focus();
-                self.index_block = self.index_block.clone().border_type(BorderType::Plain);
-                self.search_block = self.search_block.clone().border_type(BorderType::Double);
+                self.index_block = Block::bordered().title("Index").border_type(BorderType::Plain);
+                self.search_block = Block::bordered().title("Search●").border_type(BorderType::Double);
                 Editing::Search
             },
             Editing::Search => {
                 self.index_area.focus();
                 self.search_area.blur();
-                self.index_block = self.index_block.clone().title_style(Style).border_type(BorderType::Double);
-                self.search_block = self.search_block.clone().border_type(BorderType::Plain);
+                self.index_block = Block::bordered().title("Index●").border_type(BorderType::Double);
+                self.search_block = Block::bordered().title("Search").border_type(BorderType::Plain);
                 Editing::Index
             }
         };
@@ -137,7 +138,7 @@ impl Renderable for FtSearchPanel<'_> {
         }
 
         frame.render_widget(Clear::default(), rect);
-        let horizontal = Layout::horizontal([Length(35), Fill(1)]).split(rect);
+        let horizontal = Layout::horizontal([Length(25), Fill(1)]).split(rect);
 
         let index_area = self.index_block.inner(horizontal[0]);
         let search_area = self.index_block.inner(horizontal[1]);
