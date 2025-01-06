@@ -22,6 +22,7 @@ crossbeam-channel = "0.5"
 [dependencies]
 anyhow = { workspace = true }
 log = { workspace = true }
+bitflags = "2"
 
 ratatui = { version = "0.29", features = [
     "unstable-rendered-line-info",

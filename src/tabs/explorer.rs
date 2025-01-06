@@ -1,8 +1,6 @@
 use crate::app::{centered_rect, AppEvent, Listenable, Renderable, TabImplementation};
-use log::info;
-use ratisui_core::bus::GlobalEvent;
-use ratisui_core::marcos::KeyAsserter;
 use crate::components::create_key_editor::{Form, KeyType};
+use crate::components::ft_search_panel::FtSearchPanel;
 use crate::components::hash_table::HashValue;
 use crate::components::list_table::ListValue;
 use crate::components::popup::Popup;
@@ -10,15 +8,12 @@ use crate::components::raw_paragraph::RawParagraph;
 use crate::components::set_table::SetValue;
 use crate::components::stream_view::SteamView;
 use crate::components::zset_table::ZSetValue;
-use ratisui_core::redis_opt::{async_redis_opt, redis_operations, spawn_redis_opt};
 use crate::tabs::explorer::CurrentScreen::{KeysTree, ValuesViewer};
-use ratisui_core::theme::get_color;
-use ratisui_core::utils::{bytes_to_string, clean_text_area};
-use ratisui_core::utils::{deserialize_bytes, ContentType};
 use anyhow::{anyhow, Context, Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use log::info;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::layout::Constraint::{Length, Min};
+use ratatui::layout::Constraint::{Fill, Length, Min};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::prelude::{Line, Style, Stylize, Text};
 use ratatui::style::{Color, Modifier};
@@ -26,8 +21,13 @@ use ratatui::text::Span;
 use ratatui::widgets::block::Position;
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
 use ratatui::{symbols, Frame};
+use ratisui_core::bus::{publish_event, GlobalEvent};
+use ratisui_core::marcos::KeyAsserter;
+use ratisui_core::redis_opt::{async_redis_opt, redis_operations, spawn_redis_opt};
+use ratisui_core::theme::get_color;
+use ratisui_core::utils::{bytes_to_string, clean_text_area};
+use ratisui_core::utils::{deserialize_bytes, ContentType};
 use std::collections::HashMap;
-use std::ops::Not;
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
@@ -48,6 +48,7 @@ pub struct ExplorerTab {
     scan_keys_result: Vec<RedisKey>,
     tree_state: TreeState<String>,
     tree_items: Vec<TreeItem<'static, String>>,
+    ft_search_panel: FtSearchPanel<'static>,
     redis_separator: String,
     selected_key: Option<RedisKey>,
     selected_raw_value: Option<RawParagraph<'static>>,
@@ -220,6 +221,7 @@ impl ExplorerTab {
             scan_keys_result: vec![],
             tree_state: Default::default(),
             tree_items: vec![],
+            ft_search_panel: FtSearchPanel::new(),
             redis_separator: ":".to_string(),
             selected_key: None,
             selected_raw_value: None,
@@ -441,22 +443,11 @@ impl ExplorerTab {
         }
     }
 
-    fn render_search_popup(&mut self, frame: &mut Frame, area: Rect) {
-        let popup_area = centered_rect(30, 15, area);
-        let mut text = Text::default();
-        text.push_line(Line::raw("Search Module is not available yet.")
-            .alignment(Alignment::Center)
-            .bold());
-        let paragraph = Paragraph::new(text)
-            .alignment(Alignment::Center);
-        let search_popup = Popup::new(paragraph)
-            .title(String::from(" [Enter] Confirm | [Esc] Cancel "))
-            .title_position(Position::Bottom)
-            .borders(Borders::ALL)
-            .border_set(symbols::border::DOUBLE)
-            .style(Style::default()
-                .bg(get_color(|t| &t.tab.explorer.accent)));
-        frame.render_widget(search_popup, popup_area);
+    fn render_search_popup(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let popup_area = centered_rect(60, 60, area);
+        let vertical = Layout::vertical([Length(3), Fill(1)]).split(popup_area);
+        self.ft_search_panel.render_frame(frame, vertical[0])?;
+        Ok(())
     }
 
     fn render_tree(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
@@ -812,6 +803,23 @@ impl ExplorerTab {
         Ok(true)
     }
 
+    fn handle_search_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        let accepted = self.ft_search_panel.handle_key_event(key_event)?;
+        if !accepted {
+            if key_event.kind != KeyEventKind::Press || key_event.modifiers != KeyModifiers::NONE {
+                return Ok(true);
+            }
+            match key_event.code {
+                KeyCode::Esc => {
+                    self.show_search_popup = false;
+                    return Ok(true);
+                }
+                _ => {}
+            }
+        }
+        Ok(accepted)
+    }
+
     fn handle_tree_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         if key_event.modifiers == KeyModifiers::NONE {
             let current_selected_key = self.selected_key.clone().map(|current| { current.name });
@@ -1029,7 +1037,7 @@ impl TabImplementation for ExplorerTab {
 
 impl Renderable for ExplorerTab {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        while self.data_receiver.is_empty().not() {
+        while !self.data_receiver.is_empty() {
             let data = self.data_receiver.try_recv();
             if let Ok(data) = data {
                 self.update_data(data);
@@ -1055,7 +1063,7 @@ impl Renderable for ExplorerTab {
             self.render_create_key_form(frame, frame.area())?;
         }
         if self.show_search_popup {
-            self.render_search_popup(frame, frame.area());
+            self.render_search_popup(frame, frame.area())?;
         }
 
         Ok(())
@@ -1127,6 +1135,10 @@ impl Renderable for ExplorerTab {
 
 impl Listenable for ExplorerTab {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        if key_event.is_c_c() {
+            publish_event(GlobalEvent::Exit)?;
+            return Ok(true);
+        }
         if self.show_delete_popup {
             return self.handle_delete_popup_key_event(key_event);
         }
@@ -1138,6 +1150,9 @@ impl Listenable for ExplorerTab {
         }
         if self.show_create {
             return self.handle_create_key_event(key_event);
+        }
+        if self.show_search_popup {
+            return self.handle_search_key_event(key_event);
         }
 
         if ValuesViewer == self.current_screen {
@@ -1269,6 +1284,7 @@ impl Listenable for ExplorerTab {
             AppEvent::Reset => {
                 self.show_delete_popup = false;
                 self.show_filter = false;
+                self.show_search_popup = false;
                 self.filter_text_area = TextArea::default();
                 if let Some(first_line) = self.get_filter_text() {
                     self.do_scan(first_line)?;

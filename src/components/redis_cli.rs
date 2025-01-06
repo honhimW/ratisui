@@ -1,12 +1,11 @@
 use crate::app::{Listenable, Renderable};
-use crate::components::completion::{CompletableTextArea, CompletionItem, CompletionItemKind, Doc, Label, Parameter};
+use crate::components::completion::{sort_commands, CompletableTextArea, CompletionItem, CompletionItemKind, Doc, Label, Parameter};
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use ratatui::crossterm::event::{KeyEvent, KeyEventKind};
 use ratatui::layout::Rect;
 use ratatui::Frame;
 use serde_json::Value;
-use std::cmp;
 use substring::Substring;
 
 pub struct RedisCli<'a> {
@@ -15,8 +14,10 @@ pub struct RedisCli<'a> {
 
 impl RedisCli<'_> {
     pub fn new() -> Self {
+        let mut completable_text_area = CompletableTextArea::new();
+        completable_text_area.focus();
         Self {
-            completable_text_area: CompletableTextArea::new(),
+            completable_text_area,
         }
     }
 }
@@ -162,19 +163,6 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
     }
 
     (commands, segment)
-}
-
-fn sort_commands(commands: &mut Vec<CompletionItem>, segment: &String) {
-    commands.sort_by(|x, x1| {
-        let x_starts_with = x.label.label.starts_with(segment);
-        let x1_starts_with = x1.label.label.starts_with(segment);
-
-        match (x_starts_with, x1_starts_with) {
-            (true, false) => cmp::Ordering::Less,
-            (false, true) => cmp::Ordering::Greater,
-            _ => x.label.label.cmp(&x1.label.label),
-        }
-    });
 }
 
 fn split_args(cmd: impl Into<String>) -> Vec<(String, Option<char>, usize, usize)> {

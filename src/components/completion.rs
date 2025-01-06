@@ -33,12 +33,14 @@ pub struct CompletableTextArea<'a> {
     completion_items: Vec<CompletionItem>,
     raw_input: String,
     segment: String,
+    focus: bool,
 }
 
 impl CompletableTextArea<'_> {
     pub fn new() -> Self {
         let mut text_area = TextArea::default();
         text_area.set_cursor_style(Style::default().rapid_blink().reversed());
+        // text_area.set_cursor_style(Style::default());
         text_area.set_cursor_line_style(Style::default());
         let mut table_state = TableState::default();
         table_state.select_first();
@@ -59,7 +61,18 @@ impl CompletableTextArea<'_> {
             completion_items: vec![],
             raw_input: "".to_string(),
             segment: "".to_string(),
+            focus: false,
         }
+    }
+
+    pub fn focus(&mut self) {
+        self.focus = true;
+        self.single_line_text_area.set_cursor_style(Style::default().rapid_blink().reversed());
+    }
+
+    pub fn blur(&mut self) {
+        self.focus = false;
+        self.single_line_text_area.set_cursor_style(Style::default());
     }
 }
 
@@ -504,6 +517,19 @@ fn get_rows(input: impl Into<String>, items: &Vec<CompletionItem>) -> Vec<Row> {
         rows.push(row);
     }
     rows
+}
+
+pub fn sort_commands(commands: &mut Vec<CompletionItem>, segment: &String) {
+    commands.sort_by(|x, x1| {
+        let x_starts_with = x.label.label.starts_with(segment);
+        let x1_starts_with = x1.label.label.starts_with(segment);
+
+        match (x_starts_with, x1_starts_with) {
+            (true, false) => cmp::Ordering::Less,
+            (false, true) => cmp::Ordering::Greater,
+            _ => x.label.label.cmp(&x1.label.label),
+        }
+    });
 }
 
 #[derive(Debug, Clone)]
