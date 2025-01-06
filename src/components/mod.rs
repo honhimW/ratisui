@@ -15,6 +15,8 @@ pub mod console_output;
 pub mod redis_cli;
 pub mod raw_paragraph;
 pub mod stream_view;
+pub mod completion;
+mod ft_search_panel;
 
 struct TableColors {
     // table background

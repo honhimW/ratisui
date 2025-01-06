@@ -1,9 +1,9 @@
 [package]
 name = "ratisui"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 authors = ["honhimw <honhimw@outlook.com>"]
-rust-version = "1.81.0"
+rust-version = "1.83.0"
 build = "build.rs"
 
 [workspace]
