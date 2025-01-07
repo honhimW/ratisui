@@ -14,6 +14,7 @@ use ratatui::widgets::{
 use ratatui::{symbols, Frame};
 use ratisui_core::theme::get_color;
 use std::cmp;
+use log::info;
 use strum::Display;
 use tui_textarea::{CursorMove, TextArea};
 use ratisui_core::utils::right_pad;
@@ -72,6 +73,7 @@ impl CompletableTextArea<'_> {
 
     pub fn blur(&mut self) {
         self.focus = false;
+        self.show_menu = false;
         self.single_line_text_area.set_cursor_style(Style::default());
     }
 }
@@ -273,6 +275,7 @@ impl Listenable for CompletableTextArea<'_> {
                                         .insert_str(item.insert_text.clone());
                                 } else {
                                     let (s, mut e) = item.range;
+                                    info!("range: {s} - {e}");
                                     if e < 0 {
                                         e = self.raw_input.len() as isize;
                                     }
@@ -307,6 +310,7 @@ impl Listenable for CompletableTextArea<'_> {
                     }
                 }
             };
+            self.raw_input = self.get_input();
             Ok(accepted)
         } else {
             Ok(false)
@@ -627,6 +631,10 @@ impl CompletionItem {
         Self::new(s, CompletionItemKind::Option)
     }
 
+    pub fn custom(s: impl Into<String>, kind: impl Into<String>) -> CompletionItem {
+        Self::new(s, CompletionItemKind::Custom(kind.into()))
+    }
+
     fn new(s: impl Into<String>, kind: CompletionItemKind) -> CompletionItem {
         let s = s.into();
         Self {
@@ -734,6 +742,8 @@ pub enum CompletionItemKind {
     PubSub,
     Server,
     Other,
+    #[strum(to_string = "{0}")]
+    Custom(String),
 }
 
 /// Redis Commands Completion Items Definition

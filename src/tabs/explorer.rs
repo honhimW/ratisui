@@ -1226,6 +1226,7 @@ impl Listenable for ExplorerTab {
         if KeysTree == self.current_screen {
             if key_event.is_c_k() {
                 self.show_search_popup = true;
+                self.ft_search_panel.list_indexes()?;
                 return Ok(true);
             }
             if key_event.modifiers == KeyModifiers::NONE {

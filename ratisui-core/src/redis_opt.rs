@@ -466,20 +466,20 @@ impl RedisOperations {
         Ok(self.pool.get().await?)
     }
 
-    pub async fn str_cmd(&self, cmd: impl Into<String>) -> Result<Value> {
+    pub async fn str_cmd<V: FromRedisValue>(&self, cmd: impl Into<String>) -> Result<V> {
         let cmd = cmd.into();
         let cmd = str_cmd!(cmd.as_str());
         self.cmd(cmd).await
     }
 
-    pub async fn cmd(&self, cmd: Cmd) -> Result<Value> {
+    pub async fn cmd<V: FromRedisValue>(&self, cmd: Cmd) -> Result<V> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
-            let v: Value = cmd.query_async(&mut connection).await?;
+            let v: V = cmd.query_async(&mut connection).await?;
             Ok(v)
         } else {
             let mut connection = self.get_standalone_connection().await?;
-            let v: Value = cmd.query_async(&mut connection).await?;
+            let v: V = cmd.query_async(&mut connection).await?;
             Ok(v)
         }
     }
