@@ -26,6 +26,7 @@ jobs:
         tag: ${{ github.event.inputs.major_version }}
         name: v${{ github.event.inputs.major_version }}
         draft: false
+        prerelease: false
         generateReleaseNotes: true
     - name: Set output
       id: set_output
