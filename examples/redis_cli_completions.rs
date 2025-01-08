@@ -211,7 +211,7 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
     for (idx, (arg, quote, start_pos, end_pos)) in args.iter().enumerate() {
         if start_pos <= &cursor_x && &cursor_x <= end_pos {
             current_word = Some((idx, arg.clone(), quote.clone(), start_pos.clone(), end_pos.clone()));
-            segment = (&input[*start_pos..cursor_x]).to_ascii_uppercase();
+            segment = (&input[*start_pos..cursor_x]).to_uppercase();
             break;
         }
     }
@@ -228,7 +228,7 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
                 }
             } else {
                 if let Some((cmd, _, start_pos, end_pos)) = args.first() {
-                    if &item.label.label == &cmd.to_ascii_uppercase() {
+                    if &item.label.label == &cmd.to_uppercase() {
                         item_clone.range = (start_pos.clone() as isize, end_pos.clone() as isize);
                         commands.push(item_clone);
                         break;
@@ -237,7 +237,7 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
             }
         } else {
             if let Some((cmd, _, start_pos, end_pos)) = args.first() {
-                if &item.label.label == &cmd.to_ascii_uppercase() {
+                if &item.label.label == &cmd.to_uppercase() {
                     item_clone.range = (start_pos.clone() as isize, end_pos.clone() as isize);
                     commands.push(item.clone());
                     break;

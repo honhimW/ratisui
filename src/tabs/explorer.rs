@@ -1,6 +1,6 @@
 use crate::app::{centered_rect, AppEvent, Listenable, Renderable, TabImplementation};
-use ratisui_core::bus::GlobalEvent;
 use crate::components::create_key_editor::{Form, KeyType};
+use crate::components::ft_search_panel::FtSearchPanel;
 use crate::components::hash_table::HashValue;
 use crate::components::list_table::ListValue;
 use crate::components::popup::Popup;
@@ -8,15 +8,12 @@ use crate::components::raw_paragraph::RawParagraph;
 use crate::components::set_table::SetValue;
 use crate::components::stream_view::SteamView;
 use crate::components::zset_table::ZSetValue;
-use ratisui_core::redis_opt::{async_redis_opt, spawn_redis_opt};
 use crate::tabs::explorer::CurrentScreen::{KeysTree, ValuesViewer};
-use ratisui_core::theme::get_color;
-use ratisui_core::utils::{bytes_to_string, clean_text_area};
-use ratisui_core::utils::{deserialize_bytes, ContentType};
 use anyhow::{anyhow, Context, Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use log::info;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::layout::Constraint::{Length, Min};
+use ratatui::layout::Constraint::{Fill, Length, Min};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::prelude::{Line, Style, Stylize, Text};
 use ratatui::style::{Color, Modifier};
@@ -24,8 +21,14 @@ use ratatui::text::Span;
 use ratatui::widgets::block::Position;
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
 use ratatui::{symbols, Frame};
+use ratisui_core::bus::{publish_event, publish_msg, GlobalEvent, Message};
+use ratisui_core::marcos::KeyAsserter;
+use ratisui_core::redis_opt::{async_redis_opt, redis_operations, spawn_redis_opt};
+use ratisui_core::theme::get_color;
+use ratisui_core::utils::{bytes_to_string, clean_text_area};
+use ratisui_core::utils::{deserialize_bytes, ContentType};
 use std::collections::HashMap;
-use std::ops::Not;
+use redis::{FromRedisValue, Value};
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
@@ -36,6 +39,7 @@ pub struct ExplorerTab {
     show_create: bool,
     show_rename: bool,
     show_delete_popup: bool,
+    show_search_popup: bool,
     filter_mod: FilterMod,
     scan_size: u16,
     try_format: bool,
@@ -45,6 +49,7 @@ pub struct ExplorerTab {
     scan_keys_result: Vec<RedisKey>,
     tree_state: TreeState<String>,
     tree_items: Vec<TreeItem<'static, String>>,
+    ft_search_panel: FtSearchPanel<'static>,
     redis_separator: String,
     selected_key: Option<RedisKey>,
     selected_raw_value: Option<RawParagraph<'static>>,
@@ -55,6 +60,8 @@ pub struct ExplorerTab {
     selected_stream_value: Option<SteamView>,
     data_sender: Sender<Data>,
     data_receiver: Receiver<Data>,
+
+    has_search_module: bool,
 }
 
 #[derive(Default, Clone)]
@@ -183,8 +190,8 @@ fn get_type_style(key_type: &str) -> Style {
 }
 
 impl RedisKey {
-    fn new(name: &str, key_type: &str) -> Self {
-        Self { name: name.to_string(), key_type: key_type.to_string(), ..Self::default() }
+    fn new<N: Into<String>, T: Into<String>>(name: N, key_type: T) -> Self {
+        Self { name: name.into(), key_type: key_type.into(), ..Self::default() }
     }
 }
 
@@ -205,6 +212,7 @@ impl ExplorerTab {
             show_create: false,
             show_rename: false,
             show_delete_popup: false,
+            show_search_popup: false,
             filter_mod: FilterMod::Fuzzy,
             scan_size: 2_000,
             try_format: false,
@@ -214,6 +222,7 @@ impl ExplorerTab {
             scan_keys_result: vec![],
             tree_state: Default::default(),
             tree_items: vec![],
+            ft_search_panel: FtSearchPanel::new(),
             redis_separator: ":".to_string(),
             selected_key: None,
             selected_raw_value: None,
@@ -224,6 +233,7 @@ impl ExplorerTab {
             selected_stream_value: None,
             data_sender: tx,
             data_receiver: rx,
+            has_search_module: false,
         }
     }
 
@@ -389,8 +399,8 @@ impl ExplorerTab {
 
     fn render_filter_input(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         match self.filter_mod {
-            FilterMod::Fuzzy => { self.filter_text_area.set_placeholder_text(" Fuzzy "); }
-            FilterMod::Pattern => { self.filter_text_area.set_placeholder_text(" Pattern "); }
+            FilterMod::Fuzzy => self.filter_text_area.set_placeholder_text(" Fuzzy "),
+            FilterMod::Pattern => self.filter_text_area.set_placeholder_text(" Pattern "),
         }
         self.filter_text_area.set_block(
             Block::bordered()
@@ -432,6 +442,13 @@ impl ExplorerTab {
                     .bg(get_color(|t| &t.tab.explorer.accent)));
             frame.render_widget(delete_popup, popup_area);
         }
+    }
+
+    fn render_search_popup(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let popup_area = centered_rect(60, 60, area);
+        let vertical = Layout::vertical([Length(3), Fill(1)]).split(popup_area);
+        self.ft_search_panel.render_frame(frame, vertical[0])?;
+        Ok(())
     }
 
     fn render_tree(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
@@ -483,11 +500,10 @@ impl ExplorerTab {
         };
 
         let sender = self.data_sender.clone();
-        let pattern_clone = pattern.clone();
         let size_clone = self.scan_size.clone();
         spawn_redis_opt(move |operations| async move {
             let mut data = Data::default();
-            let keys = operations.scan(pattern_clone, size_clone as usize).await;
+            let keys = operations.scan(pattern, size_clone as usize).await;
             if let Ok(keys) = keys {
                 let vec = keys.iter()
                     .map(|s| RedisKey::new(s, "unknown"))
@@ -500,6 +516,62 @@ impl ExplorerTab {
         Ok(())
     }
 
+    fn do_ft_search(&mut self) -> Result<()> {
+        let (index, query) = self.ft_search_panel.get_input()?;
+        if index.is_empty() || query.is_empty() {
+            publish_msg(Message::warning("Neither 'Index' nor 'Query' can be empty."))?;
+            return Ok(());
+        }
+        let sender = self.data_sender.clone();
+        spawn_redis_opt(move |operations| async move {
+            let result: Result<Value> = operations.str_cmd(format!("FT.SEARCH {index} {query}")).await;
+
+            match result {
+                Ok(v) => if let Value::Map(entries) = v {
+                    let mut data = Data::default();
+                    let mut vec: Vec<RedisKey> = vec![];
+                    entries.iter()
+                        .filter_map(|(key, value)| {
+                            if let Value::SimpleString(key) = key {
+                                if key == "results" {
+                                    if let Value::Array(array) = value {
+                                        return Some(array);
+                                    }
+                                }
+                            }
+                            None
+                        })
+                        .flat_map(|array| array.iter())
+                        .filter_map(|result| {
+                            if let Value::Map(meta_data) = result {
+                                return Some(meta_data);
+                            }
+                            None
+                        })
+                        .flat_map(|meta_data| meta_data.iter())
+                        .filter_map(|(k, v)| {
+                            if let Value::SimpleString(k) = k {
+                                if k == "id" {
+                                    if let Ok(id) = String::from_redis_value(v) {
+                                        return Some(RedisKey::new(id, "unknown"));
+                                    }
+                                }
+                            }
+                            None
+                        })
+                        .for_each(|redis_key| {
+                            vec.push(redis_key);
+                        });
+                    data.scan_keys_result = (true, vec);
+                    sender.send(data.clone())?;
+                },
+                Err(e) => publish_msg(Message::error(format!("{:?}", e)))?,
+            }
+            Ok::<(), Error>(())
+        })?;
+        Ok(())
+    }
+
     fn build_tree_items(&mut self) -> Result<()> {
         if let Some(first_line) = self.get_filter_text() {
             if !first_line.is_empty() {
@@ -507,9 +579,8 @@ impl ExplorerTab {
                 self.scan_keys_result.retain(|redis_key| {
                     let contains;
                     match self.filter_mod {
-                        FilterMod::Fuzzy => { contains = redis_key.name.contains(filter_text); }
+                        FilterMod::Fuzzy => contains = redis_key.name.contains(filter_text),
                         FilterMod::Pattern => {
-                            // TODO scan key
                             let fuzzy_start = filter_text.starts_with("*");
                             let fuzzy_end = filter_text.ends_with("*");
                             let mut _filter_text = filter_text.clone();
@@ -592,8 +663,8 @@ impl ExplorerTab {
             KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
             KeyEvent { code: KeyCode::Char('/'), modifiers: KeyModifiers::CONTROL, .. } => {
                 match self.filter_mod {
-                    FilterMod::Fuzzy => { self.filter_mod = FilterMod::Pattern; }
-                    FilterMod::Pattern => { self.filter_mod = FilterMod::Fuzzy; }
+                    FilterMod::Fuzzy => self.filter_mod = FilterMod::Pattern,
+                    FilterMod::Pattern => self.filter_mod = FilterMod::Fuzzy,
                 }
             }
             KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
@@ -715,7 +786,6 @@ impl ExplorerTab {
                         }
                     };
                     let sender = self.data_sender.clone();
-                    let pattern_clone = pattern.clone();
                     let size_clone = self.scan_size.clone();
                     spawn_redis_opt(move |operations| async move {
                         match key_type {
@@ -744,7 +814,7 @@ impl ExplorerTab {
                         }
 
                         let mut data = Data::default();
-                        let keys = operations.scan(pattern_clone, size_clone as usize).await?;
+                        let keys = operations.scan(pattern, size_clone as usize).await?;
                         let vec = keys.iter()
                             .map(|s| RedisKey::new(s, "unknown"))
                             .collect::<Vec<RedisKey>>();
@@ -788,6 +858,28 @@ impl ExplorerTab {
         }
 
         Ok(true)
+    }
+
+    fn handle_search_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        let accepted = self.ft_search_panel.handle_key_event(key_event)?;
+        if !accepted {
+            if key_event.kind != KeyEventKind::Press || key_event.modifiers != KeyModifiers::NONE {
+                return Ok(true);
+            }
+            match key_event.code {
+                KeyCode::Enter => {
+                    self.do_ft_search()?;
+                    self.show_search_popup = false;
+                    return Ok(true);
+                }
+                KeyCode::Esc => {
+                    self.show_search_popup = false;
+                    return Ok(true);
+                }
+                _ => {}
+            }
+        }
+        Ok(accepted)
     }
 
     fn handle_tree_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
@@ -884,7 +976,7 @@ impl ExplorerTab {
             let key_name_clone = key_name.clone();
             let key_type_clone = key_type.clone();
             let length = async_redis_opt(|op| async move {
-                match key_type_clone.to_ascii_lowercase().as_str() {
+                match key_type_clone.to_lowercase().as_str() {
                     "string" => Ok(op.strlen(key_name_clone).await?),
                     "list" => Ok(op.llen(key_name_clone).await?),
                     "hash" => Ok(op.hlen(key_name_clone).await?),
@@ -893,7 +985,7 @@ impl ExplorerTab {
                     "stream" => Ok(op.xlen(key_name_clone).await?),
                     "rejson-rl" => {
                         let json_type = op.json_type(&key_name_clone).await?;
-                        let len = match json_type.to_ascii_lowercase().as_str() {
+                        let len = match json_type.to_lowercase().as_str() {
                             "object" => op.json_objlen(key_name_clone).await?,
                             "array" => op.json_arrlen(key_name_clone).await?,
                             "string" => op.json_strlen(key_name_clone).await?,
@@ -927,7 +1019,7 @@ impl ExplorerTab {
         data.key_name = key_name.clone();
         let key_name_clone = key_name.clone();
         async_redis_opt(|op| async move {
-            match key_type.to_ascii_lowercase().as_str() {
+            match key_type.to_lowercase().as_str() {
                 "string" => {
                     let bytes: Vec<u8> = op.get(key_name_clone).await?;
                     let result = deserialize_bytes(bytes).context("Failed to deserialize string")?;
@@ -982,9 +1074,8 @@ impl ExplorerTab {
                     data.selected_stream_value = (true, Some(hash_value));
                 }
                 "rejson-rl" => {
-                    let bytes: Vec<u8> = op.json_get(key_name_clone).await?;
-                    let result = deserialize_bytes(bytes).context("Failed to deserialize string")?;
-                    data.selected_string_value = (true, Some((result.0, result.1)));
+                    let json_string: String = op.json_get(key_name_clone).await?;
+                    data.selected_string_value = (true, Some((json_string, Some(ContentType::Json))));
                 }
                 _ => {}
             }
@@ -1008,7 +1099,7 @@ impl TabImplementation for ExplorerTab {
 
 impl Renderable for ExplorerTab {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        while self.data_receiver.is_empty().not() {
+        while !self.data_receiver.is_empty() {
             let data = self.data_receiver.try_recv();
             if let Ok(data) = data {
                 self.update_data(data);
@@ -1033,6 +1124,9 @@ impl Renderable for ExplorerTab {
         if self.show_create {
             self.render_create_key_form(frame, frame.area())?;
         }
+        if self.show_search_popup {
+            self.render_search_popup(frame, frame.area())?;
+        }
 
         Ok(())
     }
@@ -1051,9 +1145,16 @@ impl Renderable for ExplorerTab {
             elements = self.create_key_form.footer_elements();
             elements.push(("Enter", "Create"));
             elements.push(("Esc", "Close"));
+        } else if self.show_search_popup {
+            elements = self.ft_search_panel.footer_elements();
+            elements.push(("Enter", "Apply"));
+            elements.push(("Esc", "Close"));
         } else {
             if self.current_screen == KeysTree {
                 elements.push(("/", "Scan"));
+                if self.has_search_module {
+                    elements.push(("^k", "FT.Search"));
+                }
                 elements.push(("c", "Create"));
                 elements.push(("d/Del", "Delete"));
                 elements.push(("r", "Rename"));
@@ -1100,6 +1201,10 @@ impl Renderable for ExplorerTab {
 
 impl Listenable for ExplorerTab {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        if key_event.is_c_c() {
+            publish_event(GlobalEvent::Exit)?;
+            return Ok(true);
+        }
         if self.show_delete_popup {
             return self.handle_delete_popup_key_event(key_event);
         }
@@ -1111,6 +1216,9 @@ impl Listenable for ExplorerTab {
         }
         if self.show_create {
             return self.handle_create_key_event(key_event);
+        }
+        if self.show_search_popup {
+            return self.handle_search_key_event(key_event);
         }
 
         if ValuesViewer == self.current_screen {
@@ -1182,6 +1290,11 @@ impl Listenable for ExplorerTab {
         }
 
         if KeysTree == self.current_screen {
+            if key_event.is_c_k() {
+                self.show_search_popup = true;
+                self.ft_search_panel.list_indexes()?;
+                return Ok(true);
+            }
             if key_event.modifiers == KeyModifiers::NONE {
                 if self.handle_tree_key_event(key_event)? {
                     return Ok(true);
@@ -1229,8 +1342,8 @@ impl Listenable for ExplorerTab {
         Ok(false)
     }
 
-    fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
-        match _app_event {
+    fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
+        match app_event {
             AppEvent::InitConfig(configuration) => {
                 self.scan_size = configuration.scan_size;
                 self.try_format = configuration.try_format;
@@ -1238,6 +1351,7 @@ impl Listenable for ExplorerTab {
             AppEvent::Reset => {
                 self.show_delete_popup = false;
                 self.show_filter = false;
+                self.show_search_popup = false;
                 self.filter_text_area = TextArea::default();
                 if let Some(first_line) = self.get_filter_text() {
                     self.do_scan(first_line)?;
@@ -1248,6 +1362,10 @@ impl Listenable for ExplorerTab {
                     GlobalEvent::ClientChanged => {
                         if let Some(first_line) = self.get_filter_text() {
                             self.do_scan(first_line)?;
+                            if let Some(ref redis_opt) = redis_operations() {
+                                self.has_search_module = redis_opt.has_module("search")?;
+                                info!("has search module: {}", self.has_search_module);
+                            }
                         }
                     }
                     _ => {}

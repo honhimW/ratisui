@@ -197,7 +197,7 @@ pub fn split_args(cmd: impl Into<String>) -> Vec<String> {
                     parts.push(current.clone());
                     current.clear();
                 }
-            } else if c == '\'' || c == '"' {
+            } else if c == '\'' || c == '"' || c == '`' {
                 in_quotes = true;
                 quote_char = c;
             } else {
@@ -212,9 +212,37 @@ pub fn split_args(cmd: impl Into<String>) -> Vec<String> {
     parts
 }
 
+pub fn right_pad(s: &str, size: usize, pad_str: &str) -> String {
+    if s.is_empty() {
+        return s.to_string();
+    }
+    let pad_str = if pad_str.is_empty() { " " } else { pad_str };
+    let pad_len = pad_str.chars().count();
+    let str_len = s.chars().count();
+    let pads = size as isize - str_len as isize;
+
+    if pads <= 0 {
+        s.to_string()
+    } else if pad_len == 1 && pads <= 8192 {
+        format!("{}{}", s, pad_str.repeat(pads as usize))
+    } else if pads == pad_len as isize {
+        format!("{}{}", s, pad_str)
+    } else if pads < pad_len as isize {
+        format!("{}{}", s, &pad_str[..pads as usize])
+    } else {
+        let mut padding = String::with_capacity(pads as usize);
+        let pad_chars: Vec<char> = pad_str.chars().collect();
+        for i in 0..pads as usize {
+            padding.push(pad_chars[i % pad_len]);
+        }
+        format!("{}{}", s, padding)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use crate::utils::right_pad;
 
     macro_rules! ctrl {
     ($name:ident) => {{
@@ -229,5 +257,12 @@ mod test {
     #[test]
     fn test_ctrl_macro() {
         assert!(matches!(ctrl!(a), KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL,.. }));
+    }
+
+    #[test]
+    fn test_right_pad() {
+        assert_eq!(right_pad("a", 1, " "), "a");
+        assert_eq!(right_pad("a", 2, " "), "a ");
+        assert_eq!(right_pad("a", 3, " "), "a  ");
     }
 }
