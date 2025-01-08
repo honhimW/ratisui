@@ -1,6 +1,6 @@
 [package]
 name = "ratisui"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2021"
 authors = ["honhimw <honhimw@outlook.com>"]
 rust-version = "1.83.0"
