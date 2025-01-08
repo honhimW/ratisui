@@ -1,5 +1,5 @@
 use crate::app::{Listenable, Renderable};
-use crate::components::completion::{sort_commands, CompletableTextArea, CompletionItem, CompletionItemKind, Doc, Label, Parameter};
+use crate::components::completion::{sort_commands, split_args, CompletableTextArea, CompletionItem, CompletionItemKind, Doc, Label, Parameter};
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use ratatui::crossterm::event::{KeyEvent, KeyEventKind};
@@ -163,47 +163,6 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
     }
 
     (commands, segment)
-}
-
-fn split_args(cmd: impl Into<String>) -> Vec<(String, Option<char>, usize, usize)> {
-    let cmd = cmd.into();
-
-    let mut parts: Vec<(String, Option<char>, usize, usize)> = vec![];
-    let mut current = String::new();
-    let mut in_quotes = false;
-    let mut quote_char = '\0';
-
-    let mut cursor: usize = 0;
-    let mut start: usize = 0;
-    for c in cmd.chars() {
-        if in_quotes {
-            if c == quote_char {
-                in_quotes = false;
-                parts.push((current.clone(), Some(quote_char), start, cursor));
-                current.clear();
-            } else {
-                current.push(c);
-            }
-        } else {
-            if c.is_whitespace() {
-                if !current.is_empty() {
-                    parts.push((current.clone(), None, start, cursor));
-                    current.clear();
-                }
-                start = cursor + 1;
-            } else if c == '\'' || c == '"' {
-                in_quotes = true;
-                quote_char = c;
-                start = cursor + 1;
-            } else {
-                current.push(c);
-            }
-        }
-        cursor += 1;
-    }
-
-    parts.push((current, None, start, cursor));
-    parts
 }
 
 /// Redis Commands Completion Items Definition

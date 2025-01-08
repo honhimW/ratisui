@@ -21,13 +21,14 @@ use ratatui::text::Span;
 use ratatui::widgets::block::Position;
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
 use ratatui::{symbols, Frame};
-use ratisui_core::bus::{publish_event, GlobalEvent};
+use ratisui_core::bus::{publish_event, publish_msg, GlobalEvent, Message};
 use ratisui_core::marcos::KeyAsserter;
 use ratisui_core::redis_opt::{async_redis_opt, redis_operations, spawn_redis_opt};
 use ratisui_core::theme::get_color;
 use ratisui_core::utils::{bytes_to_string, clean_text_area};
 use ratisui_core::utils::{deserialize_bytes, ContentType};
 use std::collections::HashMap;
+use redis::{FromRedisValue, Value};
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
@@ -189,8 +190,8 @@ fn get_type_style(key_type: &str) -> Style {
 }
 
 impl RedisKey {
-    fn new(name: &str, key_type: &str) -> Self {
-        Self { name: name.to_string(), key_type: key_type.to_string(), ..Self::default() }
+    fn new<N: Into<String>, T: Into<String>>(name: N, key_type: T) -> Self {
+        Self { name: name.into(), key_type: key_type.into(), ..Self::default() }
     }
 }
 
@@ -515,6 +516,62 @@ impl ExplorerTab {
         Ok(())
     }
 
+    fn do_ft_search(&mut self) -> Result<()> {
+        let (index, query) = self.ft_search_panel.get_input()?;
+        if index.is_empty() || query.is_empty() {
+            publish_msg(Message::warning("Neither 'Index' nor 'Query' can be empty."))?;
+            return Ok(());
+        }
+        let sender = self.data_sender.clone();
+        spawn_redis_opt(move |operations| async move {
+            let result: Result<Value> = operations.str_cmd(format!("FT.SEARCH {index} {query}")).await;
+
+            match result {
+                Ok(v) => if let Value::Map(entries) = v {
+                    let mut data = Data::default();
+                    let mut vec: Vec<RedisKey> = vec![];
+                    entries.iter()
+                        .filter_map(|(key, value)| {
+                            if let Value::SimpleString(key) = key {
+                                if key == "results" {
+                                    if let Value::Array(array) = value {
+                                        return Some(array);
+                                    }
+                                }
+                            }
+                            None
+                        })
+                        .flat_map(|array| array.iter())
+                        .filter_map(|result| {
+                            if let Value::Map(meta_data) = result {
+                                return Some(meta_data);
+                            }
+                            None
+                        })
+                        .flat_map(|meta_data| meta_data.iter())
+                        .filter_map(|(k, v)| {
+                            if let Value::SimpleString(k) = k {
+                                if k == "id" {
+                                    if let Ok(id) = String::from_redis_value(v) {
+                                        return Some(RedisKey::new(id, "unknown"));
+                                    }
+                                }
+                            }
+                            None
+                        })
+                        .for_each(|redis_key| {
+                            vec.push(redis_key);
+                        });
+                    data.scan_keys_result = (true, vec);
+                    sender.send(data.clone())?;
+                },
+                Err(e) => publish_msg(Message::error(format!("{:?}", e)))?,
+            }
+            Ok::<(), Error>(())
+        })?;
+        Ok(())
+    }
+
     fn build_tree_items(&mut self) -> Result<()> {
         if let Some(first_line) = self.get_filter_text() {
             if !first_line.is_empty() {
@@ -810,6 +867,11 @@ impl ExplorerTab {
                 return Ok(true);
             }
             match key_event.code {
+                KeyCode::Enter => {
+                    self.do_ft_search()?;
+                    self.show_search_popup = false;
+                    return Ok(true);
+                }
                 KeyCode::Esc => {
                     self.show_search_popup = false;
                     return Ok(true);
@@ -1082,6 +1144,10 @@ impl Renderable for ExplorerTab {
         } else if self.show_create {
             elements = self.create_key_form.footer_elements();
             elements.push(("Enter", "Create"));
+            elements.push(("Esc", "Close"));
+        } else if self.show_search_popup {
+            elements = self.ft_search_panel.footer_elements();
+            elements.push(("Enter", "Apply"));
             elements.push(("Esc", "Close"));
         } else {
             if self.current_screen == KeysTree {

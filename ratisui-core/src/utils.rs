@@ -197,7 +197,7 @@ pub fn split_args(cmd: impl Into<String>) -> Vec<String> {
                     parts.push(current.clone());
                     current.clear();
                 }
-            } else if c == '\'' || c == '"' {
+            } else if c == '\'' || c == '"' || c == '`' {
                 in_quotes = true;
                 quote_char = c;
             } else {

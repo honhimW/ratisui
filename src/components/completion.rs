@@ -14,10 +14,9 @@ use ratatui::widgets::{
 use ratatui::{symbols, Frame};
 use ratisui_core::theme::get_color;
 use std::cmp;
-use log::info;
 use strum::Display;
 use tui_textarea::{CursorMove, TextArea};
-use ratisui_core::utils::right_pad;
+use ratisui_core::utils::{clean_text_area, right_pad};
 
 pub struct CompletableTextArea<'a> {
     max_menu_width: u16,
@@ -187,8 +186,20 @@ impl Listenable for CompletableTextArea<'_> {
                     code: KeyCode::Char(' '),
                     modifiers: KeyModifiers::CONTROL,
                     ..
+                } | KeyEvent {
+                    code: KeyCode::Char('/'),
+                    modifiers: KeyModifiers::ALT,
+                    ..
                 } => {
                     self.show_menu = true;
+                    true
+                }
+                KeyEvent {
+                    code: KeyCode::Char('d'),
+                    modifiers: KeyModifiers::CONTROL,
+                    ..
+                } => {
+                    clean_text_area(&mut self.single_line_text_area);
                     true
                 }
                 KeyEvent {
@@ -270,12 +281,19 @@ impl Listenable for CompletableTextArea<'_> {
                     if !self.completion_items.is_empty() && self.show_menu {
                         if let Some(selected) = self.table_state.selected() {
                             if let Some(item) = self.completion_items.get(selected) {
+                                let mut insert_text = item.insert_text.clone();
+                                let (cursor_backward, insert_text) = if let Some(end_at) = insert_text.rfind("$end") {
+                                    let cursor_backward = insert_text.len() - (end_at + 4);
+                                    insert_text.replace_range(end_at..(end_at + 4), "");
+                                    (cursor_backward, insert_text)
+                                } else {
+                                    (0, insert_text)
+                                };
                                 if self.raw_input.is_empty() {
                                     self.single_line_text_area
-                                        .insert_str(item.insert_text.clone());
+                                        .insert_str(insert_text);
                                 } else {
                                     let (s, mut e) = item.range;
-                                    info!("range: {s} - {e}");
                                     if e < 0 {
                                         e = self.raw_input.len() as isize;
                                     }
@@ -287,7 +305,11 @@ impl Listenable for CompletableTextArea<'_> {
                                         self.single_line_text_area.move_cursor(CursorMove::Forward);
                                     }
                                     self.single_line_text_area
-                                        .insert_str(item.insert_text.clone());
+                                        .insert_str(insert_text);
+                                }
+                                if cursor_backward > 0 {
+                                    let (cursor_y, cursor_x) = self.single_line_text_area.cursor();
+                                    self.single_line_text_area.move_cursor(CursorMove::Jump(cursor_y as u16, (cursor_x - cursor_backward) as u16));
                                 }
                                 self.hide_menu();
                                 true
@@ -497,12 +519,10 @@ fn get_rows(input: impl Into<String>, items: &Vec<CompletionItem>) -> Vec<Row> {
     let mut rows = vec![];
     for item in items {
         let mut prompt = Line::default();
-        if let Some(pos) = item.label.label.find(input.clone().as_str()) {
+        if let Some(pos) = item.label.label.to_lowercase().find(input.to_lowercase().as_str()) {
             prompt.push_span(Span::raw(&item.label.label[0..pos]));
-            prompt.push_span(
-                Span::raw(input.clone())
-                    .style(Style::default().fg(get_color(|t| &t.tab.cli.menu.input))),
-            );
+            prompt.push_span(Span::raw(&item.label.label[pos..pos + input.len()])
+                     .style(Style::default().fg(get_color(|t| &t.tab.cli.menu.input))));
             prompt.push_span(Span::raw(
                 &item.label.label[pos + input.len()..item.label.label.len()],
             ));
@@ -521,6 +541,47 @@ fn get_rows(input: impl Into<String>, items: &Vec<CompletionItem>) -> Vec<Row> {
         rows.push(row);
     }
     rows
+}
+
+pub fn split_args(cmd: impl Into<String>) -> Vec<(String, Option<char>, usize, usize)> {
+    let cmd = cmd.into();
+
+    let mut parts: Vec<(String, Option<char>, usize, usize)> = vec![];
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut quote_char = '\0';
+
+    let mut cursor: usize = 0;
+    let mut start: usize = 0;
+    for c in cmd.chars() {
+        if in_quotes {
+            if c == quote_char {
+                in_quotes = false;
+                parts.push((current.clone(), Some(quote_char), start, cursor));
+                current.clear();
+            } else {
+                current.push(c);
+            }
+        } else {
+            if c.is_whitespace() {
+                if !current.is_empty() {
+                    parts.push((current.clone(), None, start, cursor));
+                    current.clear();
+                }
+                start = cursor + 1;
+            } else if c == '\'' || c == '"' {
+                in_quotes = true;
+                quote_char = c;
+                start = cursor + 1;
+            } else {
+                current.push(c);
+            }
+        }
+        cursor += 1;
+    }
+
+    parts.push((current, None, start, cursor));
+    parts
 }
 
 pub fn sort_commands(commands: &mut Vec<CompletionItem>, segment: &String) {
@@ -635,7 +696,7 @@ impl CompletionItem {
         Self::new(s, CompletionItemKind::Custom(kind.into()))
     }
 
-    fn new(s: impl Into<String>, kind: CompletionItemKind) -> CompletionItem {
+    fn new(s: impl Into<String>, kind: CompletionItemKind) -> Self {
         let s = s.into();
         Self {
             kind,
@@ -648,6 +709,11 @@ impl CompletionItem {
             range: (0, -1),
             insert_text: s,
         }
+    }
+
+    pub fn insert_text(mut self, s: impl Into<String>) -> Self {
+        self.insert_text = s.into();
+        self
     }
 
     pub fn add_param(mut self, p: Parameter) -> Self {
@@ -756,7 +822,8 @@ fn highlight_doc(doc: &Doc) -> Text {
             .style(Style::default().fg(get_color(|t| &t.tab.cli.doc.command))),
     );
     text.push_line(Line::raw(""));
-    text.push_line(Line::raw(doc.summary.clone()));
+    let lines = doc.summary.lines();
+    lines.for_each(|summary_line| text.push_line(Line::raw(summary_line)));
     doc.attributes.iter().for_each(|(key, value)| {
         let mut line = Line::default();
         let mut key = right_pad(key, 10, " ");
