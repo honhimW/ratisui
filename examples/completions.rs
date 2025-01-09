@@ -1,21 +1,22 @@
-use std::cmp;
-use std::thread::sleep;
-use std::time::Duration;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
-use ratatui::widgets::{Block, BorderType, Cell, Clear, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, TableState, Widget};
-use ratatui::{Frame, TerminalOptions, Viewport};
-use ratatui::buffer::Buffer;
-use ratatui::text::{Line, Span, Text};
-use tui_textarea::{CursorMove, Input, TextArea};
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use ratatui::crossterm::event;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
-use ratatui::style::{Style, Stylize};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::palette::tailwind;
+use ratatui::style::{Style, Stylize};
 use ratatui::symbols::scrollbar::Set;
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{
+    Block, BorderType, Cell, Clear, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
+    TableState,
+};
+use ratatui::Frame;
+use std::cmp;
+use std::time::Duration;
 use strum::Display;
+use tui_textarea::{CursorMove, TextArea};
 
 fn main() -> Result<()> {
     let mut terminal = ratatui::init();
@@ -37,102 +38,142 @@ fn main() -> Result<()> {
         let rows = get_rows(&input, &items);
         let table = get_table(rows);
         let size = items.len() as u16;
-        terminal
-            .draw(|frame: &mut Frame| {
-                let rect = frame.area();
-                let Rect {
-                    height: max_height,
-                    width: max_width,
-                    ..
-                } = rect;
-                if max_width <= 40 || max_height <= 11 {
-                    return;
-                }
-                let rect = centered_rect(90, 90, rect);
+        terminal.draw(|frame: &mut Frame| {
+            let rect = frame.area();
+            let Rect {
+                height: max_height,
+                width: max_width,
+                ..
+            } = rect;
+            if max_width <= 40 || max_height <= 11 {
+                return;
+            }
+            let rect = centered_rect(90, 90, rect);
 
-                let area = Rect {
-                    height: rect.height - 1,
-                    ..rect
-                };
+            let area = Rect {
+                height: rect.height - 1,
+                ..rect
+            };
 
-                let max_menu_height = 10;
-                let should_scroll = size > max_menu_height;
+            let max_menu_height = 10;
+            let should_scroll = size > max_menu_height;
 
-                let mut menu_area = Rect {
-                    x: area.x + cursor_x as u16 + 1,
-                    y: area.y + cursor_y as u16 + 2,
-                    height: cmp::min(max_menu_height, size),
-                    width: 40,
-                };
-                if menu_area.x + menu_area.width > max_width {
-                    let x_offset = menu_area.x + menu_area.width - max_width;
-                    menu_area.x = menu_area.x.saturating_sub(x_offset);
-                }
-                if menu_area.y + menu_area.height > max_height {
-                    menu_area.y = menu_area.y.saturating_sub(menu_area.height).saturating_sub(1);
-                }
+            let mut menu_area = Rect {
+                x: area.x + cursor_x as u16 + 1,
+                y: area.y + cursor_y as u16 + 2,
+                height: cmp::min(max_menu_height, size),
+                width: 40,
+            };
+            if menu_area.x + menu_area.width > max_width {
+                let x_offset = menu_area.x + menu_area.width - max_width;
+                menu_area.x = menu_area.x.saturating_sub(x_offset);
+            }
+            if menu_area.y + menu_area.height > max_height {
+                menu_area.y = menu_area
+                    .y
+                    .saturating_sub(menu_area.height)
+                    .saturating_sub(1);
+            }
 
-                frame.render_widget(&text_area, area);
-                if show_table {
-                    frame.render_widget(Clear::default(), menu_area);
-                    frame.render_stateful_widget(table, menu_area, &mut table_state);
-                    if should_scroll {
-                        frame.render_stateful_widget(
-                            Scrollbar::default()
-                                .orientation(ScrollbarOrientation::VerticalRight)
-                                .symbols(Set {
-                                    track: " ",
-                                    thumb: "█",
-                                    begin: "↑",
-                                    end: "↓",
-                                })
-                                .begin_symbol(None)
-                                .end_symbol(None),
-                            menu_area.inner(Margin {
-                                vertical: 0,
-                                horizontal: 0,
-                            }),
-                            &mut scroll_state,
-                        );
-                    }
+            frame.render_widget(&text_area, area);
+            if show_table {
+                frame.render_widget(Clear::default(), menu_area);
+                frame.render_stateful_widget(table, menu_area, &mut table_state);
+                if should_scroll {
+                    frame.render_stateful_widget(
+                        Scrollbar::default()
+                            .orientation(ScrollbarOrientation::VerticalRight)
+                            .symbols(Set {
+                                track: " ",
+                                thumb: "█",
+                                begin: "↑",
+                                end: "↓",
+                            })
+                            .begin_symbol(None)
+                            .end_symbol(None),
+                        menu_area.inner(Margin {
+                            vertical: 0,
+                            horizontal: 0,
+                        }),
+                        &mut scroll_state,
+                    );
                 }
-            })?;
+            }
+        })?;
         if event::poll(Duration::from_millis(20))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     match key {
-                        KeyEvent { modifiers: KeyModifiers::CONTROL, code: KeyCode::Char('c'),.. } => {
+                        KeyEvent {
+                            modifiers: KeyModifiers::CONTROL,
+                            code: KeyCode::Char('c'),
+                            ..
+                        } => {
                             break;
                         }
-                        KeyEvent { code: KeyCode::Esc, .. } => {
+                        KeyEvent {
+                            code: KeyCode::Esc, ..
+                        } => {
                             if text_area.is_selecting() {
                                 text_area.cancel_selection();
                             } else if show_table {
                                 show_table = false;
                             }
                         }
-                        KeyEvent { code: KeyCode::Char(' '), modifiers: KeyModifiers::CONTROL, .. } => {
+                        KeyEvent {
+                            code: KeyCode::Char(' '),
+                            modifiers: KeyModifiers::CONTROL,
+                            ..
+                        } => {
                             show_table = true;
                         }
-                        KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
-                        KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
+                        KeyEvent {
+                            code: KeyCode::Char('m'),
+                            modifiers: KeyModifiers::CONTROL,
+                            ..
+                        } => {}
+                        KeyEvent {
+                            code: KeyCode::Char('a'),
+                            modifiers: KeyModifiers::CONTROL,
+                            ..
+                        } => {
                             text_area.select_all();
                         }
-                        KeyEvent { code: KeyCode::Char('z'), modifiers: KeyModifiers::CONTROL, .. } => {
+                        KeyEvent {
+                            code: KeyCode::Char('z'),
+                            modifiers: KeyModifiers::CONTROL,
+                            ..
+                        } => {
                             text_area.undo();
                         }
-                        KeyEvent { code: KeyCode::Char('y'), modifiers: KeyModifiers::CONTROL, .. } => {
+                        KeyEvent {
+                            code: KeyCode::Char('y'),
+                            modifiers: KeyModifiers::CONTROL,
+                            ..
+                        } => {
                             text_area.redo();
                         }
-                        KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::NONE, .. } => {
+                        KeyEvent {
+                            code: KeyCode::Up,
+                            modifiers: KeyModifiers::NONE,
+                            ..
+                        } => {
                             table_state.select_previous();
                             scroll_state.prev();
                         }
-                        KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::NONE, .. } => {
+                        KeyEvent {
+                            code: KeyCode::Down,
+                            modifiers: KeyModifiers::NONE,
+                            ..
+                        } => {
                             table_state.select_next();
                             scroll_state.next();
                         }
-                        KeyEvent { code: KeyCode::Tab | KeyCode::Enter, modifiers: KeyModifiers::NONE, .. } => {
+                        KeyEvent {
+                            code: KeyCode::Tab | KeyCode::Enter,
+                            modifiers: KeyModifiers::NONE,
+                            ..
+                        } => {
                             if !items.is_empty() && show_table {
                                 if let Some(selected) = table_state.selected() {
                                     if let Some(item) = items.get(selected) {
@@ -179,17 +220,22 @@ fn get_rows(input: impl Into<String>, items: &Vec<CompletionItem>) -> Vec<Row> {
         let mut prompt = Line::default();
         if let Some(pos) = item.label.label.find(input.clone().as_str()) {
             prompt.push_span(Span::raw(&item.label.label[0..pos]));
-            prompt.push_span(Span::raw(input.clone()).style(Style::default().fg(tailwind::AMBER.c500)));
-            prompt.push_span(Span::raw(&item.label.label[pos + input.len()..item.label.label.len()]));
+            prompt.push_span(
+                Span::raw(input.clone()).style(Style::default().fg(tailwind::AMBER.c500)),
+            );
+            prompt.push_span(Span::raw(
+                &item.label.label[pos + input.len()..item.label.label.len()],
+            ));
         }
         if let Some(ref detail) = item.label.detail {
             prompt.push_span(Span::raw(" "));
             prompt.push_span(Span::raw(detail).style(Style::default().dim()));
         }
         let prompt = Cell::new(prompt);
-        let kind = Cell::new(Line::raw(item.kind.to_string())
-            .alignment(Alignment::Right)
-            .style(Style::default().dim())
+        let kind = Cell::new(
+            Line::raw(item.kind.to_string())
+                .alignment(Alignment::Right)
+                .style(Style::default().dim()),
         );
         let row = Row::new(vec![prompt, kind]);
         rows.push(row);
@@ -275,7 +321,6 @@ impl CompletionItem {
             insert_text: s,
         }
     }
-
 }
 
 #[derive(Debug, Clone)]

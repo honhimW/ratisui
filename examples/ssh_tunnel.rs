@@ -2,17 +2,12 @@
 mod common;
 
 use crate::common::client::build_pool;
-use anyhow::Error;
 use anyhow::Result;
-use async_trait::async_trait;
 use ratisui_core::ssh_tunnel::SshTunnel;
 use redis::cmd;
-use russh::client::Handler;
-use russh::keys::key;
-use std::ops::Deref;
 use std::string::ToString;
 
-const SSH_HOST: &str = "10.37.1.133";
+const SSH_HOST: &str = "alpha.vm.internal";
 const SSH_PORT: u16 = 22;
 const SSH_USER: &str = "guest";
 const SSH_PASSWORD: &str = "123";
@@ -21,18 +16,6 @@ const REDIS_HOST: &str = "redis-16430.c1.asia-northeast1-1.gce.redns.redis-cloud
 const REDIS_PORT: u16 = 16430;
 const REDIS_USER: &str = "default";
 const REDIS_PASSWORD: &str = "9JRCAjglNSTc4pXWOggLT7BKljwuoSSy";
-
-const LOCAL_HOST: &str = "127.0.0.1";
-
-struct IHandler;
-
-#[async_trait]
-impl Handler for IHandler {
-    type Error = Error;
-    async fn check_server_key(&mut self, _: &key::PublicKey) -> Result<bool, Self::Error> {
-        Ok(true)
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {

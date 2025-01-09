@@ -1,10 +1,7 @@
-use std::thread::sleep;
-use std::time::Duration;
-use ratatui::layout::Rect;
-use ratatui::widgets::{Block, BorderType, Clear, Table, Widget};
-use ratatui::{Frame, TerminalOptions, Viewport};
 use ratatui::buffer::Buffer;
-use ratatui::text::Text;
+use ratatui::layout::Rect;
+use ratatui::widgets::{Block, BorderType, Table, Widget};
+use ratatui::{Frame, TerminalOptions, Viewport};
 use tui_textarea::TextArea;
 
 fn main() {

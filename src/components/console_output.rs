@@ -18,6 +18,7 @@ pub struct ConsoleData<'a> {
     pub weight: u16,
     pub total_lines: usize,
     is_bottom: bool,
+    max_offset: u16,
 }
 
 #[derive(Debug, Display)]
@@ -39,6 +40,7 @@ impl ConsoleData<'_> {
             weight: 0,
             total_lines: 0,
             is_bottom: true,
+            max_offset: 0,
         }
     }
 
@@ -64,8 +66,9 @@ impl ConsoleData<'_> {
             }
 
         }
-        let mut paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
-        paragraph = paragraph.scroll((self.position.y, self.position.x));
+        let paragraph = Paragraph::new(text)
+            .wrap(Wrap { trim: false })
+            .scroll((self.position.y, self.position.x));
         self.paragraph = paragraph;
     }
 
@@ -73,6 +76,7 @@ impl ConsoleData<'_> {
         let Rect { height, width, .. } = area;
         self.height = height.clone();
         self.weight = width.clone();
+        self.max_offset = (self.paragraph.line_count(self.weight) as u16).saturating_sub(self.height);
         if self.is_bottom {
             self.scroll_end();
         }
@@ -97,84 +101,51 @@ impl ConsoleData<'_> {
         }
     }
 
-    fn max_offset(&self) -> u16 {
-        (self.paragraph.line_count(self.weight) as u16).saturating_sub(self.height)
-    }
-
     pub fn scroll_start(&mut self) {
         let mut position = self.position.clone();
         position.y = 0;
         self.position = position;
-        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
-        self.paragraph = current.scroll((
-            position.y,
-            position.x,
-        ));
+        self.paragraph = self.paragraph.clone().scroll((position.y, position.x));
         self.is_bottom = false;
-        // self.is_bottom = self.position.y >= self.max_offset();
     }
 
     pub fn scroll_end(&mut self) {
         let mut position = self.position.clone();
-        position.y = self.max_offset();
+        position.y = self.max_offset;
         self.position = position;
-        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
-        self.paragraph = current.scroll((
-            position.y,
-            position.x,
-        ));
-        self.is_bottom = self.position.y >= self.max_offset();
+        self.paragraph = self.paragraph.clone().scroll((position.y, position.x));
+        self.is_bottom = self.position.y >= self.max_offset;
     }
 
     pub fn scroll_up(&mut self) {
         let mut position = self.position.clone();
         position.y = position.y.saturating_sub(3);
         self.position = position;
-        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
-        self.paragraph = current.scroll((
-            position.y,
-            position.x,
-        ));
+        self.paragraph = self.paragraph.clone().scroll((position.y, position.x));
         self.is_bottom = false;
-        // self.is_bottom = self.position.y >= self.max_offset();
     }
 
     pub fn scroll_down(&mut self) {
         let mut position = self.position.clone();
-        position.y = cmp::min(position.y.saturating_add(3), self.max_offset());
+        position.y = cmp::min(position.y.saturating_add(3), self.max_offset);
         self.position = position;
-        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
-        self.paragraph = current.scroll((
-            position.y,
-            position.x,
-        ));
-        self.is_bottom = self.position.y >= self.max_offset();
+        self.paragraph = self.paragraph.clone().scroll((position.y, position.x));
+        self.is_bottom = self.position.y >= self.max_offset;
     }
 
     pub fn scroll_page_up(&mut self) {
         let mut position = self.position.clone();
         position.y = position.y.saturating_sub(self.height);
         self.position = position;
-        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
-
-        self.paragraph = current.scroll((
-            position.y,
-            position.x,
-        ));
-        self.is_bottom = self.position.y >= self.max_offset();
+        self.paragraph = self.paragraph.clone().scroll((position.y, position.x));
+        self.is_bottom = self.position.y >= self.max_offset;
     }
 
     pub fn scroll_page_down(&mut self) {
         let mut position = self.position.clone();
-        position.y = cmp::min(position.y.saturating_add(self.height), self.max_offset());
+        position.y = cmp::min(position.y.saturating_add(self.height), self.max_offset);
         self.position = position;
-        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
-
-        self.paragraph = current.scroll((
-            position.y,
-            position.x,
-        ));
+        self.paragraph = self.paragraph.clone().scroll((position.y, position.x));
         self.is_bottom = false;
-        // self.is_bottom = self.position.y >= self.max_offset();
     }
 }
