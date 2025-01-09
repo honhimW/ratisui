@@ -50,7 +50,7 @@ strum = "0.26.3"
 uuid = { version = "1.11.0", features = ["v4"] }
 tokio = { workspace = true, features = ["full"] }
 chronoutil = "0.2.7"
-itertools = "0.13.0"
+itertools = "0.14.0"
 unicode-width = "0.2.0"
 substring = "1"
 once_cell = "1"
