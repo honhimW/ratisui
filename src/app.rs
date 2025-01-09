@@ -15,7 +15,7 @@ pub struct App {
     pub input: Input,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum AppState {
     Preparing,
     Running,
@@ -23,7 +23,7 @@ pub enum AppState {
     Closed,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum AppEvent {
     Init,
     InitConfig(Configuration),
@@ -37,14 +37,18 @@ pub trait TabImplementation: Renderable + Listenable {
     fn title(&self) -> Line<'static>;
 }
 
+#[allow(unused_variables)]
 pub trait Listenable {
-    fn handle_key_event(&mut self, _key_event: KeyEvent) -> Result<bool> {
+
+    /// Returns if the key event was accepted, usually a key event should only be accepted once
+    fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         Ok(false)
     }
 
-    fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
+    fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
         Ok(())
     }
+
 }
 
 pub trait Renderable {
@@ -52,6 +56,11 @@ pub trait Renderable {
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
         vec![]
+    }
+
+    /// Returns if the frame should be re-rendered
+    fn handle_data(&mut self) -> Result<bool> {
+        Ok(false)
     }
 }
 
@@ -65,7 +74,7 @@ impl App {
     }
 
     pub fn health(&self) -> bool {
-        self.state == AppState::Running || self.state == AppState::Preparing
+        matches!(self.state, AppState::Running | AppState::Preparing)
     }
 }
 

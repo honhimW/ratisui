@@ -65,7 +65,7 @@ pub struct ExplorerTab {
 }
 
 #[derive(Default, Clone)]
-struct Data {
+pub struct Data {
     key_name: String,
     scan_keys_result: (bool, Vec<RedisKey>),
     selected_string_value: (bool, Option<(String, Option<ContentType>)>),
@@ -1099,12 +1099,6 @@ impl TabImplementation for ExplorerTab {
 
 impl Renderable for ExplorerTab {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        while !self.data_receiver.is_empty() {
-            let data = self.data_receiver.try_recv();
-            if let Ok(data) = data {
-                self.update_data(data);
-            }
-        }
         let chunks = match self.current_screen {
             KeysTree => Layout::default()
                 .direction(Direction::Horizontal)
@@ -1196,6 +1190,19 @@ impl Renderable for ExplorerTab {
             }
         }
         elements
+    }
+
+    fn handle_data(&mut self) -> Result<bool> {
+        let mut needed = false;
+        while !self.data_receiver.is_empty() {
+            let data = self.data_receiver.try_recv();
+            if let Ok(data) = data {
+                self.update_data(data);
+                needed = true;
+            }
+        }
+        let ft_search_panel_needed = self.ft_search_panel.handle_data()?;
+        Ok(needed || ft_search_panel_needed)
     }
 }
 

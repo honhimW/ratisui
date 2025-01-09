@@ -14,32 +14,38 @@
     clippy::filetype_is_file,
     clippy::cargo,
     clippy::panic,
-    clippy::match_like_matches_macro,
+    clippy::match_like_matches_macro
 )]
 
 mod app;
-mod context;
-mod tui;
-mod tabs;
 mod components;
+mod context;
+mod tabs;
+mod tui;
 
+use crate::app::AppState::Closed;
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
 use crate::components::fps::FpsCalculator;
-use ratisui_core::configuration::{load_app_configuration, load_database_configuration, load_theme_configuration, Configuration, Databases};
-use ratisui_core::input::InputEvent;
-use ratisui_core::redis_opt::switch_client;
+use crate::tui::TerminalBackEnd;
 use anyhow::{anyhow, Result};
 use log::{error, info, warn};
 use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use ratisui_core::bus::{
+    publish_event, publish_msg, subscribe_global_channel, subscribe_message_channel, GlobalEvent,
+    Message,
+};
+use ratisui_core::cli::AppArguments;
+use ratisui_core::configuration::{
+    load_app_configuration, load_database_configuration, load_theme_configuration, Configuration,
+    Databases,
+};
+use ratisui_core::input::InputEvent;
+use ratisui_core::marcos::KeyAsserter;
+use ratisui_core::redis_opt::switch_client;
+use ratisui_core::{cli, theme};
 use std::cmp;
 use std::time::Duration;
 use tokio::time::interval;
-use crate::app::AppState::Closed;
-use ratisui_core::bus::{publish_event, publish_msg, subscribe_global_channel, try_take_msg, GlobalEvent, Message};
-use ratisui_core::{cli, theme};
-use ratisui_core::cli::AppArguments;
-use ratisui_core::marcos::KeyAsserter;
-use crate::tui::TerminalBackEnd;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -82,38 +88,27 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
     let mut fps_calculator = FpsCalculator::default();
     let mut interval = interval(delay_duration);
     let global_channel = subscribe_global_channel()?;
+    let message_channel = subscribe_message_channel()?;
+    let input_channel = app.input.receiver();
     loop {
-        interval.tick().await;
         if !app.health() {
             break;
         }
-        let render_result = terminal.draw(|frame| {
-            fps_calculator.calculate_fps();
-            if let Some(fps) = fps_calculator.fps.clone() {
-                app.context.fps = fps;
-            } else {
-                app.context.fps = 0.0;
-            }
+        interval.tick().await;
 
-            if let Ok(msg) = try_take_msg() {
-                app.context.toast = Some(msg);
-            }
-            let render_result = app.context.render_frame(frame, frame.area());
-            if let Err(e) = render_result {
-                error!("Render error: {:?}", e);
-                let _ = publish_msg(Message::error(format!("{}", e)).title("Render Error"));
-            }
-        });
-
-        if let Err(e) = render_result {
-            app.state = AppState::Closing;
-            return Err(anyhow!(e));
+        if matches!(app.state, AppState::Preparing) {
+            app.context.on_app_event(AppEvent::Init)?;
+            app.context
+                .on_app_event(AppEvent::InitConfig(config.clone()))?;
+            app.state = AppState::Running;
+            continue;
         }
 
-        if app.state == AppState::Preparing {
-            app.context.on_app_event(AppEvent::Init)?;
-            app.context.on_app_event(AppEvent::InitConfig(config.clone()))?;
-            app.state = AppState::Running;
+        if global_channel.is_empty()
+            && message_channel.is_empty()
+            && input_channel.is_empty()
+            && !app.context.handle_data()?
+        {
             continue;
         }
 
@@ -127,13 +122,15 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
         }
 
         loop {
-            let event_result = app.input.receiver().try_recv();
+            let event_result = input_channel.try_recv();
             if let Ok(input_event) = event_result {
                 match input_event {
                     InputEvent::Input(input) => {
                         if let Event::Key(key_event) = input {
                             if key_event.kind == KeyEventKind::Press {
-                                if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::F(5) {
+                                if key_event.modifiers == KeyModifiers::CONTROL
+                                    && key_event.code == KeyCode::F(5)
+                                {
                                     app.context.on_app_event(AppEvent::Reset)?
                                 } else {
                                     let handle_result = app.context.handle_key_event(key_event);
@@ -145,7 +142,10 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
                                         }
                                         Err(e) => {
                                             error!("Handle key event error: {:?}", e);
-                                            let _ = publish_msg(Message::error(format!("{}", e)).title("Handle Error"));
+                                            let _ = publish_msg(
+                                                Message::error(format!("{}", e))
+                                                    .title("Handle Error"),
+                                            );
                                         }
                                     }
                                 }
@@ -161,20 +161,48 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
             }
         }
 
+        let render_result = terminal.draw(|frame| {
+            fps_calculator.calculate_fps();
+            if let Some(fps) = fps_calculator.fps.clone() {
+                app.context.fps = fps;
+            } else {
+                app.context.fps = 0.0;
+            }
+
+            if let Ok(msg) = message_channel.try_recv() {
+                app.context.toast = Some(msg);
+            }
+            let render_result = app.context.render_frame(frame, frame.area());
+            if let Err(e) = render_result {
+                error!("Render error: {:?}", e);
+                let _ = publish_msg(Message::error(format!("{}", e)).title("Render Error"));
+            }
+        });
+
+        if let Err(e) = render_result {
+            app.state = AppState::Closing;
+            return Err(anyhow!(e));
+        }
     }
     app.state = Closed;
     Ok(())
 }
 
 fn apply_theme(app_arguments: &AppArguments, app_config: &Configuration) -> Result<()> {
-    let theme_name = app_arguments.theme.clone().or_else(|| app_config.theme.clone());
+    let theme_name = app_arguments
+        .theme
+        .clone()
+        .or_else(|| app_config.theme.clone());
     let theme = load_theme_configuration(theme_name)?;
     theme::set_theme(theme);
     Ok(())
 }
 
 fn apply_db(app_arguments: &AppArguments, db_config: &Databases) -> Result<()> {
-    let default_db = app_arguments.target.clone().or_else(|| db_config.default_database.clone());
+    let default_db = app_arguments
+        .target
+        .clone()
+        .or_else(|| db_config.default_database.clone());
 
     if let Some(db) = default_db {
         if let Some(database) = db_config.databases.get(&db) {
@@ -185,7 +213,9 @@ fn apply_db(app_arguments: &AppArguments, db_config: &Databases) -> Result<()> {
                         info!("Successfully connected to default database '{db}'");
                         info!("{database_clone}");
                     }
-                    Err(_) => {warn!("Failed to connect to default database.");}
+                    Err(_) => {
+                        warn!("Failed to connect to default database.");
+                    }
                 };
             });
         } else {

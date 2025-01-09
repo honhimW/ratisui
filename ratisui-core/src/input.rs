@@ -90,7 +90,7 @@ impl Input {
         self.aborted.load(Ordering::SeqCst)
     }
 
-    fn poll(dur: Duration) -> anyhow::Result<Option<Event>> {
+    fn poll(dur: Duration) -> Result<Option<Event>> {
         if event::poll(dur)? {
             Ok(Some(event::read()?))
         } else {

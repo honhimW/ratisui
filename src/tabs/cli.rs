@@ -100,6 +100,46 @@ impl Renderable for CliTab {
         }
         elements
     }
+
+    fn handle_data(&mut self) -> Result<bool> {
+        let mut needed = false;
+        if self.is_listening() {
+            needed = true;
+            loop {
+                match self.data_receiver.try_recv() {
+                    Ok(v) => {
+                        let lines = self.value_to_lines(&v, 0);
+                        self.console_data.extend(lines);
+                        self.console_data.build_paragraph();
+                    }
+                    Err(..) => {
+                        break
+                    }
+                }
+            }
+        } else {
+            loop {
+                match self.data_receiver.try_recv() {
+                    Ok(v) => {
+                        let lines = self.value_to_lines(&v, 0);
+                        self.console_data.extend(lines);
+                        if let Some(lock_at) = self.lock_at {
+                            let elapsed = lock_at.elapsed();
+                            let duration = chronoutil::RelativeDuration::from(elapsed).format_to_iso8601();
+                            self.console_data.push(OutputKind::Else(Style::default().dim()), "---");
+                            self.console_data.push(OutputKind::Else(Style::default().dim()), format!("Elapsed: {}", duration));
+                        }
+                        self.lock_input = false;
+                        self.console_data.push_std("");
+                        self.console_data.build_paragraph();
+                        needed = true;
+                    }
+                    Err(..) => { break; }
+                }
+            }
+        }
+        Ok(needed)
+    }
 }
 
 impl Listenable for CliTab {
@@ -464,40 +504,6 @@ impl CliTab {
     }
 
     fn render_output(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        if self.is_listening() {
-            loop {
-                match self.data_receiver.try_recv() {
-                    Ok(v) => {
-                        let lines = self.value_to_lines(&v, 0);
-                        self.console_data.extend(lines);
-                        self.console_data.build_paragraph();
-                    }
-                    Err(..) => {
-                        break
-                    }
-                }
-            }
-            // self.scroll_end();
-        } else {
-            loop {
-                match self.data_receiver.try_recv() {
-                    Ok(v) => {
-                        let lines = self.value_to_lines(&v, 0);
-                        self.console_data.extend(lines);
-                        if let Some(lock_at) = self.lock_at {
-                            let elapsed = lock_at.elapsed();
-                            let duration = chronoutil::RelativeDuration::from(elapsed).format_to_iso8601();
-                            self.console_data.push(OutputKind::Else(Style::default().dim()), "---");
-                            self.console_data.push(OutputKind::Else(Style::default().dim()), format!("Elapsed: {}", duration));
-                        }
-                        self.lock_input = false;
-                        self.console_data.push_std("");
-                        self.console_data.build_paragraph();
-                    }
-                    Err(..) => { break; }
-                }
-            }
-        }
         self.console_data.update(&rect);
         frame.render_widget(&self.console_data.paragraph, rect);
         Ok(())
@@ -586,8 +592,6 @@ fn value_to_lines_in_redis(value: &Value, pad: u16) -> Vec<(OutputKind, String)>
     let format_no_pad = |str: &str| {
         (OutputKind::STD, format!("{str}"))
     };
-    use log::warn;
-    warn!("pad: {}, value: {:?}", pad, value);
     match value {
         Value::Nil => {
             vec![format_no_pad("(Nil)")]
