@@ -3,9 +3,7 @@ mod common;
 
 use crate::common::client::dead_pool;
 use anyhow::Result;
-use futures::{StreamExt, TryStreamExt};
-use itertools::Itertools;
-use redis::{cmd, AsyncCommands, Cmd, Value};
+use redis::{cmd, Value};
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 use deadpool_redis::Runtime;
 use redis::ConnectionAddr::Tcp;
-use redis::{Cmd, ConnectionInfo, ProtocolVersion, RedisConnectionInfo};
+use redis::{ConnectionInfo, ProtocolVersion, RedisConnectionInfo};
 
 pub fn dead_pool() -> Result<deadpool_redis::Pool> {
     build_pool(Config {
-        host: "10.37.1.132".to_string(),
+        host: "beta.vm.internal".to_string(),
         port: 6380,
         username: None,
         password: Some("123456".to_string()),
@@ -32,7 +32,9 @@ pub fn build_pool(config: Config) -> Result<deadpool_redis::Pool> {
             protocol: config.protocol,
         },
     });
-    config.create_pool(Some(Runtime::Tokio1)).context("Failed to create pool")
+    config
+        .create_pool(Some(Runtime::Tokio1))
+        .context("Failed to create pool")
 }
 
 pub struct Config {

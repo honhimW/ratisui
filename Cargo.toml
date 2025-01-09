@@ -58,8 +58,8 @@ futures = "0.3"
 
 ratisui-core = { path = "ratisui-core" }
 
-[build-dependencies]
-cc = "*"
+#[build-dependencies]
+#cc = "*"
 
 [dev-dependencies]
 ron = { version = "0.8.1", features = ["default"] }
@@ -68,6 +68,8 @@ deadpool-redis = { git = "https://github.com/honhimW/deadpool.git", branch = "lo
     "cluster",
     "log",
 ] }
+jaded = { version = "0.5.0", features = ["serde"] }
+protobuf = { version = "3.7.1" }
 
 [profile.release]
 lto = true

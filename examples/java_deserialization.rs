@@ -1,15 +1,12 @@
 #[path = "common/lib.rs"]
 mod common;
 
-use std::io::Cursor;
 use crate::common::client::dead_pool;
-use anyhow::{Context, Result};
-use futures::{StreamExt, TryStreamExt};
-use itertools::Itertools;
-use jaded::{Content, Parser};
+use anyhow::Result;
+use jaded::Parser;
 use redis::AsyncCommands;
 use ron::ser::PrettyConfig;
-use serde::{Serialize, Serializer};
+use std::io::Cursor;
 
 #[tokio::main]
 async fn main() -> Result<()> {

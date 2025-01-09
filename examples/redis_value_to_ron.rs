@@ -2,11 +2,9 @@
 mod common;
 use crate::common::client::dead_pool;
 use anyhow::Result;
-use itertools::Itertools;
+use ratisui_core::serde_wrapper::IValue;
 use redis::{Cmd, Value};
 use ron::ser::PrettyConfig;
-use serde::{Deserialize, Serialize};
-use ratisui_core::serde_wrapper::IValue;
 
 #[tokio::main]
 async fn main() -> Result<()> {
