@@ -75,7 +75,7 @@ pub fn load_theme_configuration(theme_name: Option<String>) -> Result<Theme> {
 
 pub fn load_history() -> Result<VecDeque<(SystemTime, String)>> {
     let mut deque = VecDeque::new();
-    let history_path = get_file_path("history.ron")?;
+    let history_path = get_file_path("cli.history")?;
     if let Ok(file) = File::open(&history_path) {
         let reader = BufReader::new(file);
         let lines = reader.lines();
@@ -120,7 +120,7 @@ pub fn save_database_configuration(databases: &Databases) -> Result<()> {
 }
 
 pub fn save_history(histories: VecDeque<(SystemTime, String)>) -> Result<()> {
-    let history_path = get_file_path("history.ron")?;
+    let history_path = get_file_path("cli.history")?;
     if let Ok(mut file) = File::create(&history_path) {
         for (system_time, cmd) in histories {
             let datetime: DateTime<Local> = DateTime::from(system_time);
