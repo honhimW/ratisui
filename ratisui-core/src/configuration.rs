@@ -163,6 +163,8 @@ pub struct Configuration {
     pub history_size: u32,
     #[serde(default = "cli_output_kind")]
     pub cli_output_format: CliOutputFormatKind,
+    #[serde(default = "console_capacity")]
+    pub console_capacity: usize,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
@@ -192,6 +194,10 @@ fn cli_output_kind() -> CliOutputFormatKind {
     CliOutputFormatKind::Redis
 }
 
+fn console_capacity() -> usize {
+    3000
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Databases {
     pub default_database: Option<String>,
@@ -207,6 +213,7 @@ impl Default for Configuration {
             theme: None,
             history_size: history_size(),
             cli_output_format: cli_output_kind(),
+            console_capacity: console_capacity(),
         }
     }
 }

@@ -2,23 +2,26 @@ use std::borrow::Cow;
 use ratatui::layout::{Position, Rect};
 use ratatui::prelude::Text;
 use ratatui::style::{Style, Stylize};
-use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, WidgetRef, Wrap};
 use ratatui_macros::{line, span};
 use std::cmp;
+use std::collections::VecDeque;
+use ratatui::buffer::Buffer;
 use strum::Display;
 use OutputKind::{ERR, STD, CMD, Else, Raw};
 use crate::components::raw_value::raw_value_to_highlight_text;
 use ratisui_core::theme::get_color;
 
 pub struct ConsoleData<'a> {
-    pub lines: Vec<(OutputKind, String)>,
-    pub paragraph: Paragraph<'a>,
-    pub position: Position,
-    pub height: u16,
-    pub weight: u16,
-    pub total_lines: usize,
+    lines: VecDeque<(OutputKind, String)>,
+    paragraph: Paragraph<'a>,
+    position: Position,
+    height: u16,
+    weight: u16,
+    total_lines: usize,
     is_bottom: bool,
     max_offset: u16,
+    capacity: usize,
 }
 
 #[derive(Debug, Display)]
@@ -30,10 +33,16 @@ pub enum OutputKind {
     Raw,
 }
 
+impl WidgetRef for ConsoleData<'_> {
+    fn render_ref(&self, area: Rect, buf: &mut Buffer) {
+        self.paragraph.render_ref(area, buf);
+    }
+}
+
 impl ConsoleData<'_> {
-    pub fn default() -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
-            lines: vec![],
+            lines: VecDeque::with_capacity(capacity),
             paragraph: Paragraph::default(),
             position: Position::new(0, 0),
             height: 1,
@@ -41,6 +50,7 @@ impl ConsoleData<'_> {
             total_lines: 0,
             is_bottom: true,
             max_offset: 0,
+            capacity
         }
     }
 
@@ -83,7 +93,10 @@ impl ConsoleData<'_> {
     }
 
     pub fn push(&mut self, kind: OutputKind, line: impl Into<String>) {
-        self.lines.push((kind, line.into()));
+        if self.lines.len() == self.capacity {
+            self.lines.pop_front();
+        }
+        self.lines.push_back((kind, line.into()));
         self.total_lines = self.lines.len();
     }
 
@@ -147,5 +160,9 @@ impl ConsoleData<'_> {
         self.position = position;
         self.paragraph = self.paragraph.clone().scroll((position.y, position.x));
         self.is_bottom = false;
+    }
+    
+    pub fn line_count(&self, width: u16) -> usize {
+        self.paragraph.line_count(width)
     }
 }

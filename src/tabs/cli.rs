@@ -18,6 +18,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 use itertools::Itertools;
+use ratatui::widgets::WidgetRef;
 use strum::Display;
 use throbber_widgets_tui::{Throbber, ThrobberState};
 use ratisui_core::bus::{publish_event, GlobalEvent};
@@ -33,6 +34,7 @@ pub struct CliTab {
     history: Vec<(SystemTime, String)>,
     history_viewpoint: usize,
     history_max_size: u32,
+    console_capacity: usize,
     redis_cli: RedisCli<'static>,
     // input_text_area: TextArea<'static>,
     console_data: ConsoleData<'static>,
@@ -70,7 +72,7 @@ impl Renderable for CliTab {
     where
         Self: Sized,
     {
-        let total_lines = self.console_data.paragraph.line_count(rect.width);
+        let total_lines = self.console_data.line_count(rect.width);
         let input_height = 1u16;
         let session_height = cmp::min(input_height.saturating_add(total_lines as u16), rect.height);
         let vertical = Layout::vertical([Length(session_height), Fill(0), Length(1)]).split(rect);
@@ -302,6 +304,8 @@ impl Listenable for CliTab {
                     self.history_viewpoint = self.history.len();
                 }
                 self.output_format = app_config.cli_output_format;
+                self.console_capacity = app_config.console_capacity;
+                self.console_data = ConsoleData::new(self.console_capacity);
             }
             AppEvent::Destroy => {
                 if self.history_max_size != 0 {
@@ -323,6 +327,7 @@ impl Listenable for CliTab {
 impl CliTab {
     pub fn new() -> Self {
         let (tx, rx) = unbounded();
+        let default_console_capacity = 3000;
         Self {
             mode: Mode::default(),
             lock_input: false,
@@ -330,8 +335,9 @@ impl CliTab {
             history: vec![],
             history_viewpoint: 0,
             history_max_size: 1000,
+            console_capacity: default_console_capacity,
             redis_cli: RedisCli::new(),
-            console_data: ConsoleData::default(),
+            console_data: ConsoleData::new(default_console_capacity),
             data_sender: tx,
             data_receiver: rx,
             disposable: Arc::new(Mutex::new(None)),
@@ -342,7 +348,7 @@ impl CliTab {
     }
 
     fn clear_output(&mut self) {
-        self.console_data = ConsoleData::default();
+        self.console_data = ConsoleData::new(self.console_capacity);
     }
 
     fn do_dispose(&mut self) {
@@ -505,7 +511,7 @@ impl CliTab {
 
     fn render_output(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
         self.console_data.update(&rect);
-        frame.render_widget(&self.console_data.paragraph, rect);
+        self.console_data.render_ref(rect, frame.buffer_mut());
         Ok(())
     }
 
