@@ -4,9 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = { workspace = true }
+strum = { workspace = true }
+unicode-width = { workspace = true }
 ratatui = { workspace = true }
 ratatui-macros = { workspace = true }
 tui-textarea = { workspace = true }
 throbber-widgets-tui = { workspace = true }
 tui-tree-widget = { workspace = true }
 tui-logger = { workspace = true }
+itertools = { workspace = true }
+
+ratisui-core = { path = "../ratisui-core" }

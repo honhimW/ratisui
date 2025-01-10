@@ -15,7 +15,7 @@
 
 use crate::app::{Listenable, Renderable};
 use crate::components::raw_value::raw_value_to_highlight_text;
-use crate::components::TableColors;
+use ratisui_widget::TableColors;
 use anyhow::Result;
 use itertools::Itertools;
 use ratatui::crossterm::event::KeyEvent;

@@ -14,20 +14,19 @@
     clippy::filetype_is_file,
     clippy::cargo,
     clippy::panic,
-    clippy::match_like_matches_macro,
+    clippy::match_like_matches_macro
 )]
 
-pub mod redis_opt;
-pub mod configuration;
-pub mod utils;
 pub mod bus;
+pub mod cli;
+pub mod configuration;
+pub mod constants;
+pub mod highlight_value;
+pub mod input;
+pub mod marcos;
+pub mod redis_opt;
+pub mod serde_wrapper;
 pub mod ssh_tunnel;
 pub mod theme;
-pub mod marcos;
-pub mod constants;
-pub mod cli;
-pub mod input;
-pub mod highlight_value;
-pub mod serde_wrapper;
-
+pub mod utils;
 mod notify_mutex;

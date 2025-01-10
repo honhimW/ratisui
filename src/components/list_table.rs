@@ -15,7 +15,6 @@
 
 use crate::app::{Listenable, Renderable};
 use crate::components::raw_value::raw_value_to_highlight_text;
-use crate::components::TableColors;
 use anyhow::Result;
 use itertools::Itertools;
 use ratatui::crossterm::event::KeyEvent;
@@ -34,6 +33,7 @@ use ratatui::{
 use std::borrow::Cow;
 use std::cmp;
 use unicode_width::UnicodeWidthStr;
+use ratisui_widget::TableColors;
 
 const ITEM_HEIGHT: usize = 4;
 

@@ -3,7 +3,7 @@ use crate::components::create_key_editor::{Form, KeyType};
 use crate::components::ft_search_panel::FtSearchPanel;
 use crate::components::hash_table::HashValue;
 use crate::components::list_table::ListValue;
-use crate::components::popup::Popup;
+use ratisui_widget::popup::Popup;
 use crate::components::raw_paragraph::RawParagraph;
 use crate::components::set_table::SetValue;
 use crate::components::stream_view::SteamView;

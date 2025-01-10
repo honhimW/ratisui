@@ -16,7 +16,7 @@
 use crate::app::{centered_rect, AppEvent, Listenable, Renderable};
 use ratisui_core::bus::{publish_msg, Message};
 use crate::components::database_editor::Form;
-use crate::components::popup::Popup;
+use ratisui_widget::popup::Popup;
 use ratisui_core::configuration::{save_database_configuration, Database, Databases};
 use ratisui_core::redis_opt::{switch_client};
 use anyhow::{anyhow, Result};
@@ -34,7 +34,7 @@ use ratatui::{crossterm::event::{KeyCode, KeyEventKind}, layout::{Margin, Rect},
 use std::cmp;
 use std::string::ToString;
 use unicode_width::UnicodeWidthStr;
-use crate::components::TableColors;
+use ratisui_widget::TableColors;
 use ratisui_core::theme::get_color;
 
 const ITEM_HEIGHT: usize = 4;
