@@ -1,0 +1,12 @@
+[package]
+name = "ratisui-widget"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratatui = { workspace = true }
+ratatui-macros = { workspace = true }
+tui-textarea = { workspace = true }
+throbber-widgets-tui = { workspace = true }
+tui-tree-widget = { workspace = true }
+tui-logger = { workspace = true }

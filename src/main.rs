@@ -25,7 +25,6 @@ mod tui;
 
 use crate::app::AppState::Closed;
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
-use crate::components::fps::FpsCalculator;
 use crate::tui::TerminalBackEnd;
 use anyhow::{anyhow, Result};
 use log::{error, info, warn};
@@ -85,7 +84,6 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
     let fps = cmp::min(config.fps as usize, 60);
     let delay_millis = 1000 / fps;
     let delay_duration = Duration::from_millis(delay_millis as u64);
-    let mut fps_calculator = FpsCalculator::default();
     let mut interval = interval(delay_duration);
     let global_channel = subscribe_global_channel()?;
     let message_channel = subscribe_message_channel()?;
@@ -162,13 +160,6 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
         }
 
         let render_result = terminal.draw(|frame| {
-            fps_calculator.calculate_fps();
-            if let Some(fps) = fps_calculator.fps.clone() {
-                app.context.fps = fps;
-            } else {
-                app.context.fps = 0.0;
-            }
-
             if let Ok(msg) = message_channel.try_recv() {
                 app.context.toast = Some(msg);
             }

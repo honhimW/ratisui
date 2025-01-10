@@ -12,11 +12,13 @@ use ratatui::layout::Constraint::{Fill, Length, Max, Min};
 use ratatui::layout::{Alignment, Layout, Rect};
 use ratatui::prelude::{Color, Span, Style, Stylize, Text};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, StatefulWidgetRef, Tabs, Wrap};
 use ratatui::{symbols, Frame};
 use std::time::Instant;
+use ratatui::buffer::Buffer;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 use ratisui_core::theme::get_color;
+use ratisui_widget::fps::{Fps, FpsState};
 
 pub struct Context {
     show_server_switcher: bool,
@@ -27,7 +29,7 @@ pub struct Context {
     logger_tab: LoggerTab,
     server_list: ServerList,
     pub toast: Option<Message>,
-    pub fps: f32,
+    fps_state: FpsState,
 }
 
 #[derive(Eq, PartialEq, EnumCount, EnumIter)]
@@ -48,7 +50,7 @@ impl Context {
             logger_tab: LoggerTab::new(),
             server_list: ServerList::new(&databases),
             toast: None,
-            fps: 0.0,
+            fps_state: FpsState::default(),
         }
     }
 
@@ -113,10 +115,9 @@ impl Context {
         Ok(())
     }
 
-    fn render_fps(&self, frame: &mut Frame, area: Rect) -> Result<()> {
-        frame.render_widget(Text::from(format!("{:.1}", self.fps))
-                                .style(Style::default().fg(get_color(|t| &t.context.fps))), area);
-        Ok(())
+    fn render_fps(&mut self, area: Rect, buf: &mut Buffer) {
+        Fps::styled(1, Style::default().fg(get_color(|t| &t.context.fps)))
+            .render_ref(area, buf, &mut self.fps_state);
     }
 
     fn render_separator(&self, frame: &mut Frame, area: Rect) -> Result<()> {
@@ -209,7 +210,7 @@ impl Renderable for Context {
         self.render_bg(frame, frame.area())?;
         self.render_tabs(frame, tabs_area)?;
         self.render_title(frame, title_area)?;
-        self.render_fps(frame, fps_area)?;
+        self.render_fps(fps_area, frame.buffer_mut());
         self.render_separator(frame, separator_area)?;
         self.render_selected_tab(frame, inner_area)?;
         self.render_footer(frame, footer_area)?;
