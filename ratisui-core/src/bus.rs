@@ -4,15 +4,15 @@ use crossbeam_channel::{Receiver, Sender};
 use once_cell::sync::Lazy;
 use strum::Display;
 
-static TOAST_CHANNEL: Lazy<ToastChannel> = Lazy::new(|| {
-    let (tx, rx) = crossbeam_channel::bounded(4);
-    ToastChannel { tx, rx }
-});
-
-pub struct ToastChannel {
-    pub tx: Sender<Message>,
-    pub rx: Receiver<Message>,
+pub struct Bus<T: Clone> {
+    pub tx: Sender<T>,
+    pub rx: Receiver<T>,
 }
+
+static TOAST_CHANNEL: Lazy<Bus<Message>> = Lazy::new(|| {
+    let (tx, rx) = crossbeam_channel::bounded(4);
+    Bus { tx, rx }
+});
 
 #[derive(Clone)]
 pub struct Message {
@@ -63,8 +63,8 @@ pub fn publish_msg(event: Message) -> Result<()> {
     Ok(())
 }
 
-pub fn try_take_msg() -> Result<Message> {
-    TOAST_CHANNEL.rx.try_recv().context("Taking failed")
+pub fn subscribe_message_channel() -> Result<Receiver<Message>> {
+    Ok(TOAST_CHANNEL.rx.clone())
 }
 
 #[allow(unused)]
@@ -77,17 +77,12 @@ pub fn get_receiver() -> Result<Receiver<Message>> {
     Ok(TOAST_CHANNEL.rx.clone())
 }
 
-static GLOBAL_CHANNEL: Lazy<GlobalChannel> = Lazy::new(|| {
+static GLOBAL_CHANNEL: Lazy<Bus<GlobalEvent>> = Lazy::new(|| {
     let (tx, rx) = crossbeam_channel::bounded(16);
-    GlobalChannel { tx, rx }
+    Bus { tx, rx }
 });
 
-pub struct GlobalChannel {
-    pub tx: Sender<GlobalEvent>,
-    pub rx: Receiver<GlobalEvent>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum GlobalEvent {
     Exit,
     ClientChanged,

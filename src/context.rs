@@ -215,15 +215,13 @@ impl Renderable for Context {
         self.render_footer(frame, footer_area)?;
         self.render_server_switcher(frame, rect)?;
         if let Some(ref toast) = self.toast {
-            if toast.expired_at < Instant::now() {
-                self.toast = None;
-            } else {
+            if toast.expired_at > Instant::now() {
                 let top = Layout::vertical([Length(4), Fill(0)]).split(rect)[0];
                 let top_right_area = Layout::horizontal([Fill(0), Length(35)]).split(top)[1];
                 self.render_toast(frame, top_right_area)?;
             }
         }
-        
+
         Ok(())
     }
 
@@ -249,6 +247,19 @@ impl Renderable for Context {
         elements.push(("^c", "Quit"));
         elements.push(("^h", "Help"));
         elements
+    }
+
+    fn handle_data(&mut self) -> Result<bool> {
+        let mut needed = false;
+        if let Some(ref toast) = self.toast {
+            if toast.expired_at < Instant::now() {
+                self.toast = None;
+                needed = true;
+            }
+        }
+        let current_tab = self.get_current_tab_as_mut();
+        let current_tab_needed = current_tab.handle_data()?;
+        Ok(needed || current_tab_needed)
     }
 }
 
@@ -292,4 +303,5 @@ impl Listenable for Context {
         self.server_list.on_app_event(app_event.clone())?;
         Ok(())
     }
+
 }

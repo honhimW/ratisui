@@ -272,9 +272,9 @@ impl<'a> FtSearchPanel<'a> {
                             "NUMERIC" => {
                                 let summary = format!(
                                     r#"Search by number
-- Equal: @{}==<q> | @{}:[q]
+- Equal: @{}:[q] | @{}==<q>
 - Not equal: @{}!=<q>
-- Compare: @{}[>|<|>=|<=]<q>
+- Compare: @{}[ > | < | >= | <= ]<q>
 - Range: @{}:[min max]
 
 {}
@@ -565,13 +565,6 @@ If you use the LIMIT option without sorting, the results returned are non-determ
 
 impl Renderable for FtSearchPanel<'_> {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        while !self.data_receiver.is_empty() {
-            let data = self.data_receiver.try_recv();
-            if let Ok(data) = data {
-                self.update_data(data);
-            }
-        }
-
         frame.render_widget(Clear::default(), rect);
         let horizontal = if matches!(self.editing, Editing::Index) {
             Layout::horizontal([Percentage(30), Fill(1)]).split(rect)
@@ -599,6 +592,18 @@ impl Renderable for FtSearchPanel<'_> {
         let mut elements = vec![];
         elements.push(("^Space", "Suggest"));
         elements
+    }
+
+    fn handle_data(&mut self) -> Result<bool> {
+        let mut needed = false;
+        while !self.data_receiver.is_empty() {
+            let data = self.data_receiver.try_recv();
+            if let Ok(data) = data {
+                self.update_data(data);
+                needed = true;
+            }
+        }
+        Ok(needed)
     }
 }
 

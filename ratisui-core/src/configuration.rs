@@ -75,7 +75,7 @@ pub fn load_theme_configuration(theme_name: Option<String>) -> Result<Theme> {
 
 pub fn load_history() -> Result<VecDeque<(SystemTime, String)>> {
     let mut deque = VecDeque::new();
-    let history_path = get_file_path("history.ron")?;
+    let history_path = get_file_path("cli.history")?;
     if let Ok(file) = File::open(&history_path) {
         let reader = BufReader::new(file);
         let lines = reader.lines();
@@ -120,7 +120,7 @@ pub fn save_database_configuration(databases: &Databases) -> Result<()> {
 }
 
 pub fn save_history(histories: VecDeque<(SystemTime, String)>) -> Result<()> {
-    let history_path = get_file_path("history.ron")?;
+    let history_path = get_file_path("cli.history")?;
     if let Ok(mut file) = File::create(&history_path) {
         for (system_time, cmd) in histories {
             let datetime: DateTime<Local> = DateTime::from(system_time);
@@ -163,6 +163,8 @@ pub struct Configuration {
     pub history_size: u32,
     #[serde(default = "cli_output_kind")]
     pub cli_output_format: CliOutputFormatKind,
+    #[serde(default = "console_capacity")]
+    pub console_capacity: usize,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
@@ -192,6 +194,10 @@ fn cli_output_kind() -> CliOutputFormatKind {
     CliOutputFormatKind::Redis
 }
 
+fn console_capacity() -> usize {
+    3000
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Databases {
     pub default_database: Option<String>,
@@ -207,6 +213,7 @@ impl Default for Configuration {
             theme: None,
             history_size: history_size(),
             cli_output_format: cli_output_kind(),
+            console_capacity: console_capacity(),
         }
     }
 }
