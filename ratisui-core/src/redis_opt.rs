@@ -8,7 +8,7 @@ use deadpool_redis::redis::cmd;
 use deadpool_redis::{Pool, Runtime};
 use futures::future::join_all;
 use futures::StreamExt;
-use log::{info};
+use log::info;
 use once_cell::sync::Lazy;
 use redis::ConnectionAddr::{Tcp, TcpTls};
 use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, JsonAsyncCommands, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value, VerbatimFormat};
@@ -1051,27 +1051,6 @@ impl RedisOperations {
             Ok(v)
         }
     }
-
-    // pub async fn sscan<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<Vec<String>> {
-    //     if self.is_cluster() {
-    //         let pool = &self.cluster_pool.clone().context("should be cluster")?;
-    //         let mut connection = pool.get().await?;
-    //         let mut iter: AsyncIter<String> = connection.sscan(key).await?;
-    //         let mut vec = vec![];
-    //         while let Some(item) = iter.next_item().await {
-    //             vec.push(item);
-    //         }
-    //         Ok(vec)
-    //     } else {
-    //         let mut connection = self.get_standalone_connection().await?;
-    //         let mut iter: AsyncIter<String> = connection.sscan(key).await?;
-    //         let mut vec = vec![];
-    //         while let Some(item) = iter.next_item().await {
-    //             vec.push(item);
-    //         }
-    //         Ok(vec)
-    //     }
-    // }
 
     pub async fn del<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<()> {
         if self.is_cluster() {
