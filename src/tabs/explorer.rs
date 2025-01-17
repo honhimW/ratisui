@@ -19,7 +19,7 @@ use ratatui::prelude::{Line, Style, Stylize, Text};
 use ratatui::style::{Color, Modifier};
 use ratatui::text::Span;
 use ratatui::widgets::block::Position;
-use ratatui::widgets::{Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
+use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, Scrollbar, ScrollbarOrientation};
 use ratatui::{symbols, Frame};
 use ratisui_core::bus::{publish_event, publish_msg, GlobalEvent, Message};
 use ratisui_core::marcos::KeyAsserter;
@@ -407,6 +407,7 @@ impl ExplorerTab {
                 .border_style(self.border_color(KeysTree))
                 .title(format!("Scan Keys ({})", self.scan_keys_result.len()))
         );
+        frame.render_widget(Clear::default(), area);
         frame.render_widget(&self.filter_text_area, area);
         Ok(())
     }
