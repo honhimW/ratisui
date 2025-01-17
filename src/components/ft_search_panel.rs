@@ -178,7 +178,7 @@ impl<'a> FtSearchPanel<'a> {
 
     fn get_index_items(&self, input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
         if let Some(ref indexes) = self.indexes {
-            let items = indexes
+            let mut items = indexes
                 .iter()
                 .map(|index_name| {
                     let mut item = CompletionItem::custom(index_name, "Index");
@@ -201,18 +201,14 @@ impl<'a> FtSearchPanel<'a> {
                                 "attributes_count         ",
                                 index_info.attributes.len().to_string(),
                             );
-                        // for info in index_info.attributes.iter() {
-                        //     doc = doc
-                        //         .attribute("type                     ", info.kind.clone())
-                        //         .attribute("identifier               ", info.identifier.clone())
-                        //         .attribute("attribute                ", info.attribute.clone())
-                        //     ;
-                        // }
                         item = item.description(doc);
                     };
                     item
                 })
                 .collect::<Vec<CompletionItem>>();
+            items = items.into_iter().filter(|x| {
+                x.label.label.to_lowercase().contains(&input.to_lowercase())
+            }).collect();
             return (items, input.to_string());
         }
         (vec![], "".to_string())
@@ -566,16 +562,12 @@ If you use the LIMIT option without sorting, the results returned are non-determ
 impl Renderable for FtSearchPanel<'_> {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
         frame.render_widget(Clear::default(), rect);
-        let horizontal = if matches!(self.editing, Editing::Index) {
-            Layout::horizontal([Percentage(30), Fill(1)]).split(rect)
-        } else {
-            Layout::horizontal([Percentage(20), Fill(1)]).split(rect)
-        };
+        let vertical = Layout::vertical([Percentage(50), Percentage(50)]).split(rect);
 
-        let index_area = self.index_block.inner(horizontal[0]);
-        let search_area = self.index_block.inner(horizontal[1]);
-        frame.render_widget(&self.index_block, horizontal[0]);
-        frame.render_widget(&self.search_block, horizontal[1]);
+        let index_area = self.index_block.inner(vertical[0]);
+        let search_area = self.index_block.inner(vertical[1]);
+        frame.render_widget(&self.index_block, vertical[0]);
+        frame.render_widget(&self.search_block, vertical[1]);
         let block = Block::bordered();
         let inner_area = block.inner(rect);
         let frame_area = frame.area();

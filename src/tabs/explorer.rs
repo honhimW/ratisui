@@ -13,7 +13,7 @@ use anyhow::{anyhow, Context, Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use log::info;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::layout::Constraint::{Fill, Length, Min};
+use ratatui::layout::Constraint::{Length, Min};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::prelude::{Line, Style, Stylize, Text};
 use ratatui::style::{Color, Modifier};
@@ -288,19 +288,22 @@ impl ExplorerTab {
     }
 
     fn render_keys_block(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        self.render_tree(frame, area)?;
-        if self.show_filter {
-            let vertical = Layout::vertical([Min(0), Length(3), Length(1)]).split(area);
-            let horizontal = Layout::horizontal([Length(1), Min(0), Length(1)]).split(vertical[1]);
-            self.render_filter_input(frame, horizontal[1])?;
+        if self.show_filter || self.show_rename {
+            let vertical = Layout::vertical([Min(0), Length(3)]).split(area);
+            self.render_tree(frame, vertical[0])?;
+            if self.show_filter {
+                self.render_filter_input(frame, vertical[1])?;
+            }
+            if self.show_rename {
+                self.render_rename_key_input(frame, vertical[1])?;
+            }
+        } else if self.show_search_popup {
+            let vertical = Layout::vertical([Min(0), Length(6)]).split(area);
+            self.render_tree(frame, vertical[0])?;
+            self.ft_search_panel.render_frame(frame, vertical[1])?;
+        } else {
+            self.render_tree(frame, area)?;
         }
-
-        if self.show_rename {
-            let vertical = Layout::vertical([Min(0), Length(3), Length(1)]).split(area);
-            let horizontal = Layout::horizontal([Length(1), Min(0), Length(1)]).split(vertical[1]);
-            self.render_rename_key_input(frame, horizontal[1])?;
-        }
-
         Ok(())
     }
 
@@ -445,13 +448,6 @@ impl ExplorerTab {
         }
     }
 
-    fn render_search_popup(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        let popup_area = centered_rect(60, 60, area);
-        let vertical = Layout::vertical([Length(3), Fill(1)]).split(popup_area);
-        self.ft_search_panel.render_frame(frame, vertical[0])?;
-        Ok(())
-    }
-
     fn render_tree(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let tree = Tree::new(&self.tree_items)?
             .block(
@@ -582,6 +578,9 @@ impl ExplorerTab {
                     match self.filter_mod {
                         FilterMod::Fuzzy => contains = redis_key.name.contains(filter_text),
                         FilterMod::Pattern => {
+                            if filter_text == "*" {
+                                return true;
+                            }
                             let fuzzy_start = filter_text.starts_with("*");
                             let fuzzy_end = filter_text.ends_with("*");
                             let mut _filter_text = filter_text.clone();
@@ -870,7 +869,7 @@ impl ExplorerTab {
             match key_event.code {
                 KeyCode::Enter => {
                     self.do_ft_search()?;
-                    self.show_search_popup = false;
+                    // self.show_search_popup = false;
                     return Ok(true);
                 }
                 KeyCode::Esc => {
@@ -1110,17 +1109,14 @@ impl Renderable for ExplorerTab {
                 .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
                 .split(rect)
         };
-        self.render_keys_block(frame, chunks[0])?;
         self.render_values_block(frame, chunks[1])?;
+        self.render_keys_block(frame, chunks[0])?;
 
         if self.show_delete_popup {
             self.render_delete_popup(frame, rect);
         }
         if self.show_create {
             self.render_create_key_form(frame, frame.area())?;
-        }
-        if self.show_search_popup {
-            self.render_search_popup(frame, frame.area())?;
         }
 
         Ok(())
