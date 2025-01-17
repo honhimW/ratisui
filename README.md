@@ -130,6 +130,7 @@ User's data will be stored in `~/.config/ratisui/`:
     - [x] XML highlighter ([tree-sitter-html](https://crates.io/crates/tree-sitter-html))
     - [x] RON highlighter ([tree-sitter-ron](https://crates.io/crates/tree-sitter-ron))
 - [x] Table view for list, set, sorted set, hash, stream
+- [x] RedisSearch, completion for indexes/FT.SEARCH
 
 **Command line tool**
 - [x] Auto Completion
