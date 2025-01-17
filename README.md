@@ -50,10 +50,10 @@ User's data will be stored in `~/.config/ratisui/`:
     fps: 45,                               // tui render fps limitation
     scan_size: 500,                        // redis key scan size,
     try_format: false,                     // fotmat raw data
-    theme: Some("your-theme")              // ～/.config/ratisui/theme/your-theme.ron
-    history_size: 1000                     // ～/.config/ratisui/cli.history
-    cli_output_format: Redis               // Redis(default) | Ron
-    console_capacity: 2000                 // CLI output capacity, default as 3000
+    theme: Some("your-theme"),             // ～/.config/ratisui/theme/your-theme.ron
+    history_size: 1000,                    // ～/.config/ratisui/cli.history
+    cli_output_format: Redis,              // Redis(default) | Ron
+    console_capacity: 2000,                // CLI output capacity, default as 3000
 )
 ```
 ### Databases Configuration
