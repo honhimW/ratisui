@@ -47,7 +47,7 @@ redis = { workspace = true, features = [
     "json"
 ] }
 
-strum = "0.26.3"
+strum = "0.27.0"
 uuid = { version = "1.11.0", features = ["v4"] }
 tokio = { workspace = true, features = ["full"] }
 chronoutil = "0.2.7"
