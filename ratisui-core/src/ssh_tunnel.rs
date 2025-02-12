@@ -1,5 +1,5 @@
+use std::future::Future;
 use anyhow::{Error, Result};
-use async_trait::async_trait;
 use log::{error, info, warn};
 use russh::client::{Config, Handler};
 use russh::keys::{PublicKey};
@@ -110,12 +110,11 @@ impl SshTunnel {
 
 struct IHandler;
 
-#[async_trait]
 impl Handler for IHandler {
     type Error = Error;
 
-    async fn check_server_key(&mut self, _: &PublicKey) -> Result<bool, Self::Error> {
-        Ok(true)
+    fn check_server_key(&mut self, _: &PublicKey) -> impl Future<Output=std::result::Result<bool, Self::Error>> + Send {
+        async { Ok(true) }
     }
 }
 
