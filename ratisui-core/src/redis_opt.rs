@@ -751,6 +751,7 @@ impl RedisOperations {
                     let mut vec: Vec<String> = vec![];
                     while let Some(item) = iter.next_item().await {
                         vec.push(item);
+                        if vec.len() >= count { break; }
                     }
                     all_node_keys.extend(vec);
                 }
@@ -762,6 +763,7 @@ impl RedisOperations {
             let mut vec: Vec<String> = vec![];
             while let Some(item) = iter.next_item().await {
                 vec.push(item);
+                if vec.len() >= count { break; }
             }
             Ok(vec)
         }
