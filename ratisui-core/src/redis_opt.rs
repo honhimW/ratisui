@@ -4,14 +4,13 @@ use crate::ssh_tunnel::SshTunnel;
 use crate::utils::split_args;
 use anyhow::{anyhow, Context, Error, Result};
 use crossbeam_channel::Sender;
-use deadpool_redis::redis::cmd;
 use deadpool_redis::{Pool, Runtime};
 use futures::future::join_all;
 use futures::StreamExt;
 use log::info;
 use once_cell::sync::Lazy;
-use redis::ConnectionAddr::{Tcp, TcpTls};
-use redis::{AsyncCommands, AsyncIter, Client, Cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, JsonAsyncCommands, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value, VerbatimFormat};
+use deadpool_redis::redis::ConnectionAddr::{Tcp, TcpTls};
+use deadpool_redis::redis::{AsyncCommands, AsyncIter, Client, Cmd, cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, JsonAsyncCommands, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value, VerbatimFormat};
 use std::collections::HashMap;
 use std::future::Future;
 use std::ops::DerefMut;
@@ -781,15 +780,15 @@ impl RedisOperations {
         }
     }
 
-    pub async fn get_list<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K) -> Result<V> {
+    pub async fn get_list<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K, start: isize, stop: isize) -> Result<V> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
-            let v: V = connection.lrange(key, 0, -1).await?;
+            let v: V = connection.lrange(key, start, stop).await?;
 
             Ok(v)
         } else {
             let mut connection = self.get_standalone_connection().await?;
-            let v: V = connection.lrange(key, 0, -1).await?;
+            let v: V = connection.lrange(key, start, stop).await?;
             Ok(v)
         }
     }
@@ -798,7 +797,6 @@ impl RedisOperations {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let v: V = connection.smembers(key).await?;
-
             Ok(v)
         } else {
             let mut connection = self.get_standalone_connection().await?;
@@ -807,7 +805,8 @@ impl RedisOperations {
         }
     }
 
-    pub async fn get_zset<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K) -> Result<V> {
+    pub async fn get_zset<K: ToRedisArgs + Send + Sync, V: 
+    FromRedisValue>(&self, key: K) -> Result<V> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let v: V = connection.zrange_withscores(key, 0, -1).await?;

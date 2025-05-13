@@ -3,7 +3,7 @@ mod common;
 
 use crate::common::client::dead_pool;
 use anyhow::Result;
-use redis::{cmd, Value};
+use deadpool_redis::redis::{cmd, Value};
 
 #[tokio::main]
 async fn main() -> Result<()> {

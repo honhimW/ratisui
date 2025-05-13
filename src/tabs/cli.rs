@@ -12,7 +12,7 @@ use ratatui::prelude::{Line, Stylize};
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use ratatui::Frame;
-use redis::{Value, VerbatimFormat};
+use deadpool_redis::redis::{Value, VerbatimFormat};
 use std::cmp;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};

@@ -104,6 +104,7 @@ impl Input {
         tx: &Sender<InputEvent>,
     ) -> Result<()> {
         let mut poll_duration = SLOW_POLL_DURATION;
+        
         loop {
             if arc_desired.get() {
                 if !arc_current.load(Ordering::Relaxed) {

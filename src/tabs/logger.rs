@@ -6,6 +6,7 @@ use ratatui::prelude::{Line, Stylize};
 use ratatui::style::{Color, Style};
 use ratatui::Frame;
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerSmartWidget, TuiWidgetEvent, TuiWidgetState};
+use ratisui_core::constants::DATE_FORMAT_PATTERN;
 use ratisui_core::theme::get_color;
 
 pub struct LoggerTab {
@@ -51,7 +52,7 @@ impl Renderable for LoggerTab {
             .title_target("Topic")
             .title_log("Log")
             .output_separator(' ')
-            .output_timestamp(Some("%Y-%m-%dT%H:%M:%S%.3fZ".to_string()))
+            .output_timestamp(Some(DATE_FORMAT_PATTERN.to_string()))
             .output_level(Some(TuiLoggerLevelOutput::Abbreviated))
             .output_target(true)
             .output_file(true)

@@ -28,7 +28,8 @@ use ratisui_core::theme::get_color;
 use ratisui_core::utils::{bytes_to_string, clean_text_area};
 use ratisui_core::utils::{deserialize_bytes, ContentType};
 use std::collections::HashMap;
-use redis::{FromRedisValue, Value};
+use bitflags::bitflags;
+use deadpool_redis::redis::{FromRedisValue, Value};
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
@@ -60,6 +61,8 @@ pub struct ExplorerTab {
     selected_stream_value: Option<SteamView>,
     data_sender: Sender<Data>,
     data_receiver: Receiver<Data>,
+    #[allow(dead_code)]
+    offset: u32,
 
     has_search_module: bool,
 }
@@ -67,17 +70,48 @@ pub struct ExplorerTab {
 #[derive(Default, Clone)]
 pub struct Data {
     key_name: String,
-    scan_keys_result: (bool, Vec<RedisKey>),
-    selected_string_value: (bool, Option<(String, Option<ContentType>)>),
-    selected_list_value: (bool, Option<Vec<String>>),
-    selected_set_value: (bool, Option<Vec<String>>),
-    selected_zset_value: (bool, Option<Vec<(String, f64)>>),
-    selected_hash_value: (bool, Option<HashMap<String, String>>),
-    selected_stream_value: (bool, Option<Vec<(String, Vec<String>)>>),
-    key_type: (bool, Option<String>),
-    key_size: (bool, Option<usize>),
-    length: (bool, Option<usize>),
-    ttl: (bool, Option<u64>),
+    data_flags: DataFlags,
+    scan_keys_result: Vec<RedisKey>,
+    selected_string_value: Option<(String, Option<ContentType>)>,
+    selected_list_value: Option<Vec<String>>,
+    selected_set_value: Option<Vec<String>>,
+    selected_zset_value: Option<Vec<(String, f64)>>,
+    selected_hash_value: Option<HashMap<String, String>>,
+    selected_stream_value: Option<Vec<(String, Vec<String>)>>,
+    key_type: Option<String>,
+    key_size: Option<usize>,
+    length: Option<usize>,
+    ttl: Option<u64>,
+}
+
+impl Data {
+    fn add(&mut self, data_flags: DataFlags) {
+        self.data_flags |= data_flags;
+    }
+}
+
+bitflags! {
+    #[derive(Clone)]
+    struct DataFlags: u16 {
+        const NONE = 0b0000_0000_0000_0000;
+        const SCAN_KEYS = 0b0000_0000_0000_0001;
+        const STRING_VALUE = 0b0000_0000_0000_0010;
+        const LIST_VALUE = 0b0000_0000_0000_0100;
+        const SET_VALUE = 0b0000_0000_0000_1000;
+        const ZSET_VALUE = 0b0000_0000_0001_0000;
+        const HASH_VALUE = 0b0000_0000_0010_0000;
+        const STREAM_VALUE = 0b0000_0000_0100_0000;
+        const KEY_TYPE = 0b0000_0000_1000_0000;
+        const KEY_SIZE = 0b0000_0001_0000_0000;
+        const LENGTH = 0b0000_0010_0000_0000;
+        const TTL = 0b0000_0100_0000_0000;
+    }
+}
+
+impl Default for DataFlags {
+    fn default() -> Self {
+        Self::NONE
+    }
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -233,47 +267,49 @@ impl ExplorerTab {
             selected_stream_value: None,
             data_sender: tx,
             data_receiver: rx,
+            offset: 0,
             has_search_module: false,
         }
     }
 
     fn update_data(&mut self, data: Data) {
-        if data.scan_keys_result.0 {
-            self.scan_keys_result = data.scan_keys_result.1;
+        let flags = data.data_flags;
+        if flags.contains(DataFlags::SCAN_KEYS) {
+            self.scan_keys_result = data.scan_keys_result;
             let _ = self.build_tree_items();
         }
         if let Some(redis_key) = &mut self.selected_key {
             if redis_key.name == data.key_name {
-                if data.key_type.0 {
-                    redis_key.key_type = data.key_type.1.unwrap_or("unknown".to_string());
+                if flags.contains(DataFlags::KEY_TYPE) {
+                    redis_key.key_type = data.key_type.unwrap_or("unknown".to_string());
                 }
-                if data.key_size.0 {
-                    redis_key.key_size = data.key_size.1;
+                if flags.contains(DataFlags::KEY_SIZE) {
+                    redis_key.key_size = data.key_size;
                 }
-                if data.length.0 {
-                    redis_key.length = data.length.1;
+                if flags.contains(DataFlags::LENGTH) {
+                    redis_key.length = data.length;
                 }
-                if data.ttl.0 {
-                    redis_key.ttl = data.ttl.1;
+                if flags.contains(DataFlags::TTL) {
+                    redis_key.ttl = data.ttl;
                 }
-                if data.selected_string_value.0 {
-                    let raw = data.selected_string_value.1.unwrap_or_default();
+                if flags.contains(DataFlags::STRING_VALUE) {
+                    let raw = data.selected_string_value.unwrap_or_default();
                     self.selected_raw_value = Some(RawParagraph::new(raw.0, raw.1, self.try_format));
                 }
-                if data.selected_list_value.0 {
-                    self.selected_list_value = Some(ListValue::new(data.selected_list_value.1.unwrap_or_default()));
+                if flags.contains(DataFlags::LIST_VALUE) {
+                    self.selected_list_value = Some(ListValue::new(data.selected_list_value.unwrap_or_default()));
                 }
-                if data.selected_set_value.0 {
-                    self.selected_set_value = Some(SetValue::new(data.selected_set_value.1.unwrap_or_default()));
+                if flags.contains(DataFlags::SET_VALUE) {
+                    self.selected_set_value = Some(SetValue::new(data.selected_set_value.unwrap_or_default()));
                 }
-                if data.selected_zset_value.0 {
-                    self.selected_zset_value = Some(ZSetValue::new(data.selected_zset_value.1.unwrap_or_default()));
+                if flags.contains(DataFlags::ZSET_VALUE) {
+                    self.selected_zset_value = Some(ZSetValue::new(data.selected_zset_value.unwrap_or_default()));
                 }
-                if data.selected_hash_value.0 {
-                    self.selected_hash_value = Some(HashValue::new(data.selected_hash_value.1.unwrap_or_default()));
+                if flags.contains(DataFlags::HASH_VALUE) {
+                    self.selected_hash_value = Some(HashValue::new(data.selected_hash_value.unwrap_or_default()));
                 }
-                if data.selected_stream_value.0 {
-                    self.selected_stream_value = Some(SteamView::new(data.selected_stream_value.1.unwrap_or_default()));
+                if flags.contains(DataFlags::STREAM_VALUE) {
+                    self.selected_stream_value = Some(SteamView::new(data.selected_stream_value.unwrap_or_default()));
                 }
             }
         }
@@ -505,7 +541,8 @@ impl ExplorerTab {
                 let vec = keys.iter()
                     .map(|s| RedisKey::new(s, "unknown"))
                     .collect::<Vec<RedisKey>>();
-                data.scan_keys_result = (true, vec);
+                data.add(DataFlags::SCAN_KEYS);
+                data.scan_keys_result = vec;
             }
             sender.send(data.clone())?;
             Ok(())
@@ -559,7 +596,8 @@ impl ExplorerTab {
                         .for_each(|redis_key| {
                             vec.push(redis_key);
                         });
-                    data.scan_keys_result = (true, vec);
+                    data.add(DataFlags::SCAN_KEYS);
+                    data.scan_keys_result = vec;
                     sender.send(data.clone())?;
                 },
                 Err(e) => publish_msg(Message::error(format!("{:?}", e)))?,
@@ -725,7 +763,8 @@ impl ExplorerTab {
                                 let vec = keys.iter()
                                     .map(|s| RedisKey::new(s, "unknown"))
                                     .collect::<Vec<RedisKey>>();
-                                data.scan_keys_result = (true, vec);
+                                data.add(DataFlags::SCAN_KEYS);
+                                data.scan_keys_result = vec;
                                 sender.send(data.clone())?;
                                 Ok(())
                             })?;
@@ -818,7 +857,8 @@ impl ExplorerTab {
                         let vec = keys.iter()
                             .map(|s| RedisKey::new(s, "unknown"))
                             .collect::<Vec<RedisKey>>();
-                        data.scan_keys_result = (true, vec);
+                        data.add(DataFlags::SCAN_KEYS);
+                        data.scan_keys_result = vec;
                         sender.send(data.clone())?;
 
                         Ok(())
@@ -939,7 +979,7 @@ impl ExplorerTab {
                             tokio::spawn(async move {
                                 let data = Self::do_get_key_info(id.clone()).await?;
                                 sender.send(data.clone())?;
-                                if let Some(key_type) = data.key_type.1 {
+                                if let Some(key_type) = data.key_type {
                                     let data = Self::do_get_value(id.clone(), key_type).await?;
                                     sender.send(data)?;
                                 }
@@ -972,7 +1012,8 @@ impl ExplorerTab {
         });
         let (key_type, key_size, ttl) = join!(key_type, key_size, ttl);
         if let Ok(key_type) = key_type {
-            data.key_type = (true, Some(key_type.clone()));
+            data.add(DataFlags::KEY_TYPE);
+            data.key_type = Some(key_type.clone());
             let key_name_clone = key_name.clone();
             let key_type_clone = key_type.clone();
             let length = async_redis_opt(|op| async move {
@@ -997,18 +1038,21 @@ impl ExplorerTab {
                 }
             }).await;
             if let Ok(length) = length {
-                data.length = (true, Some(length));
+                data.add(DataFlags::LENGTH);
+                data.length = Some(length);
             }
         }
         if let Ok(key_size) = key_size {
-            data.key_size = (true, Some(key_size as usize));
+            data.add(DataFlags::KEY_SIZE);
+            data.key_size = Some(key_size as usize);
         }
 
         if let Ok(ttl) = ttl {
+            data.add(DataFlags::TTL);
             if ttl.is_positive() {
-                data.ttl = (true, Some(ttl as u64));
+                data.ttl = Some(ttl as u64);
             } else {
-                data.ttl = (true, None);
+                data.ttl = None;
             }
         }
         Ok(data)
@@ -1023,17 +1067,19 @@ impl ExplorerTab {
                 "string" => {
                     let bytes: Vec<u8> = op.get(key_name_clone).await?;
                     let result = deserialize_bytes(bytes).context("Failed to deserialize string")?;
-                    data.selected_string_value = (true, Some((result.0, result.1)));
+                    data.add(DataFlags::STRING_VALUE);
+                    data.selected_string_value = Some((result.0, result.1));
                 }
                 "list" => {
-                    let values: Vec<Vec<u8>> = op.get_list(key_name_clone).await?;
+                    let values: Vec<Vec<u8>> = op.get_list(key_name_clone, 0, 100).await?;
                     let strings: Vec<String> = values.iter().map(|item| {
                         match bytes_to_string(item.clone()) {
                             Ok(s) => { s }
                             Err(_) => { String::new() }
                         }
                     }).collect();
-                    data.selected_list_value = (true, Some(strings));
+                    data.add(DataFlags::LIST_VALUE);
+                    data.selected_list_value = Some(strings);
                 }
                 "set" => {
                     let values: Vec<Vec<u8>> = op.get_set(key_name_clone).await?;
@@ -1043,7 +1089,8 @@ impl ExplorerTab {
                             Err(_) => { String::new() }
                         }
                     }).collect();
-                    data.selected_set_value = (true, Some(strings));
+                    data.add(DataFlags::SET_VALUE);
+                    data.selected_set_value = Some(strings);
                 }
                 "zset" => {
                     let values: Vec<(Vec<u8>, f64)> = op.get_zset(key_name_clone).await?;
@@ -1053,7 +1100,8 @@ impl ExplorerTab {
                             Err(_) => { (String::new(), score.clone()) }
                         }
                     }).collect();
-                    data.selected_zset_value = (true, Some(tuples));
+                    data.add(DataFlags::ZSET_VALUE);
+                    data.selected_zset_value = Some(tuples);
                 }
                 "hash" => {
                     let values: HashMap<Vec<u8>, Vec<u8>> = op.get_hash(key_name_clone).await?;
@@ -1062,7 +1110,8 @@ impl ExplorerTab {
                         let value_str = bytes_to_string(value.clone()).unwrap_or_default();
                         (key_str, value_str)
                     }).collect();
-                    data.selected_hash_value = (true, Some(hash_value));
+                    data.add(DataFlags::HASH_VALUE);
+                    data.selected_hash_value = Some(hash_value);
                 }
                 "stream" => {
                     let values: Vec<(Vec<u8>, Vec<Vec<u8>>)> = op.get_stream(key_name_clone).await?;
@@ -1071,11 +1120,13 @@ impl ExplorerTab {
                         let values: Vec<String> = value.iter().map(|item| bytes_to_string(item.clone()).unwrap_or_default()).collect();
                         (key_str, values)
                     }).collect();
-                    data.selected_stream_value = (true, Some(hash_value));
+                    data.add(DataFlags::STREAM_VALUE);
+                    data.selected_stream_value = Some(hash_value);
                 }
                 "rejson-rl" => {
                     let json_string: String = op.json_get(key_name_clone).await?;
-                    data.selected_string_value = (true, Some((json_string, Some(ContentType::Json))));
+                    data.add(DataFlags::STRING_VALUE);
+                    data.selected_string_value = Some((json_string, Some(ContentType::Json)));
                 }
                 _ => {}
             }

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use deadpool_redis::Runtime;
-use redis::ConnectionAddr::Tcp;
-use redis::{ConnectionInfo, ProtocolVersion, RedisConnectionInfo};
+use deadpool_redis::redis::ConnectionAddr::Tcp;
+use deadpool_redis::redis::{ConnectionInfo, ProtocolVersion, RedisConnectionInfo};
 
 pub fn dead_pool() -> Result<deadpool_redis::Pool> {
     build_pool(Config {

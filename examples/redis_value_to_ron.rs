@@ -3,7 +3,7 @@ mod common;
 use crate::common::client::dead_pool;
 use anyhow::Result;
 use ratisui_core::serde_wrapper::IValue;
-use redis::{Cmd, Value};
+use deadpool_redis::redis::{Cmd, Value};
 use ron::ser::PrettyConfig;
 
 #[tokio::main]

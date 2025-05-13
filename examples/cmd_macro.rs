@@ -3,7 +3,7 @@ mod common;
 use crate::common::client::dead_pool;
 use anyhow::Result;
 use log::info;
-use redis::{AsyncCommands, AsyncIter, Cmd, ScanOptions, Value};
+use deadpool_redis::redis::{AsyncCommands, AsyncIter, Cmd, ScanOptions, Value};
 use crate::common::enable_log;
 
 #[tokio::main]

@@ -20,16 +20,14 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = "1"
 crossbeam-channel = "0.5"
 
-redis = { workspace = true, features = [
-    "tokio-comp",
-    "tokio-rustls-comp",
-    "cluster-async",
-    "json"
-] }
 deadpool-redis = { git = "https://github.com/honhimW/deadpool.git", branch = "logging", package = "deadpool-redis", features = [
     "serde",
     "cluster",
+    "tokio-comp",
+    "cluster-async",
+    "streams",
     "log",
+    "json"
 ] }
 
 strum = { workspace = true }

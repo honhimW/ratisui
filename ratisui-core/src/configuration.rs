@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use log::{debug, info, warn};
-use redis::ProtocolVersion;
+use deadpool_redis::redis::ProtocolVersion;
 use ron::ser::PrettyConfig;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

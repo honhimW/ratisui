@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use protobuf::reflect::MessageDescriptor;
 use protobuf::well_known_types::any::Any;
 use protobuf::{CodedOutputStream, UnknownValueRef};
-use redis::AsyncCommands;
+use deadpool_redis::redis::AsyncCommands;
 use ron::ser::PrettyConfig;
 use serde::Serialize;
 use std::collections::HashMap;

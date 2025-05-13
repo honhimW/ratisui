@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use redis::{PushKind, Value, VerbatimFormat};
+use deadpool_redis::redis::{PushKind, Value, VerbatimFormat};
 use serde::{Deserialize, Serialize};
 use anyhow::Result;
 use ron::ser::PrettyConfig;

@@ -14,7 +14,7 @@ use ratatui::widgets::{Block, BorderType, Clear};
 use ratatui::Frame;
 use ratisui_core::redis_opt::spawn_redis_opt;
 use ratisui_core::theme::get_color;
-use redis::{FromRedisValue, RedisResult, Value};
+use deadpool_redis::redis::{FromRedisValue, RedisResult, Value};
 use std::collections::HashMap;
 use once_cell::sync::Lazy;
 use substring::Substring;

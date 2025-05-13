@@ -4,7 +4,7 @@ mod common;
 use crate::common::client::build_pool;
 use anyhow::Result;
 use ratisui_core::ssh_tunnel::SshTunnel;
-use redis::cmd;
+use deadpool_redis::redis::cmd;
 use std::string::ToString;
 
 const SSH_HOST: &str = "alpha.vm.internal";
