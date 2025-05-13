@@ -72,11 +72,11 @@ pub struct ZSetValue {
 }
 
 impl ZSetValue {
-    pub fn new(data: Vec<(String, f64)>) -> Self {
+    pub fn new(data: Vec<(String, f64)>, offset: usize) -> Self {
         let mut vec = vec![];
         for (idx, (string, score)) in data.iter().enumerate() {
             let data = Data {
-                index: idx.to_string(),
+                index: idx.saturating_add(offset).to_string(),
                 score: score.clone(),
                 score_str: score.to_string(),
                 value: string.clone().replace("\n", "\\n"),

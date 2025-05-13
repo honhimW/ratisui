@@ -805,15 +805,15 @@ impl RedisOperations {
         }
     }
 
-    pub async fn get_zset<K: ToRedisArgs + Send + Sync, V: 
-    FromRedisValue>(&self, key: K) -> Result<V> {
+    pub async fn get_zset<K: ToRedisArgs + Send + Sync, V:
+    FromRedisValue>(&self, key: K, start: isize, stop: isize) -> Result<V> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
-            let v: V = connection.zrange_withscores(key, 0, -1).await?;
+            let v: V = connection.zrange_withscores(key, start, stop).await?;
             Ok(v)
         } else {
             let mut connection = self.get_standalone_connection().await?;
-            let v: V = connection.zrange_withscores(key, 0, -1).await?;
+            let v: V = connection.zrange_withscores(key, start, stop).await?;
             Ok(v)
         }
     }
