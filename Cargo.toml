@@ -33,7 +33,7 @@ ratatui-macros = "0.6.0"
 tui-textarea = { version = "0.7", features = ["crossterm"] }
 throbber-widgets-tui = "0.8"
 tui-tree-widget = "0.23.0"
-tui-logger = "0.14"
+tui-logger = "0.17"
 
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
