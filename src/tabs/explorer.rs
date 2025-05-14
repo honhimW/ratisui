@@ -13,7 +13,7 @@ use anyhow::{anyhow, Context, Error, Result};
 use bitflags::bitflags;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use deadpool_redis::redis::{FromRedisValue, Value};
-use log::{error, info};
+use log::info;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -308,16 +308,22 @@ impl ExplorerTab {
                     ));
                 }
                 if flags.contains(DataFlags::SET_VALUE) {
-                    self.selected_set_value =
-                        Some(SetValue::new(data.selected_set_value.unwrap_or_default()));
+                    self.selected_set_value = Some(SetValue::new(
+                        data.selected_set_value.unwrap_or_default(),
+                        self.offset as usize,
+                    ));
                 }
                 if flags.contains(DataFlags::ZSET_VALUE) {
-                    self.selected_zset_value =
-                        Some(ZSetValue::new(data.selected_zset_value.unwrap_or_default(), self.offset as usize));
+                    self.selected_zset_value = Some(ZSetValue::new(
+                        data.selected_zset_value.unwrap_or_default(),
+                        self.offset as usize,
+                    ));
                 }
                 if flags.contains(DataFlags::HASH_VALUE) {
-                    self.selected_hash_value =
-                        Some(HashValue::new(data.selected_hash_value.unwrap_or_default()));
+                    self.selected_hash_value = Some(HashValue::new(
+                        data.selected_hash_value.unwrap_or_default(),
+                        self.offset as usize,
+                    ));
                 }
                 if flags.contains(DataFlags::STREAM_VALUE) {
                     self.selected_stream_value = Some(SteamView::new(
@@ -1152,16 +1158,32 @@ impl ExplorerTab {
                     data.selected_list_value = Some(strings);
                 }
                 "set" => {
-                    let values: Vec<Vec<u8>> = op.get_set(key_name_clone).await?;
-                    let strings: Vec<String> = values
-                        .iter()
-                        .map(|item| bytes_to_string(item.clone()).unwrap_or_else(|_| String::new()))
-                        .collect();
-                    data.add(DataFlags::SET_VALUE);
-                    data.selected_set_value = Some(strings);
+                    // let values: Vec<Vec<u8>> = op.get_set(key_name_clone).await?;
+                    // let strings: Vec<String> = values
+                    //     .iter()
+                    //     .map(|item| bytes_to_string(item.clone()).unwrap_or_else(|_| String::new()))
+                    //     .collect();
+                    // data.add(DataFlags::SET_VALUE);
+                    // data.selected_set_value = Some(strings);
+                    let values: Vec<Value> = op
+                        .sscan(key_name_clone, start as usize, PAGE_SIZE as usize)
+                        .await?;
+                    let values = values.get(1).cloned().unwrap_or(Value::Nil);
+                    if let Value::Array(arr) = values {
+                        let mut strings: Vec<String> = vec![];
+                        for v in arr.iter() {
+                            if let Value::BulkString(bytes) = v {
+                                let string = bytes_to_string(bytes.clone()).unwrap_or_default();
+                                strings.push(string);
+                            }
+                        }
+                        data.add(DataFlags::SET_VALUE);
+                        data.selected_set_value = Some(strings);
+                    }
                 }
                 "zset" => {
-                    let values: Vec<(Vec<u8>, f64)> = op.get_zset(key_name_clone, start, stop).await?;
+                    let values: Vec<(Vec<u8>, f64)> =
+                        op.get_zset(key_name_clone, start, stop).await?;
                     let tuples: Vec<(String, f64)> = values
                         .iter()
                         .map(|(item, score)| match bytes_to_string(item.clone()) {
@@ -1173,21 +1195,53 @@ impl ExplorerTab {
                     data.selected_zset_value = Some(tuples);
                 }
                 "hash" => {
-                    let values: HashMap<Vec<u8>, Vec<u8>> = op.get_hash(key_name_clone).await?;
-                    let hash_value: HashMap<String, String> = values
-                        .iter()
-                        .map(|(key, value)| {
-                            let key_str: String = bytes_to_string(key.clone()).unwrap_or_default();
-                            let value_str = bytes_to_string(value.clone()).unwrap_or_default();
-                            (key_str, value_str)
-                        })
-                        .collect();
-                    data.add(DataFlags::HASH_VALUE);
-                    data.selected_hash_value = Some(hash_value);
+                    // let values: HashMap<Vec<u8>, Vec<u8>> = op.get_hash(key_name_clone).await?;
+                    // let hash_value: HashMap<String, String> = values
+                    //     .iter()
+                    //     .map(|(key, value)| {
+                    //         let key_str: String = bytes_to_string(key.clone()).unwrap_or_default();
+                    //         let value_str = bytes_to_string(value.clone()).unwrap_or_default();
+                    //         (key_str, value_str)
+                    //     })
+                    //     .collect();
+                    // data.add(DataFlags::HASH_VALUE);
+                    // data.selected_hash_value = Some(hash_value);
+                    let values: Vec<Value> = op
+                        .hscan(key_name_clone, start as usize, PAGE_SIZE as usize)
+                        .await?;
+                    let values = values.get(1).cloned().unwrap_or(Value::Nil);
+                    if let Value::Array(arr) = values {
+                        let hash_value: HashMap<String, String> = arr
+                            .chunks_exact(2)
+                            .map(|(chunk)| {
+                                let key = match chunk.get(0) {
+                                    Some(v) => match v {
+                                        Value::BulkString(bytes) => {
+                                            bytes_to_string(bytes.clone()).unwrap_or_default()
+                                        }
+                                        _ => String::new(),
+                                    },
+                                    None => String::new(),
+                                };
+                                let value = match chunk.get(1) {
+                                    Some(v) => match v {
+                                        Value::BulkString(bytes) => {
+                                            bytes_to_string(bytes.clone()).unwrap_or_default()
+                                        }
+                                        _ => String::new(),
+                                    },
+                                    None => String::new(),
+                                };
+                                (key, value)
+                            })
+                            .collect();
+                        data.add(DataFlags::HASH_VALUE);
+                        data.selected_hash_value = Some(hash_value);
+                    }
                 }
                 "stream" => {
                     let values: Vec<(Vec<u8>, Vec<Vec<u8>>)> =
-                        op.get_stream(key_name_clone).await?;
+                        op.xrange(key_name_clone, "-", PAGE_SIZE as usize).await?;
                     let hash_value: Vec<(String, Vec<String>)> = values
                         .iter()
                         .map(|(key, value)| {
@@ -1229,7 +1283,6 @@ impl ExplorerTab {
                     offset = 0;
                 }
                 self.offset = offset;
-                error!("next page: {offset} {length}");
                 tokio::spawn(async move {
                     let data = Self::do_get_value(key_name, key_type, offset).await?;
                     sender.send(data)?;
@@ -1243,7 +1296,6 @@ impl ExplorerTab {
                     offset = length.saturating_add(offset);
                 }
                 self.offset = offset;
-                error!("previous page: {offset} {length}");
                 tokio::spawn(async move {
                     let data = Self::do_get_value(key_name, key_type, offset).await?;
                     sender.send(data)?;
@@ -1339,6 +1391,8 @@ impl Renderable for ExplorerTab {
                         elements.push((k, v));
                     });
                     elements.push(("←/h", "Close"));
+                    elements.push(("^n", "Next Page"));
+                    elements.push(("^p", "Prev Page"));
                 }
                 if let Some(ref zset_value) = self.selected_zset_value {
                     zset_value.footer_elements().iter().for_each(|(k, v)| {
@@ -1353,6 +1407,8 @@ impl Renderable for ExplorerTab {
                         elements.push((k, v));
                     });
                     elements.push(("←/h", "Close"));
+                    elements.push(("^n", "Next Page"));
+                    elements.push(("^p", "Prev Page"));
                 }
                 if let Some(ref stream_view) = self.selected_stream_value {
                     stream_view.footer_elements().iter().for_each(|(k, v)| {
@@ -1435,7 +1491,9 @@ impl Listenable for ExplorerTab {
             }
 
             if self.selected_list_value.is_some()
+                || self.selected_set_value.is_some()
                 || self.selected_zset_value.is_some()
+                || self.selected_hash_value.is_some()
             {
                 if self.buffer_turning(&key_event) {
                     return Ok(true);

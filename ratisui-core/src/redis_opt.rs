@@ -805,6 +805,13 @@ impl RedisOperations {
         }
     }
 
+    pub async fn sscan<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K, cursor: usize, count: usize) -> Result<V> {
+        let mut cmd = Cmd::new();
+        cmd.arg("SSCAN").arg(key).arg(cursor).arg("MATCH").arg("*").arg("COUNT").arg(count);
+        let v: V = self.cmd(cmd).await?;
+        Ok(v)
+    }
+
     pub async fn get_zset<K: ToRedisArgs + Send + Sync, V:
     FromRedisValue>(&self, key: K, start: isize, stop: isize) -> Result<V> {
         if self.is_cluster() {
@@ -830,6 +837,13 @@ impl RedisOperations {
         }
     }
 
+    pub async fn hscan<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K, cursor: usize, count: usize) -> Result<V> {
+        let mut cmd = Cmd::new();
+        cmd.arg("HSCAN").arg(key).arg(cursor).arg("MATCH").arg("*").arg("COUNT").arg(count);
+        let v: V = self.cmd(cmd).await?;
+        Ok(v)
+    }
+
     pub async fn get_stream<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K) -> Result<V> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
@@ -838,6 +852,18 @@ impl RedisOperations {
         } else {
             let mut connection = self.get_standalone_connection().await?;
             let v: V = connection.xrange_all(key).await?;
+            Ok(v)
+        }
+    }
+
+    pub async fn xrange<K: ToRedisArgs + Send + Sync, S: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K, start: S, count: usize) -> Result<V> {
+        if self.is_cluster() {
+            let mut connection = self.get_cluster_connection().await?;
+            let v: V = connection.xrange_count(key, start, "+", count).await?;
+            Ok(v)
+        } else {
+            let mut connection = self.get_standalone_connection().await?;
+            let v: V = connection.xrange_count(key, start, "+", count).await?;
             Ok(v)
         }
     }

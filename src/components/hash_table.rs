@@ -69,11 +69,11 @@ pub struct HashValue {
 }
 
 impl HashValue {
-    pub fn new(data: HashMap<String, String>) -> Self {
+    pub fn new(data: HashMap<String, String>, offset: usize) -> Self {
         let mut vec = vec![];
         for (idx, (key, value)) in data.iter().enumerate() {
             let data = Data {
-                index: idx.to_string(),
+                index: idx.saturating_add(offset).to_string(),
                 key: key.to_string(),
                 value: value.clone().replace("\n", "\\n"),
                 origin_value: value.clone(),

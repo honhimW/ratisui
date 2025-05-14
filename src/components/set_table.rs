@@ -65,11 +65,11 @@ pub struct SetValue {
 }
 
 impl SetValue {
-    pub fn new(data: Vec<String>) -> Self {
+    pub fn new(data: Vec<String>, offset: usize) -> Self {
         let mut vec = vec![];
         for (idx, string) in data.iter().enumerate() {
             let data = Data {
-                index: idx.to_string(),
+                index: idx.saturating_add(offset).to_string(),
                 value: string.clone().replace("\n", "\\n"),
                 origin_value: string.clone(),
             };
