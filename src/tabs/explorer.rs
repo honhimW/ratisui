@@ -1213,7 +1213,7 @@ impl ExplorerTab {
                     if let Value::Array(arr) = values {
                         let hash_value: HashMap<String, String> = arr
                             .chunks_exact(2)
-                            .map(|(chunk)| {
+                            .map(|chunk| {
                                 let key = match chunk.get(0) {
                                     Some(v) => match v {
                                         Value::BulkString(bytes) => {

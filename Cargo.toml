@@ -1,10 +1,14 @@
 [package]
 name = "ratisui"
-version = "0.4.0"
+version = {workspace = true}
 edition = "2021"
 authors = ["honhimw <honhimw@outlook.com>"]
-rust-version = "1.83.0"
+rust-version = {workspace = true}
 build = "build.rs"
+
+[workspace.package]
+version = "0.4.0"
+rust-version = "1.83.0"
 
 [workspace]
 members = ["ratisui-core", "ratisui-macros"]
