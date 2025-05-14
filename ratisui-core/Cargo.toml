@@ -45,7 +45,7 @@ jaded = { version = "0.5.0", features = ["serde"] }
 protobuf = { version = "3.7.1" }
 
 tree-sitter = { workspace = true}
-tree-sitter-highlight = "0.24"
+tree-sitter-highlight = "0.25"
 tree-sitter-json = "0.24"
 tree-sitter-html = { git = "https://github.com/honhimW/tree-sitter-html" }
 tree-sitter-ron = { git = "https://github.com/honhimW/tree-sitter-ron" }
