@@ -58,7 +58,7 @@ ratisui-core = { path = "ratisui-core" }
 #cc = "*"
 
 [dev-dependencies]
-ron = { version = "0.8.1", features = ["default"] }
+ron = { version = "0.10.1", features = ["default"] }
 deadpool-redis = { git = "https://github.com/honhimW/deadpool.git", branch = "logging", package = "deadpool-redis", features = [
     "serde",
     "cluster",
