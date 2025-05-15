@@ -278,8 +278,6 @@ impl RedisOperations {
         self.server_info = Some(server);
         let modules: String = Cmd::new().arg("INFO").arg("MODULES").query_async(&mut connection).await?;
         self.modules_info = Some(modules);
-        if self.modules_info.is_some() {
-        }
         drop(connection);
         let redis_mode = self.get_server_info("redis_mode").context("there will always contain redis_mode property")?;
         if redis_mode == "cluster" {

@@ -55,7 +55,7 @@ impl Renderable for LoggerTab {
             .output_timestamp(Some(DATE_FORMAT_PATTERN.to_string()))
             .output_level(Some(TuiLoggerLevelOutput::Abbreviated))
             .output_target(true)
-            .output_file(true)
+            .output_file(false)
             .output_line(true)
             .state(&self.state)
             ;
