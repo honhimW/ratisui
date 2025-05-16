@@ -415,7 +415,7 @@ impl RedisOperations {
         }
     }
 
-    fn get_server_info(&self, key: &str) -> Option<String> {
+    pub fn get_server_info(&self, key: &str) -> Option<String> {
         if let Some(server_info) = &self.server_info {
             for line in server_info.lines() {
                 if !line.starts_with("#") {

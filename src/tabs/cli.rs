@@ -294,8 +294,8 @@ impl Listenable for CliTab {
         Ok(false)
     }
 
-    fn on_app_event(&mut self, _app_event: AppEvent) -> Result<()> {
-        match _app_event {
+    fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
+        match app_event.clone() {
             AppEvent::InitConfig(app_config) => {
                 self.history_max_size = app_config.history_size;
                 // Ignore error
@@ -320,6 +320,7 @@ impl Listenable for CliTab {
             }
             _ => {}
         }
+        self.redis_cli.on_app_event(app_event)?;
         Ok(())
     }
 }

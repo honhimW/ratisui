@@ -1,4 +1,4 @@
-use crate::app::{Listenable, Renderable};
+use crate::app::{AppEvent, Listenable, Renderable};
 use crate::components::completion::{sort_commands, split_args, CompletableTextArea, CompletionItem, CompletionItemKind, Doc, Label, Parameter};
 use anyhow::Result;
 use once_cell::sync::Lazy;
@@ -42,6 +42,11 @@ impl Listenable for RedisCli<'_> {
         } else {
             Ok(false)
         }
+    }
+
+    fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
+        self.completable_text_area.on_app_event(app_event)?;
+        Ok(())
     }
 }
 

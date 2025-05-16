@@ -1,5 +1,5 @@
 use crate::app::{centered_rect, AppEvent, Listenable, Renderable, TabImplementation};
-use ratisui_core::bus::{Kind, Message};
+use ratisui_core::bus::{GlobalEvent, Kind, Message};
 use crate::components::servers::ServerList;
 use ratisui_core::configuration::Databases;
 use crate::tabs::cli::CliTab;
@@ -16,6 +16,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 use ratatui::{symbols, Frame};
 use std::time::Instant;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
+use ratisui_core::redis_opt::redis_operations;
 use ratisui_core::theme::get_color;
 
 pub struct Context {
@@ -26,6 +27,7 @@ pub struct Context {
     cli_tab: CliTab,
     logger_tab: LoggerTab,
     server_list: ServerList,
+    title: String,
     pub toast: Option<Message>,
     pub fps: f32,
 }
@@ -47,6 +49,7 @@ impl Context {
             cli_tab: CliTab::new(),
             logger_tab: LoggerTab::new(),
             server_list: ServerList::new(&databases),
+            title: "redis ver: ?.?.?".to_string(),
             toast: None,
             fps: 0.0,
         }
@@ -95,7 +98,9 @@ impl Context {
     }
 
     fn render_title(&self, frame: &mut Frame, area: Rect) -> Result<()> {
-        frame.render_widget("Redis TUI".bold(), area);
+        // frame.render_widget("Redis TUI".bold(), area);
+        let ver = redis_operations().and_then(|opt| opt.get_server_info("redis_version")).unwrap_or("?.?.?".to_string());
+        frame.render_widget(self.title.clone().bold(), area);
         Ok(())
     }
 
@@ -203,7 +208,7 @@ impl Renderable for Context {
         let vertical = Layout::vertical([Fill(1), Max(1)]);
         let [inner_area, footer_area] = vertical.areas(rest_area);
 
-        let horizontal = Layout::horizontal([Min(0), Length(15), Length(5)]);
+        let horizontal = Layout::horizontal([Min(0), Length(20), Length(5)]);
         let [tabs_area, title_area, fps_area] = horizontal.areas(header_area);
 
         self.render_bg(frame, frame.area())?;
@@ -297,6 +302,16 @@ impl Listenable for Context {
     }
 
     fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
+        match app_event.clone() {
+            AppEvent::Bus(global_event) => match global_event {
+                GlobalEvent::ClientChanged => {
+                    let v = redis_operations().and_then(|opt| opt.get_server_info("redis_version")).unwrap_or("?.?.?".to_string());
+                    self.title = format!("redis ver: {v}");
+                }
+                _ => {}
+            },
+            _ => {}
+        }
         self.explorer_tab.on_app_event(app_event.clone())?;
         self.cli_tab.on_app_event(app_event.clone())?;
         self.logger_tab.on_app_event(app_event.clone())?;

@@ -239,10 +239,39 @@ pub fn right_pad(s: &str, size: usize, pad_str: &str) -> String {
     }
 }
 
+pub fn compare_version_strings(s1: impl Into<String>, s2: impl Into<String>) -> std::cmp::Ordering {
+    let s1 = s1.into();
+    let s2 = s2.into();
+    let parts1: Vec<&str> = s1.split('.').collect();
+    let parts2: Vec<&str> = s2.split('.').collect();
+
+    let len1 = parts1.len();
+    let len2 = parts2.len();
+    
+    let max_len = usize::max(len1, len2);
+
+    for i in 0..max_len {
+        let num_str1 = if i < len1 { parts1[i] } else { "0" };
+        let num_str2 = if i < len2 { parts2[i] } else { "0" };
+
+        let num1 = num_str1.parse::<u32>().unwrap_or(0);
+        let num2 = num_str2.parse::<u32>().unwrap_or(0);
+
+        match num1.cmp(&num2) {
+            std::cmp::Ordering::Greater => return std::cmp::Ordering::Greater,
+            std::cmp::Ordering::Less => return std::cmp::Ordering::Less,
+            std::cmp::Ordering::Equal => continue,
+        }
+    }
+
+    std::cmp::Ordering::Equal
+}
+
 #[cfg(test)]
 mod test {
+    use std::cmp::Ordering;
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use crate::utils::right_pad;
+    use crate::utils::{right_pad, compare_version_strings};
 
     macro_rules! ctrl {
     ($name:ident) => {{
@@ -264,5 +293,15 @@ mod test {
         assert_eq!(right_pad("a", 1, " "), "a");
         assert_eq!(right_pad("a", 2, " "), "a ");
         assert_eq!(right_pad("a", 3, " "), "a  ");
+    }
+
+    #[test]
+    fn test_compare_version() {
+        assert_eq!(compare_version_strings("8.0.1", "8.0.1"), Ordering::Equal);
+        assert_eq!(compare_version_strings("7.4.2", "8.0.1"), Ordering::Less);
+        assert_eq!(compare_version_strings("8.1.1", "8.0.1"), Ordering::Greater);
+        assert_eq!(compare_version_strings("18.1.1", "8.0.1"), Ordering::Greater);
+        assert_eq!(compare_version_strings("8.0.2", "8.0.1"), Ordering::Greater);
+        assert_eq!(compare_version_strings("8.1", "8.0.1"), Ordering::Greater);
     }
 }

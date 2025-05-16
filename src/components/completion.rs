@@ -1,10 +1,10 @@
-use crate::app::{Listenable, Renderable};
+use crate::app::{AppEvent, Listenable, Renderable};
 use anyhow::Result;
 use itertools::Itertools;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Min};
 use ratatui::layout::{Alignment, Layout, Margin, Rect};
-use ratatui::style::{Style, Stylize};
+use ratatui::style::{Color, Style, Stylize};
 use ratatui::symbols::scrollbar::Set;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{
@@ -13,10 +13,13 @@ use ratatui::widgets::{
 };
 use ratatui::{symbols, Frame};
 use ratisui_core::theme::get_color;
+use ratisui_core::utils::{clean_text_area, compare_version_strings, right_pad};
 use std::cmp;
+use std::cmp::Ordering;
 use strum::Display;
 use tui_textarea::{CursorMove, TextArea};
-use ratisui_core::utils::{clean_text_area, right_pad};
+use ratisui_core::bus::GlobalEvent;
+use ratisui_core::redis_opt::redis_operations;
 
 pub struct CompletableTextArea<'a> {
     max_menu_width: u16,
@@ -34,6 +37,7 @@ pub struct CompletableTextArea<'a> {
     raw_input: String,
     segment: String,
     focus: bool,
+    redis_version: Option<String>,
 }
 
 impl CompletableTextArea<'_> {
@@ -62,18 +66,21 @@ impl CompletableTextArea<'_> {
             raw_input: "".to_string(),
             segment: "".to_string(),
             focus: false,
+            redis_version: None,
         }
     }
 
     pub fn focus(&mut self) {
         self.focus = true;
-        self.single_line_text_area.set_cursor_style(Style::default().rapid_blink().reversed());
+        self.single_line_text_area
+            .set_cursor_style(Style::default().rapid_blink().reversed());
     }
 
     pub fn blur(&mut self) {
         self.focus = false;
         self.show_menu = false;
-        self.single_line_text_area.set_cursor_style(Style::default());
+        self.single_line_text_area
+            .set_cursor_style(Style::default());
     }
 }
 
@@ -83,7 +90,7 @@ impl Renderable for CompletableTextArea<'_> {
         let items = &self.completion_items;
         let segment = self.segment.clone();
         self.scroll_state = self.scroll_state.content_length(items.len());
-        let rows = get_rows(&segment, &items);
+        let rows = get_rows(&segment, &items, self.redis_version.clone());
         let table = get_table(rows);
         let size = items.len() as u16;
 
@@ -186,7 +193,8 @@ impl Listenable for CompletableTextArea<'_> {
                     code: KeyCode::Char(' '),
                     modifiers: KeyModifiers::CONTROL,
                     ..
-                } | KeyEvent {
+                }
+                | KeyEvent {
                     code: KeyCode::Char('/'),
                     modifiers: KeyModifiers::ALT,
                     ..
@@ -282,16 +290,16 @@ impl Listenable for CompletableTextArea<'_> {
                         if let Some(selected) = self.table_state.selected() {
                             if let Some(item) = self.completion_items.get(selected) {
                                 let mut insert_text = item.insert_text.clone();
-                                let (cursor_backward, insert_text) = if let Some(end_at) = insert_text.rfind("$end") {
-                                    let cursor_backward = insert_text.len() - (end_at + 4);
-                                    insert_text.replace_range(end_at..(end_at + 4), "");
-                                    (cursor_backward, insert_text)
-                                } else {
-                                    (0, insert_text)
-                                };
+                                let (cursor_backward, insert_text) =
+                                    if let Some(end_at) = insert_text.rfind("$end") {
+                                        let cursor_backward = insert_text.len() - (end_at + 4);
+                                        insert_text.replace_range(end_at..(end_at + 4), "");
+                                        (cursor_backward, insert_text)
+                                    } else {
+                                        (0, insert_text)
+                                    };
                                 if self.raw_input.is_empty() {
-                                    self.single_line_text_area
-                                        .insert_str(insert_text);
+                                    self.single_line_text_area.insert_str(insert_text);
                                 } else {
                                     let (s, mut e) = item.range;
                                     if e < 0 {
@@ -304,12 +312,14 @@ impl Listenable for CompletableTextArea<'_> {
                                     for _ in 0..(e - s) {
                                         self.single_line_text_area.move_cursor(CursorMove::Forward);
                                     }
-                                    self.single_line_text_area
-                                        .insert_str(insert_text);
+                                    self.single_line_text_area.insert_str(insert_text);
                                 }
                                 if cursor_backward > 0 {
                                     let (cursor_y, cursor_x) = self.single_line_text_area.cursor();
-                                    self.single_line_text_area.move_cursor(CursorMove::Jump(cursor_y as u16, (cursor_x - cursor_backward) as u16));
+                                    self.single_line_text_area.move_cursor(CursorMove::Jump(
+                                        cursor_y as u16,
+                                        (cursor_x - cursor_backward) as u16,
+                                    ));
                                 }
                                 self.hide_menu();
                                 true
@@ -337,6 +347,20 @@ impl Listenable for CompletableTextArea<'_> {
         } else {
             Ok(false)
         }
+    }
+
+    fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
+        match app_event {
+            AppEvent::Bus(global_event) => match global_event {
+                GlobalEvent::ClientChanged => {
+                    self.redis_version =
+                        redis_operations().and_then(|opt| opt.get_server_info("redis_version"));
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+        Ok(())
     }
 }
 
@@ -514,18 +538,37 @@ fn get_table(rows: Vec<Row>) -> Table {
     table
 }
 
-fn get_rows(input: impl Into<String>, items: &Vec<CompletionItem>) -> Vec<Row> {
+fn get_rows(input: impl Into<String>, items: &Vec<CompletionItem>, version: Option<String>) -> Vec<Row> {
     let input = input.into();
     let mut rows = vec![];
     for item in items {
         let mut prompt = Line::default();
-        if let Some(pos) = item.label.label.to_lowercase().find(input.to_lowercase().as_str()) {
-            prompt.push_span(Span::raw(&item.label.label[0..pos]));
-            prompt.push_span(Span::raw(&item.label.label[pos..pos + input.len()])
-                     .style(Style::default().fg(get_color(|t| &t.tab.cli.menu.input))));
+        if let Some(pos) = item
+            .label
+            .label
+            .to_lowercase()
+            .find(input.to_lowercase().as_str())
+        {
+            let mut label_style = Style::default();
+            if let Some(ref ver) = version {
+                if let Some(ref doc) = item.label.description {
+                    for (k, v) in doc.attributes.iter() {
+                        if k == "since" && compare_version_strings(ver, v) == Ordering::Less {
+                            label_style = Style::default().fg(Color::Red);
+                        }
+                    }
+                }
+            }
+            prompt.push_span(
+                Span::raw(&item.label.label[0..pos])
+                    .style(label_style));
+            prompt.push_span(
+                Span::raw(&item.label.label[pos..pos + input.len()])
+                    .style(Style::default().fg(get_color(|t| &t.tab.cli.menu.input))),
+            );
             prompt.push_span(Span::raw(
                 &item.label.label[pos + input.len()..item.label.label.len()],
-            ));
+            ).style(label_style));
         }
         if let Some(ref detail) = item.label.detail {
             prompt.push_span(Span::raw(" "));
@@ -633,7 +676,11 @@ impl Parameter {
         )
     }
 
-    pub fn arg(key: impl Into<String>, arg: impl Into<String>, detail: impl Into<String>) -> Parameter {
+    pub fn arg(
+        key: impl Into<String>,
+        arg: impl Into<String>,
+        detail: impl Into<String>,
+    ) -> Parameter {
         Parameter::Arg {
             key: key.into(),
             arg: arg.into(),
@@ -792,7 +839,6 @@ impl Doc {
         self.attributes.push((key.into(), value.into()));
         self
     }
-
 }
 
 #[derive(Debug, Clone, Display)]
