@@ -198,8 +198,20 @@ static COMMANDS: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
         range: (0, -1),
         insert_text: "exit".to_string(),
     };
+    let help_item = CompletionItem {
+        kind: CompletionItemKind::Other,
+        label: Label {
+            label: "HELP".to_string(),
+            detail: Some("print help".to_string()),
+            description: None,
+        },
+        parameters: vec![],
+        range: (0, -1),
+        insert_text: "help".to_string(),
+    };
     items.push(clear_item);
     items.push(exit_item);
+    items.push(help_item);
     if let Ok(commands) = result {
         resolve_commands(commands, &mut items);
     }

@@ -2,7 +2,7 @@ use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::console_output::{ConsoleData, OutputKind};
 use crate::components::redis_cli::RedisCli;
 use ratisui_core::redis_opt::{spawn_redis_opt, Disposable};
-use ratisui_core::utils::{bytes_to_string, escape_string, split_args};
+use ratisui_core::utils::{bytes_to_string, escape_string, split_args, try_decode_arg};
 use anyhow::{Error, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -12,7 +12,7 @@ use ratatui::prelude::{Line, Stylize};
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use ratatui::Frame;
-use deadpool_redis::redis::{Value, VerbatimFormat};
+use deadpool_redis::redis::{Cmd, Value, VerbatimFormat};
 use std::cmp;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -393,6 +393,24 @@ impl CliTab {
         } else if "exit".eq_ignore_ascii_case(&command) {
             let _ = publish_event(GlobalEvent::Exit);
             return;
+        } else if "help".eq_ignore_ascii_case(&command) {
+            let _ = self.data_sender.send(Value::VerbatimString {
+                format: VerbatimFormat::Text,
+                text: r#"Options:
+  clear          Clean buffer
+  exit           Exit
+  help           Print help
+
+Binary:
+  base64:        base64#YmFzZTY0#
+  hex:           hex#686578#
+  file:          fs#/home/user/file#     
+                 fs#C:\Users\user\file#
+                 should not contain any blank character
+Example:
+  SET base64:value base64#YmFzZTY0#"#.to_string(),
+            });
+            return;
         }
 
         let args = split_args(&command);
@@ -430,10 +448,24 @@ impl CliTab {
                 Ok::<(), Error>(())
             })
         } else {
-            let cmd = command.clone();
             let sender = self.data_sender.clone();
             spawn_redis_opt(move |operations| async move {
-                match operations.str_cmd(cmd).await {
+                let mut cmd = Cmd::new();
+                for arg in args.iter() {
+                    match try_decode_arg(arg) {
+                        Ok(vec) => {
+                            cmd.arg(vec);
+                        },
+                        Err(e) => {
+                            sender.send(Value::VerbatimString {
+                                format: VerbatimFormat::Unknown(String::from("ERROR")),
+                                text: format!("{:?}", e),
+                            })?;
+                            return Ok(());
+                        }
+                    }
+                }
+                match operations.cmd(cmd).await {
                     Ok(value) => sender.send(value)?,
                     Err(e) => {
                         sender.send(Value::VerbatimString {
@@ -527,6 +559,7 @@ impl CliTab {
         }
     }
 }
+
 
 fn value_to_lines_in_ron(value: &Value, _: u16) -> Vec<(OutputKind, String)> {
     match value {
