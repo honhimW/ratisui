@@ -1326,11 +1326,11 @@ impl Renderable for ExplorerTab {
         let chunks = match self.current_screen {
             KeysTree => Layout::default()
                 .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(37), Constraint::Percentage(62)])
+                .constraints([Constraint::Percentage(37), Constraint::Fill(1)])
                 .split(rect),
             ValuesViewer => Layout::default()
                 .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
+                .constraints([Constraint::Percentage(20), Constraint::Fill(1)])
                 .split(rect),
         };
         self.render_values_block(frame, chunks[1])?;

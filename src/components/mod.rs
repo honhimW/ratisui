@@ -17,6 +17,7 @@ pub mod raw_paragraph;
 pub mod stream_view;
 pub mod completion;
 pub mod ft_search_panel;
+pub mod cmd_viewer;
 
 struct TableColors {
     // table background

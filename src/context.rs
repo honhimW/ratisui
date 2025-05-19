@@ -12,12 +12,14 @@ use ratatui::layout::Constraint::{Fill, Length, Max, Min};
 use ratatui::layout::{Alignment, Layout, Rect};
 use ratatui::prelude::{Color, Span, Style, Stylize, Text};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, WidgetRef, Wrap};
 use ratatui::{symbols, Frame};
 use std::time::Instant;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
+use ratisui_core::marcos::KeyAsserter;
 use ratisui_core::redis_opt::redis_operations;
 use ratisui_core::theme::get_color;
+use crate::components::cmd_viewer::CmdViewer;
 
 pub struct Context {
     show_server_switcher: bool,
@@ -28,6 +30,7 @@ pub struct Context {
     logger_tab: LoggerTab,
     server_list: ServerList,
     title: String,
+    show_cmd_viewer: bool,
     pub toast: Option<Message>,
     pub fps: f32,
 }
@@ -50,6 +53,7 @@ impl Context {
             logger_tab: LoggerTab::new(),
             server_list: ServerList::new(&databases),
             title: "redis ver: ?.?.?".to_string(),
+            show_cmd_viewer: false,
             toast: None,
             fps: 0.0,
         }
@@ -98,8 +102,6 @@ impl Context {
     }
 
     fn render_title(&self, frame: &mut Frame, area: Rect) -> Result<()> {
-        // frame.render_widget("Redis TUI".bold(), area);
-        let ver = redis_operations().and_then(|opt| opt.get_server_info("redis_version")).unwrap_or("?.?.?".to_string());
         frame.render_widget(self.title.clone().bold(), area);
         Ok(())
     }
@@ -216,7 +218,16 @@ impl Renderable for Context {
         self.render_title(frame, title_area)?;
         self.render_fps(frame, fps_area)?;
         self.render_separator(frame, separator_area)?;
-        self.render_selected_tab(frame, inner_area)?;
+
+        if self.show_cmd_viewer {
+            let inner_vertical = Layout::vertical([Fill(1), Length(7)]);
+            let [inner_area, cmd_viewer_area] = inner_vertical.areas(inner_area);
+            self.render_selected_tab(frame, inner_area)?;
+            CmdViewer::new().render_ref(cmd_viewer_area, frame.buffer_mut());
+        } else {
+            self.render_selected_tab(frame, inner_area)?;
+        }
+        
         self.render_footer(frame, footer_area)?;
         self.render_server_switcher(frame, rect)?;
         if let Some(ref toast) = self.toast {
@@ -248,6 +259,7 @@ impl Renderable for Context {
             };
             elements.push(("s", "Server"));
         }
+        elements.push(("^o", "Output"));
         elements.push(("^F5", "Reload"));
         elements.push(("^c", "Quit"));
         elements.push(("^h", "Help"));
@@ -282,6 +294,11 @@ impl Listenable for Context {
 
         if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('h') {
             // TODO show help
+        }
+
+        if key_event.is_c_o() {
+            self.show_cmd_viewer = !self.show_cmd_viewer;
+            return Ok(true);
         }
 
         let current_tab = self.get_current_tab_as_mut();
