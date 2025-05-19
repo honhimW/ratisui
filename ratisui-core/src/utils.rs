@@ -1,3 +1,5 @@
+use anyhow::anyhow;
+use base64::Engine;
 use jaded::Parser;
 use protobuf::reflect::MessageDescriptor;
 use protobuf::well_known_types::any::Any;
@@ -5,9 +7,10 @@ use protobuf::UnknownValueRef;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ron::ser::PrettyConfig;
 use serde::Serialize;
-use std::collections::{BTreeMap};
+use std::collections::BTreeMap;
+use std::fs;
 use std::io::Cursor;
-use anyhow::anyhow;
+use std::path::Path;
 use strum::Display;
 use tui_textarea::TextArea;
 
@@ -247,7 +250,7 @@ pub fn compare_version_strings(s1: impl Into<String>, s2: impl Into<String>) -> 
 
     let len1 = parts1.len();
     let len2 = parts2.len();
-    
+
     let max_len = usize::max(len1, len2);
 
     for i in 0..max_len {
@@ -267,11 +270,33 @@ pub fn compare_version_strings(s1: impl Into<String>, s2: impl Into<String>) -> 
     std::cmp::Ordering::Equal
 }
 
+pub fn try_decode_arg(arg: &String) -> anyhow::Result<Vec<u8>> {
+    let input = arg.clone();
+    // Base64#Zm9vIGJhcg==#
+    if let Some(start) = input.find('#') {
+        if let Some(end) = input.rfind('#') {
+            if start != end {
+                let prefix = &input[..start];
+                let content = &input[start + 1..end];
+
+                let result = match prefix {
+                    "base64" => base64::prelude::BASE64_STANDARD.decode(content)?,
+                    "hex" => hex::decode(content)?,
+                    "fs" => fs::read(Path::new(content))?,
+                    _ => input.as_bytes().to_vec(),
+                };
+                return Ok(result);
+            }
+        }
+    }
+    Ok(input.as_bytes().to_vec())
+}
+
 #[cfg(test)]
 mod test {
-    use std::cmp::Ordering;
+    use crate::utils::{compare_version_strings, right_pad, try_decode_arg};
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use crate::utils::{right_pad, compare_version_strings};
+    use std::cmp::Ordering;
 
     macro_rules! ctrl {
     ($name:ident) => {{
@@ -303,5 +328,11 @@ mod test {
         assert_eq!(compare_version_strings("18.1.1", "8.0.1"), Ordering::Greater);
         assert_eq!(compare_version_strings("8.0.2", "8.0.1"), Ordering::Greater);
         assert_eq!(compare_version_strings("8.1", "8.0.1"), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_decode() {
+        let base64 = "Zm9vIGJhcg==".to_string();
+        let arg = try_decode_arg(&format!("base64#{base64}#"));
     }
 }
