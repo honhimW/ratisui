@@ -276,7 +276,8 @@ impl Listenable for CompletableTextArea<'_> {
                     if !auto_suggestion.is_empty() {
                         let (_, cursor_x) = self.single_line_text_area.cursor();
                         if cursor_x == input_len {
-                            self.single_line_text_area.insert_str(auto_suggestion);
+                            clean_text_area(&mut self.single_line_text_area);
+                            self.single_line_text_area.insert_str(&self.auto_suggestion);
                             return Ok(true);
                         }
                     }
