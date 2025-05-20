@@ -8,7 +8,7 @@ build = "build.rs"
 
 [workspace.package]
 version = "0.4.0"
-rust-version = "1.83.0"
+rust-version = "1.87.0"
 
 [workspace]
 members = ["ratisui-core", "ratisui-macros"]

@@ -91,6 +91,8 @@ impl Theme {
         theme.tab.explorer.key_type.string = Color::Tailwind(TailwindColor::PURPLE, TailwindPalette::C400);
         theme.tab.explorer.key_type.json = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C400);
         theme.tab.explorer.key_type.stream = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C400);
+        theme.tab.explorer.key_type.time_series = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C400);
+        theme.tab.explorer.key_type.bloom_filter = Color::Tailwind(TailwindColor::ORANGE, TailwindPalette::C400);
         theme.tab.explorer.key_type.unknown = Color::Tailwind(TailwindColor::SLATE, TailwindPalette::C500);
 
         theme.tab.cli.accent = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C900);
@@ -173,6 +175,8 @@ impl Theme {
         theme.tab.explorer.key_type.string = Color::Tailwind(TailwindColor::PURPLE, TailwindPalette::C700);
         theme.tab.explorer.key_type.json = Color::Tailwind(TailwindColor::GRAY, TailwindPalette::C700);
         theme.tab.explorer.key_type.stream = Color::Tailwind(TailwindColor::YELLOW, TailwindPalette::C700);
+        theme.tab.explorer.key_type.time_series = Color::Tailwind(TailwindColor::SLATE, TailwindPalette::C700);
+        theme.tab.explorer.key_type.bloom_filter = Color::Tailwind(TailwindColor::ORANGE, TailwindPalette::C700);
         theme.tab.explorer.key_type.unknown = Color::Tailwind(TailwindColor::SLATE, TailwindPalette::C500);
 
         theme.tab.cli.accent = Color::Tailwind(TailwindColor::GREEN, TailwindPalette::C900);
@@ -418,6 +422,8 @@ pub struct KeyType {
     pub string: Color,
     pub json: Color,
     pub stream: Color,
+    pub time_series: Color,
+    pub bloom_filter: Color,
     pub unknown: Color,
 }
 
