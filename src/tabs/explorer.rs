@@ -1070,6 +1070,7 @@ impl ExplorerTab {
                         self.selected_zset_value = None;
                         self.selected_hash_value = None;
                         self.selected_stream_value = None;
+                        self.selected_time_series_value = None;
                         if self.selected_key.is_some() {
                             let sender = self.data_sender.clone();
                             tokio::spawn(async move {
