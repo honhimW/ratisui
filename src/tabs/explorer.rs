@@ -35,6 +35,7 @@ use std::collections::HashMap;
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
+use crate::components::time_series_table::TimeSeriesValue;
 
 const PAGE_SIZE: isize = 100;
 
@@ -63,6 +64,7 @@ pub struct ExplorerTab {
     selected_zset_value: Option<ZSetValue>,
     selected_hash_value: Option<HashValue>,
     selected_stream_value: Option<SteamView>,
+    selected_time_series_value: Option<TimeSeriesValue>,
     data_sender: Sender<Data>,
     data_receiver: Receiver<Data>,
     offset: isize,
@@ -81,6 +83,7 @@ pub struct Data {
     selected_zset_value: Option<Vec<(String, f64)>>,
     selected_hash_value: Option<HashMap<String, String>>,
     selected_stream_value: Option<Vec<(String, Vec<String>)>>,
+    selected_time_series_value: Option<Vec<(u64, f64)>>,
     key_type: Option<String>,
     key_size: Option<usize>,
     length: Option<usize>,
@@ -108,6 +111,8 @@ bitflags! {
         const KEY_SIZE = 0b0000_0001_0000_0000;
         const LENGTH = 0b0000_0010_0000_0000;
         const TTL = 0b0000_0100_0000_0000;
+
+        const TIME_SERIES_VALUE = 0b0000_1000_0000_0000;
     }
 }
 
@@ -214,6 +219,8 @@ fn get_type_color(key_type: &str) -> Color {
         "String" | "string" => get_color(|t| &t.tab.explorer.key_type.string),
         "JSON" | "json" | "ReJSON-RL" | "ReJSON" => get_color(|t| &t.tab.explorer.key_type.json),
         "Stream" | "stream" => get_color(|t| &t.tab.explorer.key_type.stream),
+        "TSDB-TYPE" | "tsdb-type" => get_color(|t| &t.tab.explorer.key_type.time_series),
+        "MBbloom--" | "mbbloom--" => get_color(|t| &t.tab.explorer.key_type.bloom_filter),
         "unknown" => get_color(|t| &t.tab.explorer.key_type.unknown),
         _ => Color::default(),
     }
@@ -269,6 +276,7 @@ impl ExplorerTab {
             selected_zset_value: None,
             selected_hash_value: None,
             selected_stream_value: None,
+            selected_time_series_value: None,
             data_sender: tx,
             data_receiver: rx,
             offset: 0,
@@ -328,6 +336,12 @@ impl ExplorerTab {
                 if flags.contains(DataFlags::STREAM_VALUE) {
                     self.selected_stream_value = Some(SteamView::new(
                         data.selected_stream_value.unwrap_or_default(),
+                    ));
+                }
+                if flags.contains(DataFlags::TIME_SERIES_VALUE) {
+                    self.selected_time_series_value = Some(TimeSeriesValue::new(
+                        data.selected_time_series_value.unwrap_or_default(),
+                        self.offset as usize,
                     ));
                 }
             }
@@ -449,6 +463,8 @@ impl ExplorerTab {
             hash_value.render_frame(frame, block_inner_area)?;
         } else if let Some(ref mut stream_view) = self.selected_stream_value {
             stream_view.render_frame(frame, block_inner_area)?;
+        } else if let Some(ref mut time_series_view) = self.selected_time_series_value {
+            time_series_view.render_frame(frame, block_inner_area)?;
         } else {
             let values_text = Paragraph::new("N/A");
             frame.render_widget(values_text, block_inner_area);
@@ -1108,6 +1124,8 @@ impl ExplorerTab {
                         };
                         Ok(len)
                     }
+                    "mbbloom--" => Ok(op.bf_item(key_name_clone).await?),
+                    "tsdb-type" => Ok(op.ts_total(key_name_clone).await?),
                     _ => Ok(0),
                 }
             })
@@ -1260,6 +1278,26 @@ impl ExplorerTab {
                     let json_string: String = op.json_get(key_name_clone).await?;
                     data.add(DataFlags::STRING_VALUE);
                     data.selected_string_value = Some((json_string, Some(ContentType::Json)));
+                }
+                "mbbloom--" => {
+
+                }
+                "tsdb-type" => {
+                    let values: Vec<Vec<Value>> = op.ts_range(key_name_clone, PAGE_SIZE as usize).await?;
+                    let mut tuples: Vec<(u64, f64)> = vec![];
+                    for value in values.iter() {
+                        let mut ts: u64 = 0;
+                        let mut v: f64 = 0.0;
+                        if let Some(Value::Int(timestamp)) = value.first() {
+                            ts = *timestamp as u64;
+                        }
+                        if let Some(Value::Double(val)) = value.get(1) {
+                            v = *val;
+                        }
+                        tuples.push((ts, v));
+                    }
+                    data.add(DataFlags::TIME_SERIES_VALUE);
+                    data.selected_time_series_value = Some(tuples);
                 }
                 _ => {}
             }
@@ -1416,6 +1454,14 @@ impl Renderable for ExplorerTab {
                     });
                     elements.push(("←/h", "Close"));
                 }
+                if let Some(ref time_series_value) = self.selected_time_series_value {
+                    time_series_value.footer_elements().iter().for_each(|(k, v)| {
+                        elements.push((k, v));
+                    });
+                    elements.push(("←/h", "Close"));
+                    elements.push(("^n", "Next Page"));
+                    elements.push(("^p", "Prev Page"));
+                }
             }
         }
         elements
@@ -1526,6 +1572,12 @@ impl Listenable for ExplorerTab {
             }
             if let Some(ref mut stream_view) = self.selected_stream_value {
                 let accepted = stream_view.handle_key_event(key_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut time_series_value) = self.selected_time_series_value {
+                let accepted = time_series_value.handle_key_event(key_event)?;
                 if accepted {
                     return Ok(true);
                 }

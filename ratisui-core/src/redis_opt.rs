@@ -1077,6 +1077,78 @@ impl RedisOperations {
         }
     }
 
+    pub async fn bf_item<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<usize> {
+        let mut cmd = Cmd::new();
+        cmd.arg("BF.INFO").arg(key).arg("ITEMS");
+        if self.is_cluster() {
+            let mut connection = self.get_cluster_connection().await?;
+            let v: Value = cmd.query_async(&mut connection).await?;
+            if let Value::Map(entry) = v {
+                if let Some((_, Value::Int(i))) = entry.first() {
+                    return Ok(*i as usize);
+                }
+            }
+        } else {
+            let mut connection = self.get_standalone_connection().await?;
+            let v: Value = cmd.query_async(&mut connection).await?;
+            if let Value::Map(entry) = v {
+                if let Some((_, Value::Int(i))) = entry.first() {
+                    return Ok(*i as usize);
+                }
+            }
+        }
+        Ok(0)
+    }
+
+    pub async fn ts_range<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K, count: usize) -> Result<V> {
+        let mut cmd = Cmd::new();
+        cmd.arg("TS.RANGE").arg(key).arg("-").arg("+").arg("COUNT").arg(count);
+        if self.is_cluster() {
+            let mut connection = self.get_cluster_connection().await?;
+            let v: V = cmd.query_async(&mut connection).await?;
+            Ok(v)
+        } else {
+            let mut connection = self.get_standalone_connection().await?;
+            let v: V = cmd.query_async(&mut connection).await?;
+            Ok(v)
+        }
+    }
+
+    pub async fn ts_total<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<usize> {
+        let mut cmd = Cmd::new();
+        cmd.arg("TS.INFO").arg(key);
+        if self.is_cluster() {
+            let mut connection = self.get_cluster_connection().await?;
+            let v: Value = cmd.query_async(&mut connection).await?;
+            if let Value::Map(entries) = v {
+                for (attr, v) in entries.iter() {
+                    if let Value::SimpleString(s) = attr {
+                        if s == "totalSamples" {
+                            if let Value::Int(i) = v {
+                                return Ok(*i as usize);
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            let mut connection = self.get_standalone_connection().await?;
+            let v: Value = cmd.query_async(&mut connection).await?;
+            if let Value::Map(entries) = v {
+                for (attr, v) in entries.iter() {
+                    if let Value::SimpleString(s) = attr {
+                        if s == "totalSamples" {
+                            if let Value::Int(i) = v {
+                                return Ok(*i as usize);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(0)
+    }
+
     pub async fn del<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<()> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
