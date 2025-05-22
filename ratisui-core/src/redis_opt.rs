@@ -481,7 +481,7 @@ impl RedisOperations {
         }
     }
 
-    pub async fn monitor(&self, sender: Sender<Value>) -> Result<impl Disposable> {
+    pub async fn monitor(&self, sender: Sender<Value>) -> Result<impl Disposable + use<>> {
         struct DisposableMonitor(tokio::sync::watch::Sender<bool>);
 
         impl Disposable for DisposableMonitor {
@@ -563,7 +563,7 @@ impl RedisOperations {
         Ok(disposable_monitor)
     }
 
-    pub async fn subscribe<K: ToRedisArgs + Send + Sync>(&self, key: K, sender: Sender<Value>) -> Result<impl Disposable> {
+    pub async fn subscribe<K: ToRedisArgs + Send + Sync>(&self, key: K, sender: Sender<Value>) -> Result<impl Disposable + use<K>> {
         struct DisposableMonitor(tokio::sync::watch::Sender<bool>);
 
         impl Disposable for DisposableMonitor {
@@ -650,7 +650,7 @@ impl RedisOperations {
         Ok(disposable_monitor)
     }
 
-    pub async fn psubscribe<K: ToRedisArgs + Send + Sync>(&self, key: K, sender: Sender<Value>) -> Result<impl Disposable> {
+    pub async fn psubscribe<K: ToRedisArgs + Send + Sync>(&self, key: K, sender: Sender<Value>) -> Result<impl Disposable + use<K>> {
         struct DisposableMonitor(tokio::sync::watch::Sender<bool>);
 
         impl Disposable for DisposableMonitor {
