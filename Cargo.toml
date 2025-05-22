@@ -1,7 +1,7 @@
 [package]
 name = "ratisui"
 version = {workspace = true}
-edition = "2021"
+edition = "2024"
 authors = ["honhimw <honhimw@outlook.com>"]
 rust-version = {workspace = true}
 build = "build.rs"
@@ -82,4 +82,7 @@ serde_yaml = "0.9.34"
 lto = true
 opt-level = "z"
 codegen-units = 1
-strip = "debuginfo"
+#strip = "debuginfo"
+strip = "symbols"
+panic = "abort"
+

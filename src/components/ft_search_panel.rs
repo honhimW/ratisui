@@ -1,22 +1,16 @@
-#![allow(unused)]
-
 use crate::app::{Listenable, Renderable};
-use crate::components::completion::{sort_commands, split_args, CompletableTextArea, CompletionItem, Doc, Parameter};
+use crate::components::completion::{sort_commands, split_args, CompletableTextArea, CompletionItem, Doc};
 use anyhow::{Error, Result};
 use bitflags::bitflags;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use futures::FutureExt;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use ratatui::layout::Constraint::{Fill, Length, Percentage};
+use ratatui::layout::Constraint::Percentage;
 use ratatui::layout::{Layout, Rect};
-use ratatui::style::Style;
 use ratatui::widgets::{Block, BorderType, Clear};
 use ratatui::Frame;
 use ratisui_core::redis_opt::spawn_redis_opt;
-use ratisui_core::theme::get_color;
 use deadpool_redis::redis::{FromRedisValue, RedisResult, Value};
 use std::collections::HashMap;
-use once_cell::sync::Lazy;
 use substring::Substring;
 
 pub struct FtSearchPanel<'a> {
@@ -176,7 +170,7 @@ impl<'a> FtSearchPanel<'a> {
         };
     }
 
-    fn get_index_items(&self, input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
+    fn get_index_items(&self, input: &str, _: usize) -> (Vec<CompletionItem>, String) {
         if let Some(ref indexes) = self.indexes {
             let mut items = indexes
                 .iter()
@@ -184,7 +178,7 @@ impl<'a> FtSearchPanel<'a> {
                     let mut item = CompletionItem::custom(index_name, "Index");
                     if let Some(index_info) = self.indexes_info.get(index_name) {
                         item = item.detail(format!("{:.3}M", index_info.total_index_memory_sz_mb));
-                        let mut doc = Doc::default()
+                        let doc = Doc::default()
                             .syntax(index_info.name.clone())
                             .summary(format!("[{}]", index_info.prefixes.join("] [")))
                             .attribute("type                     ", index_info.key_type.clone())
@@ -568,8 +562,6 @@ impl Renderable for FtSearchPanel<'_> {
         let search_area = self.index_block.inner(vertical[1]);
         frame.render_widget(&self.index_block, vertical[0]);
         frame.render_widget(&self.search_block, vertical[1]);
-        let block = Block::bordered();
-        let inner_area = block.inner(rect);
         let frame_area = frame.area();
         self.index_area
             .update_frame(frame_area.height, frame_area.width);
@@ -644,7 +636,7 @@ impl Listenable for FtSearchPanel<'_> {
 impl FromRedisValue for IndexInfo {
     fn from_redis_value(v: &Value) -> RedisResult<Self> {
         let mut this = Self::default();
-        if let Value::Map(ref map) = v {
+        if let Value::Map(map) = v {
             for (key, value) in map {
                 if let Value::SimpleString(key) = key {
                     match key.as_ref() {

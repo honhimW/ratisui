@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use protobuf::reflect::MessageDescriptor;
 use protobuf::well_known_types::any::Any;
 use protobuf::{CodedOutputStream, UnknownValueRef};
-use deadpool_redis::redis::AsyncCommands;
+use deadpool_redis::redis::{AsyncCommands, Value};
 use ron::ser::PrettyConfig;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
     let mut connection = pool.get().await?;
 
     let protobuf: Vec<u8> = generate_bytes()?;
-    connection.set("protobuf", protobuf).await?;
+    let _: Value = connection.set("protobuf", protobuf).await?;
     let protobuf: Vec<u8> = connection.get("protobuf").await?;
 
     let descriptor = MessageDescriptor::for_type::<Any>();
