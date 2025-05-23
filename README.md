@@ -116,6 +116,7 @@ User's data will be stored in `~/.config/ratisui/`:
 - [x] Hash
 - [x] Stream
 - [x] ReJson
+- [x] TSDB-TYPE
 
 **Explorer**
 - [x] Key scan (Fuzzy/Pattern)
@@ -129,7 +130,7 @@ User's data will be stored in `~/.config/ratisui/`:
     - [x] JSON highlighter ([tree-sitter-json](https://crates.io/crates/tree-sitter-json))
     - [x] XML highlighter ([tree-sitter-html](https://crates.io/crates/tree-sitter-html))
     - [x] RON highlighter ([tree-sitter-ron](https://crates.io/crates/tree-sitter-ron))
-- [x] Table view for list, set, sorted set, hash, stream
+- [x] Table view for list, set, sorted set, hash, stream, TimeSeries
 - [x] RedisSearch, completion for indexes/FT.SEARCH
 
 **Command line tool**
@@ -137,7 +138,8 @@ User's data will be stored in `~/.config/ratisui/`:
 - [x] Command history
 - [x] Command execution
 - [x] Monitor/(P)Subscribe listening
-- [x] Output format
+- [x] Output format: Redis | Ron
+- [x] Redis8+
 
 **Misc**
 - [x] Logger viewer([TuiLogger](https://crates.io/crates/tui-logger))
@@ -148,4 +150,5 @@ User's data will be stored in `~/.config/ratisui/`:
 - [x] Configurable theme
 
 **TODO**
+- [ ] reduces binary size
 - [ ] nothing to do...🤔
