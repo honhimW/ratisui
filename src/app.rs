@@ -7,6 +7,7 @@ use ratatui::text::Line;
 use ratatui::Frame;
 use ratatui::style::Color;
 use ratisui_core::bus::GlobalEvent;
+use ratisui_core::cli::AppArguments;
 use ratisui_core::configuration::{Configuration, Databases};
 
 pub struct App {
@@ -26,7 +27,7 @@ pub enum AppState {
 #[derive(Clone, Debug)]
 pub enum AppEvent {
     Init,
-    InitConfig(Configuration),
+    InitConfig(Configuration, AppArguments),
     Reset,
     Destroy,
     Bus(GlobalEvent),

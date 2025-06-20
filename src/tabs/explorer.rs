@@ -1644,7 +1644,7 @@ impl Listenable for ExplorerTab {
 
     fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
         match app_event {
-            AppEvent::InitConfig(configuration) => {
+            AppEvent::InitConfig(configuration, _) => {
                 self.scan_size = configuration.scan_size;
                 self.try_format = configuration.try_format;
             }

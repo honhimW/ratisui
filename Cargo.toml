@@ -58,6 +58,7 @@ once_cell = "1"
 futures = "0.3"
 
 ratisui-core = { path = "ratisui-core" }
+clap = { version = "4.5.38", features = ["derive"] }
 
 #[build-dependencies]
 #cc = "*"
