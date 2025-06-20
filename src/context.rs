@@ -222,8 +222,8 @@ impl Renderable for Context {
         if self.show_cmd_viewer {
             let inner_vertical = Layout::vertical([Fill(1), Length(12)]);
             let [inner_area, cmd_viewer_area] = inner_vertical.areas(inner_area);
-            self.render_selected_tab(frame, inner_area)?;
             CmdViewer::new().render_ref(cmd_viewer_area, frame.buffer_mut());
+            self.render_selected_tab(frame, inner_area)?;
         } else {
             self.render_selected_tab(frame, inner_area)?;
         }
