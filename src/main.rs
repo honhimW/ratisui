@@ -42,30 +42,32 @@ use ratisui_core::configuration::{
 use ratisui_core::input::InputEvent;
 use ratisui_core::marcos::KeyAsserter;
 use ratisui_core::redis_opt::switch_client;
-use ratisui_core::{cli, theme};
+use ratisui_core::theme;
 use std::cmp;
 use std::time::Duration;
+use clap::Parser;
 use tokio::time::interval;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let command = cli::cli()?;
-
-    let matches = command.get_matches();
-    let arguments = AppArguments::from_matches(&matches);
+    let arguments = AppArguments::parse();
 
     tui_logger::init_logger(log::LevelFilter::Trace).map_err(|e| anyhow!(e))?;
     tui_logger::set_default_level(log::LevelFilter::Trace);
 
     let app_config = load_app_configuration()?;
-    let db_config = load_database_configuration()?;
+    let db_config = if arguments.once { 
+        Databases::empty()
+    } else { 
+        load_database_configuration()?
+    };
 
     apply_theme(&arguments, &app_config)?;
     apply_db(&arguments, &db_config)?;
 
     let terminal = tui::init()?;
     let app = App::new(db_config);
-    let app_result = run(app, terminal, app_config).await;
+    let app_result = run(app, terminal, app_config, arguments).await;
 
     if let Err(e) = tui::restore() {
         eprintln!(
@@ -81,7 +83,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration) -> Result<()> {
+async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration, aguments: AppArguments) -> Result<()> {
     let fps = cmp::min(config.fps as usize, 60);
     let delay_millis = 1000 / fps;
     let delay_duration = Duration::from_millis(delay_millis as u64);
@@ -99,7 +101,7 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration)
         if matches!(app.state, AppState::Preparing) {
             app.context.on_app_event(AppEvent::Init)?;
             app.context
-                .on_app_event(AppEvent::InitConfig(config.clone()))?;
+                .on_app_event(AppEvent::InitConfig(config.clone(), aguments.clone()))?;
             app.state = AppState::Running;
             continue;
         }

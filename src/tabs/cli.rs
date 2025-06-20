@@ -296,7 +296,7 @@ impl Listenable for CliTab {
 
     fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
         match app_event.clone() {
-            AppEvent::InitConfig(app_config) => {
+            AppEvent::InitConfig(app_config, _) => {
                 self.history_max_size = app_config.history_size;
                 // Ignore error
                 if let Ok(deque) = load_history() {

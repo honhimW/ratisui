@@ -95,6 +95,7 @@ pub struct ServerList {
     colors: TableColors,
     create_form: Form,
     edit_form: Form,
+    save_on_exit: bool,
 }
 
 impl ServerList {
@@ -146,6 +147,7 @@ impl ServerList {
             items: vec,
             create_form: Form::default().title("New"),
             edit_form: Form::default().title("Edit"),
+            save_on_exit: true,
         }
     }
 
@@ -552,8 +554,13 @@ impl Listenable for ServerList {
 
     fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
         match app_event {
+            AppEvent::InitConfig(_, args) => {
+                self.save_on_exit = !args.once
+            }
             AppEvent::Destroy => {
-                self.save()?;
+                if self.save_on_exit {
+                    self.save()?;
+                }
             }
             _ => {}
         }
