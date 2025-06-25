@@ -1,6 +1,7 @@
 use std::time::Instant;
 use anyhow::{Context, Result};
 use crossbeam_channel::{Receiver, Sender};
+use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use strum::Display;
 
@@ -56,9 +57,24 @@ impl Message {
         self.title = Some(title.into());
         self
     }
+    
+    pub fn format(&self) -> String {
+        let mut s = String::new();
+        if let Some(title) = &self.title {
+            s.push_str(title);
+            s.push_str(": ")
+        }
+        s.push_str(&self.msg);
+        s
+    }
 }
 
 pub fn publish_msg(event: Message) -> Result<()> {
+    match event.kind {
+        Kind::Error => error!("{}", event.format()),
+        Kind::Warn => warn!("{}", event.format()),
+        Kind::Info => info!("{}", event.format()),
+    }
     TOAST_CHANNEL.tx.send(event).context("Publishing failed")?;
     Ok(())
 }
