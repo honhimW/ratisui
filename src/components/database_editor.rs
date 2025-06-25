@@ -101,7 +101,7 @@ impl Default for Form {
         form.ssh_host_text_area.set_placeholder_text("127.0.0.1");
         form.ssh_port_text_area.set_placeholder_text("22");
         form.ssh_username_text_area.set_placeholder_text("root");
-        form.ssh_password_text_area.set_placeholder_text("");
+        form.ssh_password_text_area.set_placeholder_text("empty for ~/.ssh/id_rsa");
 
         form.name_text_area.set_cursor_style(Style::default());
         form.host_text_area.set_cursor_style(Style::default());

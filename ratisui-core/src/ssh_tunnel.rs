@@ -1,8 +1,8 @@
 use std::future::Future;
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result};
 use log::{error, info, warn};
 use russh::client::{Config, Handler};
-use russh::keys::{PublicKey};
+use russh::keys::{load_secret_key, PrivateKey, PrivateKeyWithHashAlg, PublicKey};
 use russh::Disconnect;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
@@ -49,12 +49,34 @@ impl SshTunnel {
             format!("{}:{}", self.host, self.port),
             IHandler {},
         ).await?;
-        ssh_client.authenticate_password(self.username.clone(), self.password.clone()).await?;
         let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).await?;
         let addr = listener.local_addr()?;
         let forwarding_host = self.forwarding_host.clone();
         let forwarding_port = self.forwarding_port as u32;
 
+        if self.password.is_empty() {
+            ssh_client.authenticate_publickey(self.username.clone(), PrivateKeyWithHashAlg::new(
+                Arc::new(load_private_key()?),
+                ssh_client.best_supported_rsa_hash().await?.flatten(),
+            )).await?;
+            let channel = ssh_client.channel_open_direct_tcpip(
+                forwarding_host.clone(),
+                forwarding_port,
+                Ipv4Addr::LOCALHOST.to_string(),
+                addr.port() as u32,
+            ).await.context("cannot build ssh tunnel via public-key")?;
+            channel.close().await?;
+        } else {
+            ssh_client.authenticate_password(self.username.clone(), self.password.clone()).await?;
+            let channel = ssh_client.channel_open_direct_tcpip(
+                forwarding_host.clone(),
+                forwarding_port,
+                Ipv4Addr::LOCALHOST.to_string(),
+                addr.port() as u32,
+            ).await.context("cannot build ssh tunnel via password")?;
+            channel.close().await?;
+        }
+        
         let rx_clone = self.rx.clone();
         tokio::spawn(async move {
             loop {
@@ -106,6 +128,13 @@ impl SshTunnel {
     pub fn is_connected(&self) -> bool {
         self.socket_addr.is_some()
     }
+}
+
+fn load_private_key() -> Result<PrivateKey> {
+    let key_path = dirs::home_dir().context("cannot get home directory")?;
+    let key_path = key_path.join(".ssh").join("id_rsa");
+    load_secret_key(key_path, None)
+        .context("cannot load secret_key")
 }
 
 struct IHandler;

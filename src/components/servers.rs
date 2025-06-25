@@ -515,39 +515,41 @@ impl Listenable for ServerList {
                 return self.handle_edit_popup_key_event(key_event);
             }
 
-            let accepted = match key_event.code {
-                KeyCode::Char('j') | KeyCode::Down => {
-                    self.next();
-                    true
-                }
-                KeyCode::Char('k') | KeyCode::Up => {
-                    self.previous();
-                    true
-                }
-                KeyCode::Enter => {
-                    self.switch()?;
-                    true
-                }
-                KeyCode::Char('d') => {
-                    self.show_delete_popup = true;
-                    true
-                }
-                KeyCode::Char('c') => {
-                    self.show_create_popup = true;
-                    true
-                }
-                KeyCode::Char('e') => {
-                    self.show_edit_popup = true;
-                    if let Some(idx) = self.state.selected() {
-                        if let Some(data) = self.items.get(idx) {
-                            self.edit_form = Form::from_data(data).title("Edit");
-                        }
+            if key_event.modifiers.is_empty() {
+                let accepted = match key_event.code {
+                    KeyCode::Char('j') | KeyCode::Down => {
+                        self.next();
+                        true
                     }
-                    true
-                }
-                _ => { false }
-            };
-            return Ok(accepted);
+                    KeyCode::Char('k') | KeyCode::Up => {
+                        self.previous();
+                        true
+                    }
+                    KeyCode::Enter => {
+                        self.switch()?;
+                        true
+                    }
+                    KeyCode::Char('d') => {
+                        self.show_delete_popup = true;
+                        true
+                    }
+                    KeyCode::Char('c') => {
+                        self.show_create_popup = true;
+                        true
+                    }
+                    KeyCode::Char('e') => {
+                        self.show_edit_popup = true;
+                        if let Some(idx) = self.state.selected() {
+                            if let Some(data) = self.items.get(idx) {
+                                self.edit_form = Form::from_data(data).title("Edit");
+                            }
+                        }
+                        true
+                    }
+                    _ => { false }
+                };
+                return Ok(accepted);
+            }
         }
         Ok(false)
     }
