@@ -50,6 +50,6 @@ tree-sitter-highlight = "0.24"
 tree-sitter-json = "0.24"
 tree-sitter-html = { git = "https://github.com/honhimW/tree-sitter-html" }
 tree-sitter-ron = { git = "https://github.com/honhimW/tree-sitter-ron" }
-russh = { version = "0.53.0", default-features = false, features = "ring" }
+russh = { version = "0.53.0", default-features = false, features = ["ring"] }
 paste = "1"
 ratisui-macros = { path = "../ratisui-macros" }
