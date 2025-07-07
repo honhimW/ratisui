@@ -23,6 +23,7 @@ tokio = "1"
 tree-sitter = "0.24"
 crossbeam-channel = "0.5"
 strum = "0.27.0"
+deadpool-redis = "0.21.1"
 
 [dependencies]
 anyhow = { workspace = true }
@@ -45,7 +46,7 @@ serde_json = { workspace = true }
 
 crossbeam-channel = { workspace = true }
 
-deadpool-redis = { git = "https://github.com/honhimW/deadpool.git", branch = "logging", package = "deadpool-redis" }
+deadpool-redis = { workspace = true }
 
 strum = { workspace = true, features = ["derive"] }
 uuid = { version = "1.11.0", features = ["v4"] }
@@ -65,13 +66,12 @@ clap = { version = "4.5.38", features = ["derive"] }
 
 [dev-dependencies]
 ron = { version = "0.10.1", features = ["default"] }
-deadpool-redis = { git = "https://github.com/honhimW/deadpool.git", branch = "logging", package = "deadpool-redis", features = [
+deadpool-redis = { workspace = true, features = [
     "serde",
     "cluster",
     "tokio-comp",
     "cluster-async",
     "streams",
-    "log",
     "json"
 ] }
 jaded = { version = "0.5.0", features = ["serde"] }

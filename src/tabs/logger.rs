@@ -56,7 +56,7 @@ impl Renderable for LoggerTab {
             .output_level(Some(TuiLoggerLevelOutput::Abbreviated))
             .output_target(true)
             .output_file(false)
-            .output_line(true)
+            .output_line(false)
             .state(&self.state)
             ;
         frame.render_widget(widget, rect);
