@@ -3,6 +3,7 @@
 use anyhow::Result;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
+use ratatui::Frame;
 use ratatui::crossterm::event;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Length, Min};
@@ -15,7 +16,6 @@ use ratatui::widgets::{
     Block, BorderType, Cell, Clear, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
     TableState,
 };
-use ratatui::Frame;
 use std::cmp;
 use std::time::Duration;
 use strum::Display;
@@ -177,28 +177,26 @@ fn main() -> Result<()> {
                             modifiers: KeyModifiers::NONE,
                             ..
                         } => {
-                            if !items.is_empty() && show_table {
-                                if let Some(selected) = table_state.selected() {
-                                    if let Some(item) = items.get(selected) {
-                                        show_table = false;
-                                        if input.is_empty() {
-                                            text_area.insert_str(item.insert_text.clone());
-                                        } else {
-                                            let (s, mut e) = item.range;
-                                            if e < 0 {
-                                                e = input.len() as isize;
-                                            }
-                                            text_area.move_cursor(CursorMove::Jump(
-                                                cursor_y as u16,
-                                                s as u16,
-                                            ));
-                                            text_area.start_selection();
-                                            for _ in 0..(e - s) {
-                                                text_area.move_cursor(CursorMove::Forward);
-                                            }
-                                            text_area.insert_str(item.insert_text.clone());
-                                        }
+                            if !items.is_empty()
+                                && show_table
+                                && let Some(selected) = table_state.selected()
+                                && let Some(item) = items.get(selected)
+                            {
+                                show_table = false;
+                                if input.is_empty() {
+                                    text_area.insert_str(item.insert_text.clone());
+                                } else {
+                                    let (s, mut e) = item.range;
+                                    if e < 0 {
+                                        e = input.len() as isize;
                                     }
+                                    text_area
+                                        .move_cursor(CursorMove::Jump(cursor_y as u16, s as u16));
+                                    text_area.start_selection();
+                                    for _ in 0..(e - s) {
+                                        text_area.move_cursor(CursorMove::Forward);
+                                    }
+                                    text_area.insert_str(item.insert_text.clone());
                                 }
                             }
                         }
@@ -741,9 +739,5 @@ pub fn find_word_start_backward(line: &str, start_col: usize) -> usize {
         }
         cur = next;
     }
-    if cur != CharKind::Space {
-        0
-    } else {
-        start_col
-    }
+    if cur != CharKind::Space { 0 } else { start_col }
 }
