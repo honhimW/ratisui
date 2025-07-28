@@ -23,7 +23,7 @@ tokio = "1"
 tree-sitter = "0.24"
 crossbeam-channel = "0.5"
 strum = "0.27.0"
-deadpool-redis = "0.21.1"
+deadpool-redis = "0.22.0"
 
 [dependencies]
 anyhow = { workspace = true }
