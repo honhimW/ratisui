@@ -2,7 +2,7 @@ use crate::bus::{publish_event, publish_msg, GlobalEvent, Message};
 use crate::configuration::{to_protocol_version, Database};
 use crate::ssh_tunnel::SshTunnel;
 use crate::utils::split_args;
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{anyhow, bail, Context, Error, Result};
 use crossbeam_channel::Sender;
 use deadpool_redis::{Pool, Runtime};
 use futures::future::join_all;
@@ -10,7 +10,7 @@ use futures::StreamExt;
 use log::info;
 use once_cell::sync::Lazy;
 use deadpool_redis::redis::ConnectionAddr::{Tcp, TcpTls};
-use deadpool_redis::redis::{AsyncCommands, AsyncIter, Client, Cmd, cmd, ConnectionAddr, ConnectionInfo, ConnectionLike, FromRedisValue, JsonAsyncCommands, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value, VerbatimFormat, RedisFuture, Pipeline, Arg};
+use deadpool_redis::redis::{AsyncCommands, AsyncIter, Client, Cmd, cmd, ConnectionInfo, ConnectionLike, FromRedisValue, JsonAsyncCommands, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value, VerbatimFormat, RedisFuture, Pipeline, Arg};
 use std::collections::HashMap;
 use std::future::Future;
 use std::ops::DerefMut;
@@ -38,57 +38,48 @@ fn log_cmd(cmd: &Cmd) {
 fn format_cmd(cmd: &Cmd) -> String {
     let mut s = String::new();
     for x in cmd.args_iter() {
+        s.push('"');
         match x {
-            Arg::Simple(a) => {
-                s.push_str(&format!(r#""{}""#, String::from_utf8_lossy(a)));
-                s.push_str(" ");
-            }
-            Arg::Cursor => {
-                s.push_str(r#""0""#);
-            }
+            Arg::Simple(a) => s.push_str(String::from_utf8_lossy(a).as_ref()),
+            Arg::Cursor => s.push('0'),
         }
+        s.push('"');
     }
     s
 }
 
-pub static REDIS_OPERATIONS: Lazy<RwLock<Option<RedisOperations>>> = Lazy::new(|| RwLock::new(None));
-
-/// ```
-/// let sender = sender.clone();
-/// let key_to_get = key.clone();
-/// spawn_redis_opt(move |operations| async move {
-///     let data: String = operations.get(key_to_get).await?;
-///     sender.send(data.clone())?;
-///     Ok::<(), Error>(())
-/// })?;
-/// ```
-
+// ```
+// let sender = sender.clone();
+// let key_to_get = key.clone();
+// spawn_redis_opt(move |operations| async move {
+//     let data: String = operations.get(key_to_get).await?;
+//     sender.send(data.clone())?;
+//     Ok::<(), Error>(())
+// })?;
+// ```
 pub fn spawn_redis_opt<F, FUT, R>(opt: F) -> Result<()>
 where
     F: FnOnce(RedisOperations) -> FUT + Send + 'static,
     FUT: Future<Output=Result<R>> + Send + 'static,
 {
     let x = redis_operations();
-    if let Some(c) = x {
+    x.map_or_else(|| bail!("redis not connected"), |c| {
         tokio::spawn(async move {
-            opt(c.clone()).await?;
-            Ok::<(), Error>(())
+            let _ = opt(c.clone()).await;
         });
         Ok(())
-    } else {
-        Err(anyhow!("redis not connected"))
-    }
+    })
 }
 
-/// ```
-/// let value = async_redis_opt(|operations| async move {
-///     Ok(operations.get::<_, String>("key_to_get").await?)
-/// }).await?;
-///
-/// let value: String = async_redis_opt(|operations| async move {
-///     Ok(operations.get("key_to_get").await?)
-/// }).await?;
-/// ```
+// ```
+// let value = async_redis_opt(|operations| async move {
+//     Ok(operations.get::<_, String>("key_to_get").await?)
+// }).await?;
+//
+// let value: String = async_redis_opt(|operations| async move {
+//     Ok(operations.get("key_to_get").await?)
+// }).await?;
+// ```
 pub async fn async_redis_opt<F, FUT, R>(opt: F) -> Result<R>
 where
     F: FnOnce(RedisOperations) -> FUT,
@@ -102,9 +93,13 @@ where
     }
 }
 
+static REDIS_OPERATIONS: Lazy<RwLock<Option<RedisOperations>>> = Lazy::new(|| RwLock::new(None));
+
 pub fn redis_operations() -> Option<RedisOperations> {
-    let guard = REDIS_OPERATIONS.read().unwrap();
-    guard.clone()
+    match REDIS_OPERATIONS.read() {
+        Ok(guard) => guard.clone(),
+        Err(_) => None,
+    }
 }
 
 pub fn switch_client(name: impl Into<String>, database: &Database) -> Result<()> {
@@ -113,7 +108,7 @@ pub fn switch_client(name: impl Into<String>, database: &Database) -> Result<()>
     tokio::spawn(async move {
         let result = async {
             let (pool, client, tunnel) = build_pool(&database).await?;
-            let mut operation = RedisOperations::new(name, database.clone(), pool, client, tunnel)?;
+            let mut operation = RedisOperations::new(name, database.clone(), pool, client, tunnel);
             operation.initialize().await?;
             let result = REDIS_OPERATIONS.write();
             match result {
@@ -124,7 +119,7 @@ pub fn switch_client(name: impl Into<String>, database: &Database) -> Result<()>
                     *x = Some(operation);
                 }
                 Err(e) => {
-                    return Err(anyhow!("Failed to switch client: {}", e));
+                    bail!("Failed to switch client: {}", e);
                 }
             }
             let _ = publish_event(GlobalEvent::ClientChanged);
@@ -163,8 +158,7 @@ fn build_client(database: &Database) -> Result<Client> {
 
 async fn build_pool(database: &Database) -> Result<(Pool, Client, Option<SshTunnel>)> {
     let mut ssh_tunnel_option = None;
-    let info = if database.use_ssh_tunnel && database.ssh_tunnel.is_some() {
-        let tunnel = database.ssh_tunnel.clone().unwrap();
+    let addr = if database.use_ssh_tunnel && let Some(tunnel) = &database.ssh_tunnel {
         let mut ssh_tunnel = SshTunnel::new(
             tunnel.host.clone(),
             tunnel.port,
@@ -176,26 +170,18 @@ async fn build_pool(database: &Database) -> Result<(Pool, Client, Option<SshTunn
         let addr = ssh_tunnel.open().await?;
         info!("SSH-Tunnel listening on: {} <==> {}:{}", addr, tunnel.host, tunnel.port);
         ssh_tunnel_option = Some(ssh_tunnel);
-
-        ConnectionInfo {
-            addr: Tcp(addr.ip().to_string(), addr.port()),
-            redis: RedisConnectionInfo {
-                db: database.db as i64,
-                username: database.username.clone(),
-                password: database.password.clone(),
-                protocol: to_protocol_version(database.protocol.clone()),
-            },
-        }
+        Tcp(addr.ip().to_string(), addr.port())
     } else {
-        ConnectionInfo {
-            addr: Tcp(database.host.clone(), database.port),
-            redis: RedisConnectionInfo {
-                db: database.db as i64,
-                username: database.username.clone(),
-                password: database.password.clone(),
-                protocol: to_protocol_version(database.protocol.clone()),
-            },
-        }
+        Tcp(database.host.clone(), database.port)
+    };
+    let info = ConnectionInfo {
+        addr,
+        redis: RedisConnectionInfo {
+            db: i64::from(database.db),
+            username: database.username.clone(),
+            password: database.password.clone(),
+            protocol: to_protocol_version(database.protocol.clone()),
+        },
     };
     let config = deadpool_redis::Config::from_connection_info(deadpool_redis::ConnectionInfo::from(info.clone()));
     let pool = config.create_pool(Some(Runtime::Tokio1))?;
@@ -226,8 +212,8 @@ struct NodeClientHolder {
 }
 
 impl RedisOperations {
-    fn new(name: impl Into<String>, database: Database, pool: Pool, client: Client, tunnel: Option<SshTunnel>) -> Result<Self> {
-        Ok(Self {
+    fn new(name: impl Into<String>, database: Database, pool: Pool, client: Client, tunnel: Option<SshTunnel>) -> Self {
+        Self {
             name: name.into(),
             database,
             pool,
@@ -238,7 +224,7 @@ impl RedisOperations {
             is_cluster: false,
             nodes: HashMap::new(),
             cluster_pool: None,
-        })
+        }
     }
 
     fn close(&mut self) {
@@ -361,7 +347,7 @@ impl RedisOperations {
                             is_master: *is_master,
                         }))
                     } else {
-                        Err(anyhow!("Failed to initialize node"))
+                        bail!("Failed to initialize node")
                     }
                 };
                 futures.push(future)
@@ -381,23 +367,20 @@ impl RedisOperations {
                         host = h.clone();
                         port = *p;
                     }
-                    _ => {
-                        return Err(anyhow!("Not supported connection type"))
-                    }
+                    _ => bail!("Not supported connection type"),
                 }
                 node_holders.insert(id, node_holder);
 
-                let addr: ConnectionAddr;
-                if self.database.use_tls {
-                    addr = TcpTls {
+                let addr = if self.database.use_tls {
+                     TcpTls {
                         host,
                         port,
                         insecure: true,
                         tls_params: None,
-                    };
+                    }
                 } else {
-                    addr = Tcp(host, port);
-                }
+                    Tcp(host, port)
+                };
                 let info = ConnectionInfo {
                     addr,
                     redis: RedisConnectionInfo {
@@ -407,7 +390,7 @@ impl RedisOperations {
                         protocol: to_protocol_version(self.database.protocol.clone()),
                     },
                 };
-                cluster_urls.push(deadpool_redis::ConnectionInfo::from(info))
+                cluster_urls.push(deadpool_redis::ConnectionInfo::from(info));
             }
             self.nodes = node_holders;
             let config = deadpool_redis::cluster::Config {
@@ -420,15 +403,15 @@ impl RedisOperations {
             self.cluster_pool = Some(pool);
             Ok(())
         } else {
-            Err(anyhow!("Failed to initialize cluster"))
+            bail!("Failed to initialize cluster")
         }
     }
 
     pub fn get_server_info(&self, key: &str) -> Option<String> {
         if let Some(server_info) = &self.server_info {
             for line in server_info.lines() {
-                if !line.starts_with("#") {
-                    let mut split = line.splitn(2, ":");
+                if !line.starts_with('#') {
+                    let mut split = line.splitn(2, ':');
                     if let Some(k) = split.next() {
                         if k == key {
                             if let Some(v) = split.next() {
@@ -446,8 +429,8 @@ impl RedisOperations {
         let s = s.into();
         if let Some(modules_info) = &self.modules_info {
             for line in modules_info.lines() {
-                if !line.starts_with("#") {
-                    let mut split = line.splitn(2, ":");
+                if !line.starts_with('#') {
+                    let mut split = line.splitn(2, ':');
                     if let Some(k) = split.next() {
                         if k == "module" {
                             if let Some(v) = split.next() {
