@@ -1,4 +1,4 @@
-name: Build Specified Target
+name: Build MacOS
 
 permissions:
   contents: read
@@ -10,44 +10,17 @@ on:
         type: choice
         required: true
         description: Compile target
-        default: x86_64-unknown-linux-gnu
+        default: aarch64-apple-darwin
         options:
-          # Tier 1
           - aarch64-apple-darwin
-          - aarch64-unknown-linux-gnu
-          - i686-unknown-linux-gnu
           - x86_64-apple-darwin
-          - x86_64-pc-windows-gnu
-          - x86_64-pc-windows-msvc
-          - x86_64-unknown-linux-gnu
-          # Tier 2
-          - i686-pc-windows-gnu
-          - i686-pc-windows-msvc
-          - aarch64-pc-windows-msvc
-          - aarch64-unknown-linux-musl
-          - arm-unknown-linux-gnueabi
-          - arm-unknown-linux-gnueabihf
-          - armv7-unknown-linux-gnueabihf
-          - loongarch64-unknown-linux-gnu
-          - loongarch64-unknown-linux-musl
-          - powerpc-unknown-linux-gnu
-          - powerpc64-unknown-linux-gnu
-          - powerpc64le-unknown-linux-gnu
-          - powerpc64le-unknown-linux-musl
-          - riscv64gc-unknown-linux-gnu
-          - riscv64gc-unknown-linux-musl
-          - s390x-unknown-linux-gnu
-          - x86_64-unknown-freebsd
-          - x86_64-unknown-illumos
-          - x86_64-unknown-linux-musl
-          - x86_64-unknown-netbsd
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ ubuntu-latest ]
+        os: [ macos-latest ]
         rust: [ stable ]
 
     steps:
