@@ -1,4 +1,4 @@
-name: Build Specified Target
+name: Debug MacOS
 
 permissions:
   contents: read
