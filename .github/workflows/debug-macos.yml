@@ -1,0 +1,35 @@
+name: Build Specified Target
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        default: "main"
+        required: true
+        description: "Branch to run"
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ macos-latest ]
+        rust: [ stable ]
+
+    steps:
+      - name: Checkout
+        uses: actions/Checkout@v4
+      - name: rust-toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Cargo
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+      - name: Run
+        run: cargo run
