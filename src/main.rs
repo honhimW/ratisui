@@ -153,8 +153,6 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration,
                                     }
                                 }
                             }
-                        } else {
-                            panic!("{:?}", input);
                         }
                     }
                     InputEvent::State(state) => {
