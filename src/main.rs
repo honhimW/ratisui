@@ -92,6 +92,7 @@ async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration,
     let global_channel = subscribe_global_channel()?;
     let message_channel = subscribe_message_channel()?;
     let input_channel = app.input.receiver();
+    publish_event(GlobalEvent::Dynamic(String::from("start")))?;
     loop {
         if !app.health() {
             break;
