@@ -20,6 +20,7 @@ jobs:
     #   uses: actions/checkout@v4
       # You may pin to the exact commit or the version.
       # uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e
+    - name: Release WinGet
       uses: vedantmgoyal9/winget-releaser@v2
       with:
         # The PackageIdentifier of the package (case-sensitive).
