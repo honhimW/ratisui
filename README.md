@@ -4,6 +4,13 @@
 
 ## Installation
 
+### Mac
+
+#### Homebrew Tap
+```shell
+brew install honhimW/ratisui/ratisui
+```
+
 ### Cargo
 ```shell
 cargo install --git=https://github.com/honhimW/ratisui.git
