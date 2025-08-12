@@ -45,8 +45,7 @@ jobs:
         rust: [stable]
     outputs:
       linux_amd64_sha256: ${{ steps.linux_amd64.outputs.sha256 }}
-      linux_aarch64_sha256: ${{ steps.linux_aarch64.outputs.sha256 }}
-      mac_sha256: ${{ steps.mac.outputs.sha256 }}
+      mac_aarch64_sha256: ${{ steps.mac_aarch64.outputs.sha256 }}
       windows_amd64_sha256: ${{ steps.windows.outputs.sha256 }}
 
     steps:
@@ -69,11 +68,11 @@ jobs:
 
     
     - name: Package (Mac)
-      id: mac
+      id: mac_aarch64
       if: matrix.os == 'macos-latest'
       run: |
-        tar -czvf ./target/release/ratisui-mac.tar.gz LICENSE README.md -C ./target/release ratisui
-        ARCHIVE_SHA256=$(shasum -a 256 ./target/release/ratisui-mac.tar.gz | awk '{print $1}')
+        tar -czvf ./target/release/ratisui-mac-aarch64.tar.gz LICENSE README.md -C ./target/release ratisui
+        ARCHIVE_SHA256=$(shasum -a 256 ./target/release/ratisui-mac-aarch64.tar.gz | awk '{print $1}')
         echo "sha256=$ARCHIVE_SHA256" >> $GITHUB_OUTPUT
 
     - name: Package (Windows)
@@ -101,8 +100,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./target/release/ratisui-mac.tar.gz
-        asset_name: ratisui-mac.tar.gz
+        asset_path: ./target/release/ratisui-mac-aarch64.tar.gz
+        asset_name: ratisui-mac-aarch64.tar.gz
         asset_content_type: application/octet-stream
         
     - name: Upload Release Asset (Windows)
@@ -116,8 +115,7 @@ jobs:
         asset_name: ratisui-windows-amd64.zip
         asset_content_type: application/octet-stream
 
-
-  build-aarch64:
+  build-linux-aarch64:
     runs-on: ${{ matrix.os }}
     needs: create_release
     strategy:
@@ -157,27 +155,69 @@ jobs:
         asset_name: ratisui-linux-aarch64.tar.gz
         asset_content_type: application/octet-stream
 
-  update_homebrew:
+  build-mac-intel:
+    runs-on: ${{ matrix.os }}
+    needs: create_release
+    strategy:
+      matrix:
+        os: [macos-latest]
+        rust: [stable]
+    outputs:
+      mac_intel_sha256: ${{ steps.mac_intel.outputs.sha256 }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: rust-toolchain
+      uses: dtolnay/rust-toolchain@v1
+      with:
+        toolchain: stable
+        target: x86_64-apple-darwin
+    - name: Cargo
+      uses: actions-rs/cargo@v1
+      with:
+          use-cross: true
+          command: build
+          args: --target x86_64-apple-darwin --release
+    - name: Package (Mac-intel)
+      id: mac_intel
+      run: |
+        tar -czvf ./target/x86_64-apple-darwin/release/ratisui-mac-intel.tar.gz LICENSE README.md -C ./target/x86_64-apple-darwin/release ratisui
+        ARCHIVE_SHA256=$(sha256sum ./target/x86_64-apple-darwin/release/ratisui-mac-intel.tar.gz | awk '{print $1}')
+        echo "sha256=$ARCHIVE_SHA256" >> $GITHUB_OUTPUT
+    - name: Upload Release Asset (Mac-intel)
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create_release.outputs.upload_url }}
+        asset_path: ./target/x86_64-apple-darwin/release/ratisui-mac-intel.tar.gz
+        asset_name: ratisui-mac-intel.tar.gz
+        asset_content_type: application/octet-stream
+
+  dispatch-package-manager:
     runs-on: ubuntu-latest
-    needs: [build, build-aarch64]
+    needs: [build, build-linux-aarch64, build-mac-intel]
     steps:
     - name: Echo
       run: |
-        echo "linux_amd64_sha256": "${{ needs.build.outputs.linux_amd64_sha256 }}"
-        echo "linux_aarch64_sha256": "${{ needs.build-aarch64.outputs.linux_aarch64_sha256 }}"
-        echo "mac_sha256": "${{ needs.build.outputs.linux_mac_sha256 }}"
-        echo "windows_amd64_sha256": "${{ needs.build.outputs.windows_sha256 }}"
+        echo "version: ${{ github.event.inputs.major_version }}"
+        echo "linux_amd64_sha256: ${{ needs.build.outputs.linux_amd64_sha256 }}"
+        echo "linux_aarch64_sha256: ${{ needs.build-linux-aarch64.outputs.linux_aarch64_sha256 }}"
+        echo "mac_aarch64_sha256: ${{ needs.build.outputs.mac_aarch64_sha256 }}"
+        echo "mac_intel_sha256: ${{ needs.build-mac-intel.outputs.mac_intel_sha256 }}"
+        echo "windows_amd64_sha256: ${{ needs.build.outputs.windows_amd64_sha256 }}"
 
     - name: Update Homebrew Formula
       run: |
-        curl -X POST https://api.github.com/repos/honhimW/homebrew-ratisui/dispatches \
+        curl -X POST https://api.github.com/repos/honhimW/homebrew-tap/dispatches \
             -H "Accept: application/vnd.github.everest-preview+json" \
             -H "Authorization: token ${{ secrets.PERSONAL_ACCESS_TOKEN }}" \
-            -d '{"event_type": "update-from-ratisui", "client_payload": {
+            -d '{"event_type": "ratisui-release", "client_payload": {
               "version": "${{ github.event.inputs.major_version }}",
               "linux_amd64_sha256": "${{ needs.build.outputs.linux_amd64_sha256 }}",
-              "linux_aarch64_sha256": "${{ needs.build-aarch64.outputs.linux_aarch64_sha256 }}",
-              "mac_sha256": "${{ needs.build.outputs.linux_mac_sha256 }}",
-              "windows_amd64_sha256": "${{ needs.build.outputs.windows_sha256 }}"
+              "linux_aarch64_sha256": "${{ needs.build-linux-aarch64.outputs.linux_aarch64_sha256 }}",
+              "mac_aarch64_sha256": "${{ needs.build.outputs.mac_aarch64_sha256 }}",
+              "mac_intel_sha256": "${{ needs.build-mac-intel.outputs.mac_intel_sha256 }}",
+              "windows_amd64_sha256": "${{ needs.build.outputs.windows_amd64_sha256 }}"
             }}'
 
