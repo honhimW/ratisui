@@ -28,6 +28,7 @@ use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
 use crate::components::fps::FpsCalculator;
 use crate::tui::TerminalBackEnd;
 use anyhow::{anyhow, Result};
+use clap::Parser;
 use log::{error, info, warn};
 use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratisui_core::bus::{
@@ -45,7 +46,6 @@ use ratisui_core::redis_opt::switch_client;
 use ratisui_core::theme;
 use std::cmp;
 use std::time::Duration;
-use clap::Parser;
 use tokio::time::interval;
 
 #[tokio::main]
@@ -56,9 +56,9 @@ async fn main() -> Result<()> {
     tui_logger::set_default_level(log::LevelFilter::Trace);
 
     let app_config = load_app_configuration()?;
-    let db_config = if arguments.once { 
+    let db_config = if arguments.once {
         Databases::empty()
-    } else { 
+    } else {
         load_database_configuration()?
     };
 
@@ -83,7 +83,12 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn run(mut app: App, mut terminal: TerminalBackEnd, config: Configuration, aguments: AppArguments) -> Result<()> {
+async fn run(
+    mut app: App,
+    mut terminal: TerminalBackEnd,
+    config: Configuration,
+    aguments: AppArguments,
+) -> Result<()> {
     let fps = cmp::min(config.fps as usize, 60);
     let delay_millis = 1000 / fps;
     let delay_duration = Duration::from_millis(delay_millis as u64);

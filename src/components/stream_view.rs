@@ -153,13 +153,8 @@ impl SteamView {
             let i = self.id_table.state.selected().unwrap_or(0);
             if let Some(data) = self.items.get(i) {
                 let i = match self.entry_table.state.selected() {
-                    Some(i) => {
-                        if i == 0 {
-                            data.value.len() - 1
-                        } else {
-                            i - 1
-                        }
-                    }
+                    Some(0) => data.value.len() - 1,
+                    Some(i) => i - 1,
                     None => 0,
                 };
                 self.entry_table.state.select(Some(i));
@@ -195,8 +190,7 @@ impl SteamView {
             .map(Cell::from)
             .collect::<Row>()
             .style(header_style)
-            .height(1)
-            ;
+            .height(1);
 
         let rows = self.items.iter().enumerate().map(|(i, data)| {
             let color = match i % 2 {
@@ -252,8 +246,7 @@ impl SteamView {
             .bold()
             .fg(self.entry_table.colors.header_fg)
             .bg(self.entry_table.colors.header_bg);
-        let selected_style = Style::default()
-            ;
+        let selected_style = Style::default();
 
         let header = ["Field", "Value"]
             .into_iter()
@@ -263,8 +256,7 @@ impl SteamView {
             .map(Cell::from)
             .collect::<Row>()
             .style(header_style)
-            .height(1)
-            ;
+            .height(1);
 
         let selected_idx = self.entry_table.state.selected().unwrap_or(0);
         let mut selected_height = 5;

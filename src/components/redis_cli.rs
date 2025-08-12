@@ -1,10 +1,13 @@
 use crate::app::{AppEvent, Listenable, Renderable};
-use crate::components::completion::{sort_commands, split_args, CompletableTextArea, CompletionItem, CompletionItemKind, Doc, Label, Parameter};
+use crate::components::completion::{
+    CompletableTextArea, CompletionItem, CompletionItemKind, Doc, Label, Parameter, sort_commands,
+    split_args,
+};
 use anyhow::Result;
 use once_cell::sync::Lazy;
+use ratatui::Frame;
 use ratatui::crossterm::event::{KeyEvent, KeyEventKind};
 use ratatui::layout::Rect;
-use ratatui::Frame;
 use serde_json::Value;
 use substring::Substring;
 
@@ -37,7 +40,8 @@ impl Listenable for RedisCli<'_> {
             let raw_input = self.completable_text_area.get_input();
             let (mut items, segment) = get_items(&raw_input, cursor_x);
             sort_commands(&mut items, &segment);
-            self.completable_text_area.update_completion_items(items, segment);
+            self.completable_text_area
+                .update_completion_items(items, segment);
             Ok(accepted)
         } else {
             Ok(false)
@@ -64,7 +68,8 @@ impl RedisCli<'_> {
     }
 
     pub fn update_frame(&mut self, frame_height: u16, frame_width: u16) {
-        self.completable_text_area.update_frame(frame_height, frame_width);
+        self.completable_text_area
+            .update_frame(frame_height, frame_width);
     }
 }
 
@@ -99,12 +104,12 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
                     commands.push(item_clone);
                 }
             } else {
-                if let Some((cmd, _, start_pos, end_pos)) = args.first() {
-                    if &item.label.label == &cmd.to_uppercase() {
-                        item_clone.range = (start_pos.clone() as isize, end_pos.clone() as isize);
-                        commands.push(item_clone);
-                        break;
-                    }
+                if let Some((cmd, _, start_pos, end_pos)) = args.first()
+                    && &item.label.label == &cmd.to_uppercase()
+                {
+                    item_clone.range = (start_pos.clone() as isize, end_pos.clone() as isize);
+                    commands.push(item_clone);
+                    break;
                 }
             }
         } else {
@@ -120,7 +125,7 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
         }
     }
 
-    if let Some((idx, _, _, _, _)) = current_word {
+    if let Some((idx, ..)) = current_word {
         if idx == 0 {
             return (commands, segment);
         }
@@ -128,7 +133,7 @@ fn get_items(input: &str, cursor_x: usize) -> (Vec<CompletionItem>, String) {
 
     if !commands.is_empty() {
         let mut parameters = vec![];
-        let (start, end) = if let Some((_, _, _, start_pos, end_pos)) = current_word {
+        let (start, end) = if let Some((.., start_pos, end_pos)) = current_word {
             (start_pos as isize, end_pos as isize)
         } else {
             (0, -1)
@@ -250,7 +255,7 @@ fn resolve_commands(commands: Vec<Value>, items: &mut Vec<CompletionItem>) -> Op
                 .summary(value_to_string(summary))
                 .attribute("since", value_to_string(since))
                 .attribute("complexity", value_to_string(complexity))
-                .attribute("acl", value_to_string(acl))
+                .attribute("acl", value_to_string(acl)),
         );
         let arguments = arguments.as_array()?;
         for argument in arguments.iter() {

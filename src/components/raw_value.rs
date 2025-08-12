@@ -17,13 +17,11 @@ pub fn raw_value_to_highlight_text_with_content_type(value: Cow<str>, content_ty
     }
     let result = processor.process();
     let fragments = match result {
-        Ok(_) => { processor.get_fragments().clone() }
-        Err(_) => {
-            vec![HighlightText {
-                text: value.to_string(),
-                kind: HighlightKind::String,
-            }]
-        }
+        Ok(_) => processor.get_fragments().clone(),
+        Err(_) => vec![HighlightText {
+            text: value.to_string(),
+            kind: HighlightKind::String,
+        }],
     };
     let mut text = Text::default();
     for highlight_text in fragments {
