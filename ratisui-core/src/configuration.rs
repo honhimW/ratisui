@@ -1,10 +1,12 @@
-use crate::theme::Theme;
 use crate::constants::DATE_FORMAT_PATTERN;
+use crate::theme::Theme;
 use anyhow::{Context, Result};
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use log::{debug, info, warn};
+use base64::prelude::BASE64_STANDARD;
+use chrono::{DateTime, Local};
 use deadpool_redis::redis::ProtocolVersion;
+use itertools::Itertools;
+use log::{debug, info, warn};
 use ron::ser::PrettyConfig;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -14,9 +16,7 @@ use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::time::SystemTime;
-use chrono::{DateTime, Local};
 use strum::{Display, EnumCount, EnumIter};
-use itertools::Itertools;
 
 pub fn load_app_configuration() -> Result<Configuration> {
     let mut configuration = Configuration::default();
@@ -82,15 +82,18 @@ pub fn load_history() -> Result<VecDeque<(SystemTime, String)>> {
         for line in lines {
             let line = line?;
             let split = line.split(';').collect_vec();
-            if split.len() == 2 {
-                if let Some(time) = split.get(0) {
-                    if let Some(cmd) = split.get(1) {
-                        let native_datetime = chrono::NaiveDateTime::parse_from_str(time, DATE_FORMAT_PATTERN)
-                            .context(format!("failed to parse datetime: {time}"))?;
-                        let datetime: DateTime<Local> = DateTime::from_naive_utc_and_offset(native_datetime, Local::now().offset().clone());
-                        deque.push_back((SystemTime::from(datetime), cmd.to_string()))
-                    }
-                }
+            if split.len() == 2
+                && let Some(time) = split.get(0)
+                && let Some(cmd) = split.get(1)
+            {
+                let native_datetime =
+                    chrono::NaiveDateTime::parse_from_str(time, DATE_FORMAT_PATTERN)
+                        .context(format!("failed to parse datetime: {time}"))?;
+                let datetime: DateTime<Local> = DateTime::from_naive_utc_and_offset(
+                    native_datetime,
+                    Local::now().offset().clone(),
+                );
+                deque.push_back((SystemTime::from(datetime), cmd.to_string()))
             }
         }
     }

@@ -4,13 +4,17 @@ use crate::ssh_tunnel::SshTunnel;
 use crate::utils::split_args;
 use anyhow::{anyhow, bail, Context, Error, Result};
 use crossbeam_channel::Sender;
+use deadpool_redis::redis::ConnectionAddr::{Tcp, TcpTls};
+use deadpool_redis::redis::{
+    cmd, Arg, AsyncCommands, AsyncIter, Client, Cmd, ConnectionInfo, ConnectionLike,
+    FromRedisValue, JsonAsyncCommands, Pipeline, RedisConnectionInfo, RedisFuture, ScanOptions, ToRedisArgs,
+    Value, VerbatimFormat,
+};
 use deadpool_redis::{Pool, Runtime};
 use futures::future::join_all;
 use futures::StreamExt;
 use log::info;
 use once_cell::sync::Lazy;
-use deadpool_redis::redis::ConnectionAddr::{Tcp, TcpTls};
-use deadpool_redis::redis::{AsyncCommands, AsyncIter, Client, Cmd, cmd, ConnectionInfo, ConnectionLike, FromRedisValue, JsonAsyncCommands, RedisConnectionInfo, ScanOptions, ToRedisArgs, Value, VerbatimFormat, RedisFuture, Pipeline, Arg};
 use std::collections::HashMap;
 use std::future::Future;
 use std::ops::DerefMut;
@@ -60,15 +64,18 @@ fn format_cmd(cmd: &Cmd) -> String {
 pub fn spawn_redis_opt<F, FUT, R>(opt: F) -> Result<()>
 where
     F: FnOnce(RedisOperations) -> FUT + Send + 'static,
-    FUT: Future<Output=Result<R>> + Send + 'static,
+    FUT: Future<Output = Result<R>> + Send + 'static,
 {
     let x = redis_operations();
-    x.map_or_else(|| bail!("redis not connected"), |c| {
-        tokio::spawn(async move {
-            let _ = opt(c.clone()).await;
-        });
-        Ok(())
-    })
+    x.map_or_else(
+        || bail!("redis not connected"),
+        |c| {
+            tokio::spawn(async move {
+                let _ = opt(c.clone()).await;
+            });
+            Ok(())
+        },
+    )
 }
 
 // ```
@@ -83,7 +90,7 @@ where
 pub async fn async_redis_opt<F, FUT, R>(opt: F) -> Result<R>
 where
     F: FnOnce(RedisOperations) -> FUT,
-    FUT: Future<Output=Result<R>>,
+    FUT: Future<Output = Result<R>>,
 {
     let x = redis_operations();
     if let Some(c) = x {
@@ -124,7 +131,8 @@ pub fn switch_client(name: impl Into<String>, database: &Database) -> Result<()>
             }
             let _ = publish_event(GlobalEvent::ClientChanged);
             Ok::<(), Error>(())
-        }.await;
+        }
+        .await;
 
         match result {
             Ok(_) => {
@@ -158,7 +166,9 @@ fn build_client(database: &Database) -> Result<Client> {
 
 async fn build_pool(database: &Database) -> Result<(Pool, Client, Option<SshTunnel>)> {
     let mut ssh_tunnel_option = None;
-    let addr = if database.use_ssh_tunnel && let Some(tunnel) = &database.ssh_tunnel {
+    let addr = if database.use_ssh_tunnel
+        && let Some(tunnel) = &database.ssh_tunnel
+    {
         let mut ssh_tunnel = SshTunnel::new(
             tunnel.host.clone(),
             tunnel.port,
@@ -168,7 +178,10 @@ async fn build_pool(database: &Database) -> Result<(Pool, Client, Option<SshTunn
             database.port,
         );
         let addr = ssh_tunnel.open().await?;
-        info!("SSH-Tunnel listening on: {} <==> {}:{}", addr, tunnel.host, tunnel.port);
+        info!(
+            "SSH-Tunnel listening on: {} <==> {}:{}",
+            addr, tunnel.host, tunnel.port
+        );
         ssh_tunnel_option = Some(ssh_tunnel);
         Tcp(addr.ip().to_string(), addr.port())
     } else {
@@ -183,7 +196,9 @@ async fn build_pool(database: &Database) -> Result<(Pool, Client, Option<SshTunn
             protocol: to_protocol_version(database.protocol.clone()),
         },
     };
-    let config = deadpool_redis::Config::from_connection_info(deadpool_redis::ConnectionInfo::from(info.clone()));
+    let config = deadpool_redis::Config::from_connection_info(
+        deadpool_redis::ConnectionInfo::from(info.clone()),
+    );
     let pool = config.create_pool(Some(Runtime::Tokio1))?;
     Ok((pool, Client::open(info)?, ssh_tunnel_option))
 }
@@ -212,7 +227,13 @@ struct NodeClientHolder {
 }
 
 impl RedisOperations {
-    fn new(name: impl Into<String>, database: Database, pool: Pool, client: Client, tunnel: Option<SshTunnel>) -> Self {
+    fn new(
+        name: impl Into<String>,
+        database: Database,
+        pool: Pool,
+        client: Client,
+        tunnel: Option<SshTunnel>,
+    ) -> Self {
         Self {
             name: name.into(),
             database,
@@ -231,9 +252,7 @@ impl RedisOperations {
         self.pool.close();
         if let Some(ref ssh_tunnel) = self.ssh_tunnel {
             let mut tunnel = ssh_tunnel.clone();
-            tokio::spawn(async move {
-                tunnel.close().await
-            });
+            tokio::spawn(async move { tunnel.close().await });
         }
         if let Some(ref mut cluster_pool) = self.cluster_pool {
             cluster_pool.close();
@@ -242,9 +261,7 @@ impl RedisOperations {
             node_holder.pool.close();
             if let Some(ref ssh_tunnel) = node_holder.ssh_tunnel {
                 let mut tunnel = ssh_tunnel.clone();
-                tokio::spawn(async move {
-                    tunnel.close().await
-                });
+                tokio::spawn(async move { tunnel.close().await });
             }
         }
     }
@@ -258,22 +275,39 @@ impl RedisOperations {
             info!("Cluster mode");
             info!("Cluster nodes: {}", self.nodes.len());
             for (s, node) in self.nodes.iter() {
-                info!("{s} - location: {} - master: {}", node.client.get_connection_info().addr, node.is_master);
+                info!(
+                    "{s} - location: {} - master: {}",
+                    node.client.get_connection_info().addr,
+                    node.is_master
+                );
             }
         } else {
-            info!("Standalone mode: {}", self.client.get_connection_info().addr);
+            info!(
+                "Standalone mode: {}",
+                self.client.get_connection_info().addr
+            );
         }
     }
 
     async fn initialize(&mut self) -> Result<()> {
         let mut connection = self.get_standalone_connection().await?;
         // let server: Value = Cmd::new().arg("INFO").arg("SERVER").query_async(&mut connection).await?;
-        let server: String = Cmd::new().arg("INFO").arg("SERVER").query_async(&mut connection).await?;
+        let server: String = Cmd::new()
+            .arg("INFO")
+            .arg("SERVER")
+            .query_async(&mut connection)
+            .await?;
         self.server_info = Some(server);
-        let modules: String = Cmd::new().arg("INFO").arg("MODULES").query_async(&mut connection).await?;
+        let modules: String = Cmd::new()
+            .arg("INFO")
+            .arg("MODULES")
+            .query_async(&mut connection)
+            .await?;
         self.modules_info = Some(modules);
         drop(connection);
-        let redis_mode = self.get_server_info("redis_mode").context("there will always contain redis_mode property")?;
+        let redis_mode = self
+            .get_server_info("redis_mode")
+            .context("there will always contain redis_mode property")?;
         if redis_mode == "cluster" {
             self.initialize_cluster().await?;
         }
@@ -284,7 +318,10 @@ impl RedisOperations {
     async fn initialize_cluster(&mut self) -> Result<()> {
         self.is_cluster = true;
         let mut connection = self.get_standalone_connection().await?;
-        let cluster_slots: Value = cmd("CLUSTER").arg("SLOTS").query_async(&mut connection).await?;
+        let cluster_slots: Value = cmd("CLUSTER")
+            .arg("SLOTS")
+            .query_async(&mut connection)
+            .await?;
         if let Value::Array { 0: item, .. } = cluster_slots {
             let mut redis_nodes: Vec<(String, u16, String)> = Vec::new();
             for slot in item {
@@ -323,7 +360,10 @@ impl RedisOperations {
                     redis: connection_info.redis.clone(),
                 });
             }
-            let cluster_nodes: Value = cmd("CLUSTER").arg("NODES").query_async(&mut connection).await?;
+            let cluster_nodes: Value = cmd("CLUSTER")
+                .arg("NODES")
+                .query_async(&mut connection)
+                .await?;
             let mut node_kind_map: HashMap<String, bool> = HashMap::new();
             if let Value::VerbatimString { text, .. } = cluster_nodes {
                 for line in text.lines() {
@@ -340,12 +380,15 @@ impl RedisOperations {
                 let is_master = node_kind_map.get(&id).unwrap_or(&false);
                 let future = async move {
                     if let Ok((pool, client, tunnel)) = build_pool(&database).await {
-                        Ok((id, NodeClientHolder {
-                            pool,
-                            client,
-                            ssh_tunnel: tunnel,
-                            is_master: *is_master,
-                        }))
+                        Ok((
+                            id,
+                            NodeClientHolder {
+                                pool,
+                                client,
+                                ssh_tunnel: tunnel,
+                                is_master: *is_master,
+                            },
+                        ))
                     } else {
                         bail!("Failed to initialize node")
                     }
@@ -363,7 +406,9 @@ impl RedisOperations {
                         host = h.clone();
                         port = *p;
                     }
-                    TcpTls { host: h, port: p, .. } => {
+                    TcpTls {
+                        host: h, port: p, ..
+                    } => {
                         host = h.clone();
                         port = *p;
                     }
@@ -372,7 +417,7 @@ impl RedisOperations {
                 node_holders.insert(id, node_holder);
 
                 let addr = if self.database.use_tls {
-                     TcpTls {
+                    TcpTls {
                         host,
                         port,
                         insecure: true,
@@ -425,20 +470,18 @@ impl RedisOperations {
         None
     }
 
-    pub fn has_module<T: Into<String>>(&self, s: T) -> Result<bool>{
+    pub fn has_module<T: Into<String>>(&self, s: T) -> Result<bool> {
         let s = s.into();
         if let Some(modules_info) = &self.modules_info {
             for line in modules_info.lines() {
                 if !line.starts_with('#') {
                     let mut split = line.splitn(2, ':');
-                    if let Some(k) = split.next() {
-                        if k == "module" {
-                            if let Some(v) = split.next() {
-                                if v.starts_with(&format!("name={s}")) {
-                                    return Ok(true);
-                                }
-                            }
-                        }
+                    if let Some(k) = split.next()
+                        && k == "module"
+                        && let Some(v) = split.next()
+                        && v.starts_with(&format!("name={s}"))
+                    {
+                        return Ok(true);
                     }
                 }
             }
@@ -534,7 +577,10 @@ impl RedisOperations {
                             Poll::Pending => {
                                 let duration = anchor.elapsed();
                                 if duration > gap {
-                                    sender.send(Value::SimpleString(format!("Pending {}s ...", duration.as_secs())))?;
+                                    sender.send(Value::SimpleString(format!(
+                                        "Pending {}s ...",
+                                        duration.as_secs()
+                                    )))?;
                                     gap = gap + Duration::from_secs(60);
                                 }
                                 break;
@@ -553,7 +599,11 @@ impl RedisOperations {
         Ok(disposable_monitor)
     }
 
-    pub async fn subscribe<K: ToRedisArgs + Send + Sync>(&self, key: K, sender: Sender<Value>) -> Result<impl Disposable + use<K>> {
+    pub async fn subscribe<K: ToRedisArgs + Send + Sync>(
+        &self,
+        key: K,
+        sender: Sender<Value>,
+    ) -> Result<impl Disposable + use<K>> {
         struct DisposableMonitor(tokio::sync::watch::Sender<bool>);
 
         impl Disposable for DisposableMonitor {
@@ -610,7 +660,10 @@ impl RedisOperations {
                             Poll::Ready(Some(msg)) => {
                                 let channel_name = msg.get_channel_name();
                                 let payload = msg.get_payload::<Value>()?;
-                                let value = Value::Map(vec![(Value::SimpleString(channel_name.to_string()), payload)]);
+                                let value = Value::Map(vec![(
+                                    Value::SimpleString(channel_name.to_string()),
+                                    payload,
+                                )]);
                                 sender.send(value)?;
                                 anchor = Instant::now();
                                 gap = Duration::from_secs(60);
@@ -621,7 +674,10 @@ impl RedisOperations {
                             Poll::Pending => {
                                 let duration = anchor.elapsed();
                                 if duration > gap {
-                                    sender.send(Value::SimpleString(format!("Pending {}s ...", duration.as_secs())))?;
+                                    sender.send(Value::SimpleString(format!(
+                                        "Pending {}s ...",
+                                        duration.as_secs()
+                                    )))?;
                                     gap = gap + Duration::from_secs(60);
                                 }
                                 break;
@@ -640,7 +696,11 @@ impl RedisOperations {
         Ok(disposable_monitor)
     }
 
-    pub async fn psubscribe<K: ToRedisArgs + Send + Sync>(&self, key: K, sender: Sender<Value>) -> Result<impl Disposable + use<K>> {
+    pub async fn psubscribe<K: ToRedisArgs + Send + Sync>(
+        &self,
+        key: K,
+        sender: Sender<Value>,
+    ) -> Result<impl Disposable + use<K>> {
         struct DisposableMonitor(tokio::sync::watch::Sender<bool>);
 
         impl Disposable for DisposableMonitor {
@@ -697,7 +757,10 @@ impl RedisOperations {
                             Poll::Ready(Some(msg)) => {
                                 let channel_name = msg.get_channel_name();
                                 let payload = msg.get_payload::<Value>()?;
-                                let value = Value::Map(vec![(Value::SimpleString(channel_name.to_string()), payload)]);
+                                let value = Value::Map(vec![(
+                                    Value::SimpleString(channel_name.to_string()),
+                                    payload,
+                                )]);
                                 sender.send(value)?;
                                 anchor = Instant::now();
                                 gap = Duration::from_secs(60);
@@ -708,7 +771,10 @@ impl RedisOperations {
                             Poll::Pending => {
                                 let duration = anchor.elapsed();
                                 if duration > gap {
-                                    sender.send(Value::SimpleString(format!("Pending {}s ...", duration.as_secs())))?;
+                                    sender.send(Value::SimpleString(format!(
+                                        "Pending {}s ...",
+                                        duration.as_secs()
+                                    )))?;
                                     gap = gap + Duration::from_secs(60);
                                 }
                                 break;
@@ -734,11 +800,19 @@ impl RedisOperations {
             for (_, v) in &self.nodes {
                 if v.is_master {
                     let mut connection = IConnection(v.pool.get().await?);
-                    let mut iter: AsyncIter<String> = connection.scan_options(ScanOptions::default().with_pattern(pattern).with_count(count)).await?;
+                    let mut iter: AsyncIter<String> = connection
+                        .scan_options(
+                            ScanOptions::default()
+                                .with_pattern(pattern)
+                                .with_count(count),
+                        )
+                        .await?;
                     let mut vec: Vec<String> = vec![];
                     while let Some(item) = iter.next_item().await {
                         vec.push(item);
-                        if vec.len() >= count { break; }
+                        if vec.len() >= count {
+                            break;
+                        }
                     }
                     all_node_keys.extend(vec);
                 }
@@ -746,11 +820,19 @@ impl RedisOperations {
             Ok(all_node_keys)
         } else {
             let mut connection = self.get_standalone_connection().await?;
-            let mut iter: AsyncIter<String> = connection.scan_options(ScanOptions::default().with_pattern(pattern).with_count(count)).await?;
+            let mut iter: AsyncIter<String> = connection
+                .scan_options(
+                    ScanOptions::default()
+                        .with_pattern(pattern)
+                        .with_count(count),
+                )
+                .await?;
             let mut vec: Vec<String> = vec![];
             while let Some(item) = iter.next_item().await {
                 vec.push(item);
-                if vec.len() >= count { break; }
+                if vec.len() >= count {
+                    break;
+                }
             }
             Ok(vec)
         }
@@ -768,11 +850,15 @@ impl RedisOperations {
         }
     }
 
-    pub async fn get_list<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K, start: isize, stop: isize) -> Result<V> {
+    pub async fn get_list<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(
+        &self,
+        key: K,
+        start: isize,
+        stop: isize,
+    ) -> Result<V> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let v: V = connection.lrange(key, start, stop).await?;
-
             Ok(v)
         } else {
             let mut connection = self.get_standalone_connection().await?;
@@ -781,7 +867,10 @@ impl RedisOperations {
         }
     }
 
-    pub async fn get_set<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K) -> Result<V> {
+    pub async fn get_set<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(
+        &self,
+        key: K,
+    ) -> Result<V> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let v: V = connection.smembers(key).await?;
@@ -793,15 +882,30 @@ impl RedisOperations {
         }
     }
 
-    pub async fn sscan<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K, cursor: usize, count: usize) -> Result<V> {
+    pub async fn sscan<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(
+        &self,
+        key: K,
+        cursor: usize,
+        count: usize,
+    ) -> Result<V> {
         let mut cmd = Cmd::new();
-        cmd.arg("SSCAN").arg(key).arg(cursor).arg("MATCH").arg("*").arg("COUNT").arg(count);
+        cmd.arg("SSCAN")
+            .arg(key)
+            .arg(cursor)
+            .arg("MATCH")
+            .arg("*")
+            .arg("COUNT")
+            .arg(count);
         let v: V = self.cmd(cmd).await?;
         Ok(v)
     }
 
-    pub async fn get_zset<K: ToRedisArgs + Send + Sync, V:
-    FromRedisValue>(&self, key: K, start: isize, stop: isize) -> Result<V> {
+    pub async fn get_zset<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(
+        &self,
+        key: K,
+        start: isize,
+        stop: isize,
+    ) -> Result<V> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let v: V = connection.zrange_withscores(key, start, stop).await?;
@@ -813,7 +917,10 @@ impl RedisOperations {
         }
     }
 
-    pub async fn get_hash<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K) -> Result<V> {
+    pub async fn get_hash<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(
+        &self,
+        key: K,
+    ) -> Result<V> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let v: V = connection.hgetall(key).await?;
@@ -825,14 +932,28 @@ impl RedisOperations {
         }
     }
 
-    pub async fn hscan<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K, cursor: usize, count: usize) -> Result<V> {
+    pub async fn hscan<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(
+        &self,
+        key: K,
+        cursor: usize,
+        count: usize,
+    ) -> Result<V> {
         let mut cmd = Cmd::new();
-        cmd.arg("HSCAN").arg(key).arg(cursor).arg("MATCH").arg("*").arg("COUNT").arg(count);
+        cmd.arg("HSCAN")
+            .arg(key)
+            .arg(cursor)
+            .arg("MATCH")
+            .arg("*")
+            .arg("COUNT")
+            .arg(count);
         let v: V = self.cmd(cmd).await?;
         Ok(v)
     }
 
-    pub async fn get_stream<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K) -> Result<V> {
+    pub async fn get_stream<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(
+        &self,
+        key: K,
+    ) -> Result<V> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let v: V = connection.xrange_all(key).await?;
@@ -844,7 +965,16 @@ impl RedisOperations {
         }
     }
 
-    pub async fn xrange<K: ToRedisArgs + Send + Sync, S: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K, start: S, count: usize) -> Result<V> {
+    pub async fn xrange<
+        K: ToRedisArgs + Send + Sync,
+        S: ToRedisArgs + Send + Sync,
+        V: FromRedisValue,
+    >(
+        &self,
+        key: K,
+        start: S,
+        count: usize,
+    ) -> Result<V> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let v: V = connection.xrange_count(key, start, "+", count).await?;
@@ -883,9 +1013,11 @@ impl RedisOperations {
     pub async fn mem_usage<K: ToRedisArgs + Send + Sync>(&self, key: K) -> Result<i64> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
-            let v: Value = cmd("MEMORY").arg("USAGE")
+            let v: Value = cmd("MEMORY")
+                .arg("USAGE")
                 .arg(key)
-                .arg("SAMPLES").arg("0")
+                .arg("SAMPLES")
+                .arg("0")
                 .query_async(&mut connection)
                 .await?;
             if let Value::Int(int) = v {
@@ -895,9 +1027,11 @@ impl RedisOperations {
             }
         } else {
             let mut connection = self.get_standalone_connection().await?;
-            let v: Value = cmd("MEMORY").arg("USAGE")
+            let v: Value = cmd("MEMORY")
+                .arg("USAGE")
                 .arg(key)
-                .arg("SAMPLES").arg("0")
+                .arg("SAMPLES")
+                .arg("0")
                 .query_async(&mut connection)
                 .await?;
             if let Value::Int(int) = v {
@@ -1055,7 +1189,10 @@ impl RedisOperations {
         }
     }
 
-    pub async fn json_get<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K) -> Result<V> {
+    pub async fn json_get<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(
+        &self,
+        key: K,
+    ) -> Result<V> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let v: V = connection.json_get(key, ".").await?;
@@ -1090,9 +1227,18 @@ impl RedisOperations {
         Ok(0)
     }
 
-    pub async fn ts_range<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(&self, key: K, count: usize) -> Result<V> {
+    pub async fn ts_range<K: ToRedisArgs + Send + Sync, V: FromRedisValue>(
+        &self,
+        key: K,
+        count: usize,
+    ) -> Result<V> {
         let mut cmd = Cmd::new();
-        cmd.arg("TS.RANGE").arg(key).arg("-").arg("+").arg("COUNT").arg(count);
+        cmd.arg("TS.RANGE")
+            .arg(key)
+            .arg("-")
+            .arg("+")
+            .arg("COUNT")
+            .arg(count);
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let v: V = cmd.query_async(&mut connection).await?;
@@ -1112,12 +1258,11 @@ impl RedisOperations {
             let v: Value = cmd.query_async(&mut connection).await?;
             if let Value::Map(entries) = v {
                 for (attr, v) in entries.iter() {
-                    if let Value::SimpleString(s) = attr {
-                        if s == "totalSamples" {
-                            if let Value::Int(i) = v {
-                                return Ok(*i as usize);
-                            }
-                        }
+                    if let Value::SimpleString(s) = attr
+                        && s == "totalSamples"
+                        && let Value::Int(i) = v
+                    {
+                        return Ok(*i as usize);
                     }
                 }
             }
@@ -1126,12 +1271,11 @@ impl RedisOperations {
             let v: Value = cmd.query_async(&mut connection).await?;
             if let Value::Map(entries) = v {
                 for (attr, v) in entries.iter() {
-                    if let Value::SimpleString(s) = attr {
-                        if s == "totalSamples" {
-                            if let Value::Int(i) = v {
-                                return Ok(*i as usize);
-                            }
-                        }
+                    if let Value::SimpleString(s) = attr
+                        && s == "totalSamples"
+                        && let Value::Int(i) = v
+                    {
+                        return Ok(*i as usize);
                     }
                 }
             }
@@ -1151,7 +1295,11 @@ impl RedisOperations {
         }
     }
 
-    pub async fn rename_nx<K: ToRedisArgs + Send + Sync>(&self, old_key: K, new_key: K) -> Result<()> {
+    pub async fn rename_nx<K: ToRedisArgs + Send + Sync>(
+        &self,
+        old_key: K,
+        new_key: K,
+    ) -> Result<()> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let _: Value = connection.rename_nx(old_key, new_key).await?;
@@ -1176,7 +1324,11 @@ impl RedisOperations {
         }
     }
 
-    pub async fn set_nx<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, value: V) -> Result<()> {
+    pub async fn set_nx<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(
+        &self,
+        key: K,
+        value: V,
+    ) -> Result<()> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let _: Value = connection.set_nx(key, value).await?;
@@ -1188,7 +1340,16 @@ impl RedisOperations {
         }
     }
 
-    pub async fn hset_nx<K: ToRedisArgs + Send + Sync, F: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, field: F, value: V) -> Result<()> {
+    pub async fn hset_nx<
+        K: ToRedisArgs + Send + Sync,
+        F: ToRedisArgs + Send + Sync,
+        V: ToRedisArgs + Send + Sync,
+    >(
+        &self,
+        key: K,
+        field: F,
+        value: V,
+    ) -> Result<()> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let _: Value = connection.hset_nx(key, field, value).await?;
@@ -1203,7 +1364,11 @@ impl RedisOperations {
     /// rpushx key element [element ...]
     /// Appends an element to a list only when the list exists.
     #[allow(unused)]
-    pub async fn rpush<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, value: V) -> Result<()> {
+    pub async fn rpush<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(
+        &self,
+        key: K,
+        value: V,
+    ) -> Result<()> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let _: Value = connection.rpush(key, value).await?;
@@ -1215,7 +1380,11 @@ impl RedisOperations {
         }
     }
 
-    pub async fn lpush<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, value: V) -> Result<()> {
+    pub async fn lpush<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(
+        &self,
+        key: K,
+        value: V,
+    ) -> Result<()> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let _: Value = connection.lpush(key, value).await?;
@@ -1227,7 +1396,11 @@ impl RedisOperations {
         }
     }
 
-    pub async fn sadd<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, value: V) -> Result<()> {
+    pub async fn sadd<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(
+        &self,
+        key: K,
+        value: V,
+    ) -> Result<()> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let _: Value = connection.sadd(key, value).await?;
@@ -1239,7 +1412,12 @@ impl RedisOperations {
         }
     }
 
-    pub async fn zadd<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, value: V, score: f64) -> Result<()> {
+    pub async fn zadd<K: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(
+        &self,
+        key: K,
+        value: V,
+        score: f64,
+    ) -> Result<()> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let _: Value = connection.zadd(key, value, score).await?;
@@ -1251,7 +1429,16 @@ impl RedisOperations {
         }
     }
 
-    pub async fn xadd<K: ToRedisArgs + Send + Sync, F: ToRedisArgs + Send + Sync, V: ToRedisArgs + Send + Sync>(&self, key: K, field: F, value: V) -> Result<()> {
+    pub async fn xadd<
+        K: ToRedisArgs + Send + Sync,
+        F: ToRedisArgs + Send + Sync,
+        V: ToRedisArgs + Send + Sync,
+    >(
+        &self,
+        key: K,
+        field: F,
+        value: V,
+    ) -> Result<()> {
         if self.is_cluster() {
             let mut connection = self.get_cluster_connection().await?;
             let _: Value = connection.xadd(key, "*", &[(field, value)]).await?;
@@ -1278,7 +1465,12 @@ impl deadpool_redis::redis::aio::ConnectionLike for IClusterConnection {
         self.0.req_packed_command(cmd)
     }
 
-    fn req_packed_commands<'a>(&'a mut self, cmd: &'a Pipeline, offset: usize, count: usize) -> RedisFuture<'a, Vec<Value>> {
+    fn req_packed_commands<'a>(
+        &'a mut self,
+        cmd: &'a Pipeline,
+        offset: usize,
+        count: usize,
+    ) -> RedisFuture<'a, Vec<Value>> {
         self.0.req_packed_commands(cmd, offset, count)
     }
 
@@ -1293,16 +1485,16 @@ impl deadpool_redis::redis::aio::ConnectionLike for IConnection {
         self.0.req_packed_command(cmd)
     }
 
-    fn req_packed_commands<'a>(&'a mut self, cmd: &'a Pipeline, offset: usize, count: usize) -> RedisFuture<'a, Vec<Value>> {
+    fn req_packed_commands<'a>(
+        &'a mut self,
+        cmd: &'a Pipeline,
+        offset: usize,
+        count: usize,
+    ) -> RedisFuture<'a, Vec<Value>> {
         self.0.req_packed_commands(cmd, offset, count)
     }
 
     fn get_db(&self) -> i64 {
         self.0.get_db()
     }
-}
-
-#[cfg(test)]
-mod tests {
-
 }
