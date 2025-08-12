@@ -7,7 +7,7 @@ rust-version = { workspace = true }
 build = "build.rs"
 
 [workspace.package]
-version = "0.5.4"
+version = "0.5.5"
 rust-version = "1.88.0"
 edition = "2024"
 
