@@ -65,7 +65,6 @@ jobs:
         tar -czvf ./target/release/ratisui-linux-amd64.tar.gz LICENSE README.md -C ./target/release ratisui
         ARCHIVE_SHA256=$(sha256sum ./target/release/ratisui-linux-amd64.tar.gz | awk '{print $1}')
         echo "sha256=$ARCHIVE_SHA256" >> $GITHUB_OUTPUT
-
     
     - name: Package (Mac)
       id: mac_aarch64
@@ -142,7 +141,7 @@ jobs:
       id: linux_aarch64
       run: |
         tar -czvf ./target/aarch64-unknown-linux-gnu/release/ratisui-linux-aarch64.tar.gz LICENSE README.md -C ./target/aarch64-unknown-linux-gnu/release ratisui
-        ARCHIVE_SHA256=$(sha256sum ./target/release/ratisui-linux-aarch64.tar.gz | awk '{print $1}')
+        ARCHIVE_SHA256=$(sha256sum ./target/aarch64-unknown-linux-gnu/release/ratisui-linux-aarch64.tar.gz | awk '{print $1}')
         echo "sha256=$ARCHIVE_SHA256" >> $GITHUB_OUTPUT
         
     - name: Upload Release Asset (Linux-aarch64)
@@ -182,7 +181,7 @@ jobs:
       id: mac_intel
       run: |
         tar -czvf ./target/x86_64-apple-darwin/release/ratisui-mac-intel.tar.gz LICENSE README.md -C ./target/x86_64-apple-darwin/release ratisui
-        ARCHIVE_SHA256=$(sha256sum ./target/x86_64-apple-darwin/release/ratisui-mac-intel.tar.gz | awk '{print $1}')
+        ARCHIVE_SHA256=$(shasum -a 256 ./target/x86_64-apple-darwin/release/ratisui-mac-intel.tar.gz | awk '{print $1}')
         echo "sha256=$ARCHIVE_SHA256" >> $GITHUB_OUTPUT
     - name: Upload Release Asset (Mac-intel)
       uses: actions/upload-release-asset@v1
