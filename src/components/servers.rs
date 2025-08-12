@@ -13,13 +13,11 @@
 //! [examples]: https://github.com/ratatui/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui/ratatui/blob/main/examples/README.md
 
-use crate::app::{centered_rect, AppEvent, Listenable, Renderable};
-use ratisui_core::bus::{publish_msg, Message};
+use crate::app::{AppEvent, Listenable, Renderable, centered_rect};
+use crate::components::TableColors;
 use crate::components::database_editor::Form;
 use crate::components::popup::Popup;
-use ratisui_core::configuration::{save_database_configuration, Database, Databases};
-use ratisui_core::redis_opt::{switch_client};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use itertools::Itertools;
 use log::info;
 use ratatui::crossterm::event::{KeyEvent, KeyModifiers};
@@ -27,15 +25,25 @@ use ratatui::layout::Alignment;
 use ratatui::layout::Constraint::Length;
 use ratatui::widgets::block::Position;
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
-use ratatui::{crossterm::event::{KeyCode, KeyEventKind}, layout::{Margin, Rect}, style::{Style, Stylize}, symbols, text::{Line, Text}, widgets::{
-    Cell, HighlightSpacing, Row, Scrollbar, ScrollbarOrientation, ScrollbarState
-    , Table, TableState,
-}, Frame};
+use ratatui::{
+    Frame,
+    crossterm::event::{KeyCode, KeyEventKind},
+    layout::{Margin, Rect},
+    style::{Style, Stylize},
+    symbols,
+    text::{Line, Text},
+    widgets::{
+        Cell, HighlightSpacing, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
+        TableState,
+    },
+};
+use ratisui_core::bus::{Message, publish_msg};
+use ratisui_core::configuration::{Database, Databases, save_database_configuration};
+use ratisui_core::redis_opt::switch_client;
+use ratisui_core::theme::get_color;
 use std::cmp;
 use std::string::ToString;
 use unicode_width::UnicodeWidthStr;
-use crate::components::TableColors;
-use ratisui_core::theme::get_color;
 
 const ITEM_HEIGHT: usize = 4;
 
@@ -53,7 +61,15 @@ pub struct Data {
 
 impl Data {
     const fn ref_array(&self) -> [&String; 7] {
-        [&self.selected, &self.name, &self.location, &self.db, &self.username, &self.use_tls, &self.protocol]
+        [
+            &self.selected,
+            &self.name,
+            &self.location,
+            &self.db,
+            &self.username,
+            &self.use_tls,
+            &self.protocol,
+        ]
     }
 
     fn name(&self) -> &str {
@@ -120,11 +136,12 @@ impl ServerList {
             };
             vec.push(data);
         }
-        vec.sort_by(|x, x1| {
-            x.name.cmp(&x1.name)
-        });
-        let default_selected = vec.iter().position(|data| data.selected == "*").unwrap_or(0);
-        let init_database_name = vec.get(default_selected).map(|data| { data.name.clone() });
+        vec.sort_by(|x, x1| x.name.cmp(&x1.name));
+        let default_selected = vec
+            .iter()
+            .position(|data| data.selected == "*")
+            .unwrap_or(0);
+        let init_database_name = vec.get(default_selected).map(|data| data.name.clone());
         Self {
             init_database_name,
             have_changed: false,
@@ -168,13 +185,8 @@ impl ServerList {
 
     pub fn previous(&mut self) {
         let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.items.len() - 1
-                } else {
-                    i - 1
-                }
-            }
+            Some(0) => self.items.len() - 1,
+            Some(i) => i - 1,
             None => 0,
         };
         self.state.select(Some(i));
@@ -208,31 +220,32 @@ impl ServerList {
             .bold()
             .fg(self.colors.header_fg)
             .bg(self.colors.header_bg);
-        let selected_style = Style::default()
-            .bg(get_color(|t| &t.server.highlight))
-            ;
+        let selected_style = Style::default().bg(get_color(|t| &t.server.highlight));
 
         let header = ["", "Name", "Location", "DB", "Username", "TLS", "Protocol"]
             .into_iter()
-            .map(|title| {
-                Cell::from(Text::raw(title))
-            })
+            .map(|title| Cell::from(Text::raw(title)))
             .map(Cell::from)
             .collect::<Row>()
             .style(header_style)
-            .height(1)
-            ;
+            .height(1);
 
-        let rows = self.items.iter().enumerate().map(|(_, data)| {
-            let item = data.ref_array();
-            item.into_iter().enumerate()
-                .map(|(idx, content)| {
-                    Cell::from(Text::raw(content).style(self.column_styles[idx]))
-                })
-                .collect::<Row>()
-                .style(Style::new().fg(self.colors.row_fg))
-                .height(1)
-        }).collect_vec();
+        let rows = self
+            .items
+            .iter()
+            .enumerate()
+            .map(|(_, data)| {
+                let item = data.ref_array();
+                item.into_iter()
+                    .enumerate()
+                    .map(|(idx, content)| {
+                        Cell::from(Text::raw(content).style(self.column_styles[idx]))
+                    })
+                    .collect::<Row>()
+                    .style(Style::new().fg(self.colors.row_fg))
+                    .height(1)
+            })
+            .collect_vec();
         let bar = "➤ ";
         let t = Table::new(
             rows,
@@ -247,12 +260,12 @@ impl ServerList {
                 Length(cmp::max(self.longest_item_lens.6, 8) + 1),
             ],
         )
-            .header(header)
-            .row_highlight_style(selected_style)
-            .highlight_symbol(Text::raw(bar).style(Style::default()))
-            .bg(self.colors.bg)
-            .column_spacing(1)
-            .highlight_spacing(HighlightSpacing::Always);
+        .header(header)
+        .row_highlight_style(selected_style)
+        .highlight_symbol(Text::raw(bar).style(Style::default()))
+        .bg(self.colors.bg)
+        .column_spacing(1)
+        .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut self.state);
     }
 
@@ -276,15 +289,18 @@ impl ServerList {
             if let Some(data) = item {
                 let popup_area = centered_rect(30, 15, area);
                 let mut text = Text::default();
-                text.push_line(Line::raw(data.name.clone())
-                    .alignment(Alignment::Center)
-                    .underlined());
+                text.push_line(
+                    Line::raw(data.name.clone())
+                        .alignment(Alignment::Center)
+                        .underlined(),
+                );
                 text.push_line(Line::default());
-                text.push_line(Line::raw("Will be deleted. Are you sure?")
-                    .alignment(Alignment::Center)
-                    .bold());
-                let paragraph = Paragraph::new(text)
-                    .alignment(Alignment::Center);
+                text.push_line(
+                    Line::raw("Will be deleted. Are you sure?")
+                        .alignment(Alignment::Center)
+                        .bold(),
+                );
+                let paragraph = Paragraph::new(text).alignment(Alignment::Center);
                 let delete_popup = Popup::new(paragraph)
                     .title(String::from(" [Enter] Confirm | [Esc] Cancel "))
                     .title_position(Position::Bottom)
@@ -326,9 +342,7 @@ impl ServerList {
                 }
                 self.show_delete_popup = false;
             }
-            KeyCode::Esc => {
-                self.show_delete_popup = false;
-            }
+            KeyCode::Esc => self.show_delete_popup = false,
             _ => {}
         }
 
@@ -336,7 +350,10 @@ impl ServerList {
     }
 
     fn handle_create_popup_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
-        if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Enter {
+        if key_event.kind == KeyEventKind::Press
+            && key_event.modifiers == KeyModifiers::NONE
+            && key_event.code == KeyCode::Enter
+        {
             let database = self.create_form.to_database();
             let data = Data {
                 selected: "".to_string(),
@@ -354,45 +371,53 @@ impl ServerList {
             self.create_form = Form::default().title("New");
             self.show_create_popup = false;
         } else {
-            if !self.create_form.handle_key_event(key_event)? {
-                if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Esc {
-                    self.show_create_popup = false;
-                }
+            if !self.create_form.handle_key_event(key_event)?
+                && key_event.kind == KeyEventKind::Press
+                && key_event.modifiers == KeyModifiers::NONE
+                && key_event.code == KeyCode::Esc
+            {
+                self.show_create_popup = false;
             }
         }
         Ok(true)
     }
 
     fn handle_edit_popup_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
-        if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Esc {
+        if key_event.kind == KeyEventKind::Press
+            && key_event.modifiers == KeyModifiers::NONE
+            && key_event.code == KeyCode::Esc
+        {
             self.show_edit_popup = false;
-        } else if key_event.kind == KeyEventKind::Press && key_event.modifiers == KeyModifiers::NONE && key_event.code == KeyCode::Enter {
+        } else if key_event.kind == KeyEventKind::Press
+            && key_event.modifiers == KeyModifiers::NONE
+            && key_event.code == KeyCode::Enter
+        {
             let database = self.edit_form.to_database();
-            if let Some(idx) = self.state.selected() {
-                if let Some(current_data) = self.items.get(idx) {
-                    let data = Data {
-                        selected: current_data.selected.clone(),
-                        name: self.edit_form.get_name(),
-                        location: format!("{}:{}", database.host, database.port),
-                        db: database.db.to_string(),
-                        username: database.username.clone().unwrap_or(String::new()),
-                        use_tls: database.use_tls.to_string(),
-                        protocol: database.protocol.to_string(),
-                        database,
-                    };
-                    self.valid_edit(&data)?;
-                    self.have_changed = true;
-                    if data.selected == "*" {
-                        switch_client(data.name.clone(), &data.database)?;
-                    }
-                    self.items[idx] = data;
-                    self.edit_form = Form::default().title("Edit");
-                    self.show_edit_popup = false;
+            if let Some(idx) = self.state.selected() && let Some(current_data) = self.items.get(idx) {
+                let data = Data {
+                    selected: current_data.selected.clone(),
+                    name: self.edit_form.get_name(),
+                    location: format!("{}:{}", database.host, database.port),
+                    db: database.db.to_string(),
+                    username: database.username.clone().unwrap_or(String::new()),
+                    use_tls: database.use_tls.to_string(),
+                    protocol: database.protocol.to_string(),
+                    database,
+                };
+                self.valid_edit(&data)?;
+                self.have_changed = true;
+                if data.selected == "*" {
+                    switch_client(data.name.clone(), &data.database)?;
                 }
+                self.items[idx] = data;
+                self.edit_form = Form::default().title("Edit");
+                self.show_edit_popup = false;
             }
         } else {
             let result = self.edit_form.handle_key_event(key_event)?;
-            if result {}
+            if result {
+                return Ok(true);
+            }
         }
         Ok(true)
     }
@@ -436,7 +461,9 @@ impl ServerList {
             let mut databases = Databases::empty();
             databases.default_database = selected_name;
             for data_ref in self.items.iter() {
-                databases.databases.insert(data_ref.name.clone(), data_ref.database.clone());
+                databases
+                    .databases
+                    .insert(data_ref.name.clone(), data_ref.database.clone());
             }
             save_database_configuration(&databases)?;
         }
@@ -451,8 +478,7 @@ impl Renderable for ServerList {
             .title("Servers")
             .border_set(symbols::border::DOUBLE)
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            ;
+            .border_type(BorderType::Rounded);
         let inner_block = block.inner(rect);
         frame.render_widget(block, rect);
         self.render_table(frame, inner_block);
@@ -546,7 +572,7 @@ impl Listenable for ServerList {
                         }
                         true
                     }
-                    _ => { false }
+                    _ => false,
                 };
                 return Ok(accepted);
             }
@@ -556,9 +582,7 @@ impl Listenable for ServerList {
 
     fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
         match app_event {
-            AppEvent::InitConfig(_, args) => {
-                self.save_on_exit = !args.once
-            }
+            AppEvent::InitConfig(_, args) => self.save_on_exit = !args.once,
             AppEvent::Destroy => {
                 if self.save_on_exit {
                     self.save()?;
@@ -611,7 +635,11 @@ fn constraint_len_calculator(items: &[Data]) -> (u16, u16, u16, u16, u16, u16, u
     #[allow(clippy::cast_possible_truncation)]
     (
         1,
-        name_len as u16, location_len as u16, db_len as u16,
-        username_len as u16, use_tls_len as u16, protocol_len as u16,
+        name_len as u16,
+        location_len as u16,
+        db_len as u16,
+        username_len as u16,
+        use_tls_len as u16,
+        protocol_len as u16,
     )
 }

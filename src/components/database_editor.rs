@@ -548,9 +548,7 @@ impl Listenable for Form {
                 }
                 KeyEvent { code: KeyCode::Enter, .. } => {}
                 KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
-                KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
-                    text_area.select_all();
-                }
+                KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => text_area.select_all(),
                 KeyEvent { code: KeyCode::Char('z'), modifiers: KeyModifiers::CONTROL, .. } => {
                     text_area.undo();
                 }

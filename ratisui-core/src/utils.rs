@@ -1,9 +1,9 @@
 use anyhow::anyhow;
 use base64::Engine;
 use jaded::Parser;
+use protobuf::UnknownValueRef;
 use protobuf::reflect::MessageDescriptor;
 use protobuf::well_known_types::any::Any;
-use protobuf::UnknownValueRef;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ron::ser::PrettyConfig;
 use serde::Serialize;
@@ -141,7 +141,10 @@ pub fn des_protobuf(bytes: Vec<u8>) -> anyhow::Result<String> {
         hash_map.insert(1, Field::LengthDelimited(any_message.type_url.clone()));
     }
     if !any_message.value.is_empty() {
-        hash_map.insert(2, Field::LengthDelimited(String::from_utf8(any_message.value.clone().to_vec())?));
+        hash_map.insert(
+            2,
+            Field::LengthDelimited(String::from_utf8(any_message.value.clone().to_vec())?),
+        );
     }
 
     let fields = any_message.special_fields;
@@ -152,7 +155,9 @@ pub fn des_protobuf(bytes: Vec<u8>) -> anyhow::Result<String> {
             UnknownValueRef::Fixed32(fixed32) => hash_map.insert(idx, Field::Fixed32(fixed32)),
             UnknownValueRef::Fixed64(fixed64) => hash_map.insert(idx, Field::Fixed64(fixed64)),
             UnknownValueRef::Varint(varint) => hash_map.insert(idx, Field::Varint(varint)),
-            UnknownValueRef::LengthDelimited(ld) => hash_map.insert(idx, Field::LengthDelimited(String::from_utf8(ld.to_vec())?)),
+            UnknownValueRef::LengthDelimited(ld) => {
+                hash_map.insert(idx, Field::LengthDelimited(String::from_utf8(ld.to_vec())?))
+            }
         };
     }
 
@@ -170,8 +175,7 @@ enum Field {
 
 pub fn escape_string(s: impl Into<String>) -> String {
     let s = s.into();
-    s
-        .replace("\\", "\\\\")
+    s.replace("\\", "\\\\")
         .replace("\t", "\\t")
         .replace("\n", "\\n")
         .replace("\r", "\\r")
@@ -273,21 +277,20 @@ pub fn compare_version_strings(s1: impl Into<String>, s2: impl Into<String>) -> 
 pub fn try_decode_arg(arg: &String) -> anyhow::Result<Vec<u8>> {
     let input = arg.clone();
     // Base64#Zm9vIGJhcg==#
-    if let Some(start) = input.find('#') {
-        if let Some(end) = input.rfind('#') {
-            if start != end {
-                let prefix = &input[..start];
-                let content = &input[start + 1..end];
+    if let Some(start) = input.find('#')
+        && let Some(end) = input.rfind('#')
+        && start != end
+    {
+        let prefix = &input[..start];
+        let content = &input[start + 1..end];
 
-                let result = match prefix {
-                    "base64" => base64::prelude::BASE64_STANDARD.decode(content)?,
-                    "hex" => hex::decode(content)?,
-                    "fs" => fs::read(Path::new(content))?,
-                    _ => input.as_bytes().to_vec(),
-                };
-                return Ok(result);
-            }
-        }
+        let result = match prefix {
+            "base64" => base64::prelude::BASE64_STANDARD.decode(content)?,
+            "hex" => hex::decode(content)?,
+            "fs" => fs::read(Path::new(content))?,
+            _ => input.as_bytes().to_vec(),
+        };
+        return Ok(result);
     }
     Ok(input.as_bytes().to_vec())
 }
@@ -299,18 +302,26 @@ mod test {
     use std::cmp::Ordering;
 
     macro_rules! ctrl {
-    ($name:ident) => {{
-        let chars = stringify!($name);
-        if let Some(c) = chars.chars().next() {
-            KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
-        } else {
-            KeyEvent::new(KeyCode::Null, KeyModifiers::CONTROL)
-        }
-    }};
-}
+        ($name:ident) => {{
+            let chars = stringify!($name);
+            if let Some(c) = chars.chars().next() {
+                KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+            } else {
+                KeyEvent::new(KeyCode::Null, KeyModifiers::CONTROL)
+            }
+        }};
+    }
+
     #[test]
     fn test_ctrl_macro() {
-        assert!(matches!(ctrl!(a), KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL,.. }));
+        assert!(matches!(
+            ctrl!(a),
+            KeyEvent {
+                code: KeyCode::Char('a'),
+                modifiers: KeyModifiers::CONTROL,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -325,7 +336,10 @@ mod test {
         assert_eq!(compare_version_strings("8.0.1", "8.0.1"), Ordering::Equal);
         assert_eq!(compare_version_strings("7.4.2", "8.0.1"), Ordering::Less);
         assert_eq!(compare_version_strings("8.1.1", "8.0.1"), Ordering::Greater);
-        assert_eq!(compare_version_strings("18.1.1", "8.0.1"), Ordering::Greater);
+        assert_eq!(
+            compare_version_strings("18.1.1", "8.0.1"),
+            Ordering::Greater
+        );
         assert_eq!(compare_version_strings("8.0.2", "8.0.1"), Ordering::Greater);
         assert_eq!(compare_version_strings("8.1", "8.0.1"), Ordering::Greater);
     }

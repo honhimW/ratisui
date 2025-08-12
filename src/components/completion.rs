@@ -11,15 +11,15 @@ use ratatui::widgets::{
     Block, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
     Table, TableState, Wrap,
 };
-use ratatui::{symbols, Frame};
+use ratatui::{Frame, symbols};
+use ratisui_core::bus::GlobalEvent;
+use ratisui_core::redis_opt::redis_operations;
 use ratisui_core::theme::get_color;
 use ratisui_core::utils::{clean_text_area, compare_version_strings, right_pad};
 use std::cmp;
 use std::cmp::Ordering;
 use strum::Display;
 use tui_textarea::{CursorMove, TextArea};
-use ratisui_core::bus::GlobalEvent;
-use ratisui_core::redis_opt::redis_operations;
 
 pub struct CompletableTextArea<'a> {
     max_menu_width: u16,
@@ -160,12 +160,11 @@ impl Renderable for CompletableTextArea<'_> {
                 );
             }
 
-            if let Some(idx) = self.table_state.selected() {
-                if let Some(item) = self.completion_items.get(idx) {
-                    if let Some(ref desc) = item.label.description {
-                        self.render_desc(frame, menu_area, desc.clone());
-                    }
-                }
+            if let Some(idx) = self.table_state.selected()
+                && let Some(item) = self.completion_items.get(idx)
+                && let Some(ref desc) = item.label.description
+            {
+                self.render_desc(frame, menu_area, desc.clone());
             }
         }
         Ok(())
@@ -287,49 +286,45 @@ impl Listenable for CompletableTextArea<'_> {
                 KeyEvent {
                     code: KeyCode::Tab, ..
                 } => {
-                    if !self.completion_items.is_empty() && self.show_menu {
-                        if let Some(selected) = self.table_state.selected() {
-                            if let Some(item) = self.completion_items.get(selected) {
-                                let mut insert_text = item.insert_text.clone();
-                                let (cursor_backward, insert_text) =
-                                    if let Some(end_at) = insert_text.rfind("$end") {
-                                        let cursor_backward = insert_text.len() - (end_at + 4);
-                                        insert_text.replace_range(end_at..(end_at + 4), "");
-                                        (cursor_backward, insert_text)
-                                    } else {
-                                        (0, insert_text)
-                                    };
-                                if self.raw_input.is_empty() {
-                                    self.single_line_text_area.insert_str(insert_text);
-                                } else {
-                                    let (s, mut e) = item.range;
-                                    if e < 0 {
-                                        e = self.raw_input.len() as isize;
-                                    }
-                                    let (cursor_y, _) = self.single_line_text_area.cursor();
-                                    self.single_line_text_area
-                                        .move_cursor(CursorMove::Jump(cursor_y as u16, s as u16));
-                                    self.single_line_text_area.start_selection();
-                                    for _ in 0..(e - s) {
-                                        self.single_line_text_area.move_cursor(CursorMove::Forward);
-                                    }
-                                    self.single_line_text_area.insert_str(insert_text);
-                                }
-                                if cursor_backward > 0 {
-                                    let (cursor_y, cursor_x) = self.single_line_text_area.cursor();
-                                    self.single_line_text_area.move_cursor(CursorMove::Jump(
-                                        cursor_y as u16,
-                                        (cursor_x - cursor_backward) as u16,
-                                    ));
-                                }
-                                self.hide_menu();
-                                true
+                    if !self.completion_items.is_empty()
+                        && self.show_menu
+                        && let Some(selected) = self.table_state.selected()
+                        && let Some(item) = self.completion_items.get(selected)
+                    {
+                        let mut insert_text = item.insert_text.clone();
+                        let (cursor_backward, insert_text) =
+                            if let Some(end_at) = insert_text.rfind("$end") {
+                                let cursor_backward = insert_text.len() - (end_at + 4);
+                                insert_text.replace_range(end_at..(end_at + 4), "");
+                                (cursor_backward, insert_text)
                             } else {
-                                false
-                            }
+                                (0, insert_text)
+                            };
+                        if self.raw_input.is_empty() {
+                            self.single_line_text_area.insert_str(insert_text);
                         } else {
-                            false
+                            let (s, mut e) = item.range;
+                            if e < 0 {
+                                e = self.raw_input.len() as isize;
+                            }
+                            let (cursor_y, _) = self.single_line_text_area.cursor();
+                            self.single_line_text_area
+                                .move_cursor(CursorMove::Jump(cursor_y as u16, s as u16));
+                            self.single_line_text_area.start_selection();
+                            for _ in 0..(e - s) {
+                                self.single_line_text_area.move_cursor(CursorMove::Forward);
+                            }
+                            self.single_line_text_area.insert_str(insert_text);
                         }
+                        if cursor_backward > 0 {
+                            let (cursor_y, cursor_x) = self.single_line_text_area.cursor();
+                            self.single_line_text_area.move_cursor(CursorMove::Jump(
+                                cursor_y as u16,
+                                (cursor_x - cursor_backward) as u16,
+                            ));
+                        }
+                        self.hide_menu();
+                        true
                     } else {
                         false
                     }
@@ -434,13 +429,8 @@ impl CompletableTextArea<'_> {
 
     fn previous(&mut self) {
         let i = match self.table_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.completion_items.len() - 1
-                } else {
-                    i - 1
-                }
-            }
+            Some(0) => self.completion_items.len() - 1,
+            Some(i) => i - 1,
             None => 0,
         };
         self.table_state.select(Some(i));
@@ -539,7 +529,11 @@ fn get_table(rows: Vec<Row>) -> Table {
     table
 }
 
-fn get_rows(input: impl Into<String>, items: &Vec<CompletionItem>, version: Option<String>) -> Vec<Row> {
+fn get_rows(
+    input: impl Into<String>,
+    items: &Vec<CompletionItem>,
+    version: Option<String>,
+) -> Vec<Row> {
     let input = input.into();
     let mut rows = vec![];
     for item in items {
@@ -551,25 +545,22 @@ fn get_rows(input: impl Into<String>, items: &Vec<CompletionItem>, version: Opti
             .find(input.to_lowercase().as_str())
         {
             let mut label_style = Style::default();
-            if let Some(ref ver) = version {
-                if let Some(ref doc) = item.label.description {
-                    for (k, v) in doc.attributes.iter() {
-                        if k == "since" && compare_version_strings(ver, v) == Ordering::Less {
-                            label_style = Style::default().fg(Color::Red);
-                        }
+            if let Some(ref ver) = version && let Some(ref doc) = item.label.description {
+                for (k, v) in doc.attributes.iter() {
+                    if k == "since" && compare_version_strings(ver, v) == Ordering::Less {
+                        label_style = Style::default().fg(Color::Red);
                     }
                 }
             }
-            prompt.push_span(
-                Span::raw(&item.label.label[0..pos])
-                    .style(label_style));
+            prompt.push_span(Span::raw(&item.label.label[0..pos]).style(label_style));
             prompt.push_span(
                 Span::raw(&item.label.label[pos..pos + input.len()])
                     .style(Style::default().fg(get_color(|t| &t.tab.cli.menu.input))),
             );
-            prompt.push_span(Span::raw(
-                &item.label.label[pos + input.len()..item.label.label.len()],
-            ).style(label_style));
+            prompt.push_span(
+                Span::raw(&item.label.label[pos + input.len()..item.label.label.len()])
+                    .style(label_style),
+            );
         }
         if let Some(ref detail) = item.label.detail {
             prompt.push_span(Span::raw(" "));
@@ -634,8 +625,8 @@ pub fn sort_commands(commands: &mut Vec<CompletionItem>, segment: &String) {
         let x1_starts_with = x1.label.label.starts_with(segment);
 
         match (x_starts_with, x1_starts_with) {
-            (true, false) => cmp::Ordering::Less,
-            (false, true) => cmp::Ordering::Greater,
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
             _ => x.label.label.cmp(&x1.label.label),
         }
     });

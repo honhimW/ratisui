@@ -110,13 +110,8 @@ impl ZSetValue {
 
     pub fn previous(&mut self) {
         let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.items.len() - 1
-                } else {
-                    i - 1
-                }
-            }
+            Some(0) => self.items.len() - 1,
+            Some(i) => i - 1,
             None => 0,
         };
         self.state.select(Some(i));
@@ -128,10 +123,7 @@ impl ZSetValue {
             .bold()
             .fg(self.colors.header_fg)
             .bg(self.colors.header_bg);
-        let selected_style = Style::default()
-            // .add_modifier(Modifier::REVERSED)
-            // .bg(self.colors.selected_style_bg)
-            ;
+        let selected_style = Style::default();
 
         let header = ["No.", "Score", "Value"]
             .into_iter()
@@ -141,9 +133,7 @@ impl ZSetValue {
             .map(Cell::from)
             .collect::<Row>()
             .style(header_style)
-            .height(3)
-            ;
-
+            .height(3);
 
         let selected_idx = self.state.selected().unwrap_or(0);
         let mut selected_height = 5;
@@ -227,7 +217,6 @@ impl Renderable for ZSetValue {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
         self.render_table(frame, rect);
         self.render_scrollbar(frame, rect);
-
         Ok(())
     }
 
@@ -235,8 +224,6 @@ impl Renderable for ZSetValue {
         let mut elements = vec![];
         elements.push(("↑/j", "Up"));
         elements.push(("↓/k", "Down"));
-        // elements.push(("←/h", "Close"));
-        // elements.push(("→/l", "Open"));
         elements
     }
 }
