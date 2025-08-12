@@ -2,13 +2,30 @@
 
 ![gif](./assets/ratisui.gif)
 
+- [Installation](#Installation)
+  - [Package Manager](#package-manager)
+    - [Windows](#Windows)
+    - [Windows](#Windows)
+- [Quick Start](#quick-start)
+- [Configuration](#data-storage)
+- [Features](#Features)
+
 ## Installation
 
-### Mac
+### Package Manager
 
-#### Homebrew Tap
+#### Windows
+
+##### WinGet
 ```shell
-brew install honhimW/ratisui/ratisui
+winget install HonhimW.Ratisui
+```
+
+#### Mac
+
+##### Homebrew Tap
+```shell
+brew install honhimW/tap/ratisui
 ```
 
 ### Cargo
