@@ -65,7 +65,7 @@ jobs:
         tar -czvf ./target/release/ratisui-linux-amd64.tar.gz LICENSE README.md -C ./target/release ratisui
         ARCHIVE_SHA256=$(sha256sum ./target/release/ratisui-linux-amd64.tar.gz | awk '{print $1}')
         echo "sha256=$ARCHIVE_SHA256" >> $GITHUB_OUTPUT
-    
+
     - name: Package (Mac)
       id: mac_aarch64
       if: matrix.os == 'macos-latest'
@@ -81,7 +81,7 @@ jobs:
         Compress-Archive -Path '.\README.md', '.\LICENSE', '.\target\release\ratisui.exe' -DestinationPath '.\target\release\ratisui-windows-amd64.zip'
         $ARCHIVE_SHA256 = (Get-FileHash -Algorithm SHA256 -Path ".\target\release\ratisui-windows-amd64.zip").Hash
         "sha256=$ARCHIVE_SHA256" >> $env:GITHUB_OUTPUT
-      
+
     - name: Upload Release Asset (Linux)
       if: matrix.os == 'ubuntu-22.04'
       uses: actions/upload-release-asset@v1
@@ -102,7 +102,7 @@ jobs:
         asset_path: ./target/release/ratisui-mac-aarch64.tar.gz
         asset_name: ratisui-mac-aarch64.tar.gz
         asset_content_type: application/octet-stream
-        
+
     - name: Upload Release Asset (Windows)
       if: matrix.os == 'windows-latest'
       uses: actions/upload-release-asset@v1
@@ -143,7 +143,7 @@ jobs:
         tar -czvf ./target/aarch64-unknown-linux-gnu/release/ratisui-linux-aarch64.tar.gz LICENSE README.md -C ./target/aarch64-unknown-linux-gnu/release ratisui
         ARCHIVE_SHA256=$(sha256sum ./target/aarch64-unknown-linux-gnu/release/ratisui-linux-aarch64.tar.gz | awk '{print $1}')
         echo "sha256=$ARCHIVE_SHA256" >> $GITHUB_OUTPUT
-        
+
     - name: Upload Release Asset (Linux-aarch64)
       uses: actions/upload-release-asset@v1
       env:
@@ -215,3 +215,16 @@ jobs:
               "windows_amd64_sha256": "${{ needs.build.outputs.windows_amd64_sha256 }}"
             }}'
 
+    - name: rust-toolchain
+      uses: dtolnay/rust-toolchain@v1
+      with:
+        toolchain: stable
+    - name: Install Komac
+      run: cargo install --locked komac
+    - name: WinGet New Version
+      run: |
+        komac update HonhimW.Ratisui \
+            --version "${{ github.event.inputs.major_version }}" \
+            --urls "https://github.com/honhimW/ratisui/releases/download/${{ github.event.inputs.major_version }}/ratisui-windows-amd64.zip" \
+            --token "${{ secrets.WINGET_TOKEN }}"
+            --submit
