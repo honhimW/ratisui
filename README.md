@@ -14,6 +14,11 @@
 
 ## Installation
 
+### Shell
+```shell
+curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/honhimW/ratisui/main/scripts/install.sh | sh
+```
+
 ### Package Manager
 
 #### Windows
