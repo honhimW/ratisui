@@ -41,6 +41,25 @@ on:
           - x86_64-unknown-illumos
           - x86_64-unknown-linux-musl
           - x86_64-unknown-netbsd
+      os:
+        type: choice
+        required: true
+        description: Build System
+        default: ubuntu-latest
+        options:
+          - ubuntu-latest
+          - ubuntu-24.04
+          - ubuntu-22.04
+          - macos-latest
+          - macos-15
+          - macos-15-large
+          - macos-14-large
+          - macos-14
+          - macos-13
+          - windows-latest
+          - windows-2025
+          - windows-2022
+          - windows-2019
 
 jobs:
   build:
