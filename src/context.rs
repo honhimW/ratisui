@@ -139,15 +139,9 @@ impl Context {
 
     fn render_selected_tab(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         match self.current_tab {
-            CurrentTab::Explorer => {
-                self.explorer_tab.render_frame(frame, area)
-            }
-            CurrentTab::Cli => {
-                self.cli_tab.render_frame(frame, area)
-            }
-            CurrentTab::Logger => {
-                self.logger_tab.render_frame(frame, area)
-            }
+            CurrentTab::Explorer => self.explorer_tab.render_frame(frame, area),
+            CurrentTab::Cli => self.cli_tab.render_frame(frame, area),
+            CurrentTab::Logger => self.logger_tab.render_frame(frame, area),
         }
     }
 
@@ -247,15 +241,9 @@ impl Renderable for Context {
             elements = self.server_list.footer_elements();
         } else {
             elements = match self.current_tab {
-                CurrentTab::Explorer => {
-                    self.explorer_tab.footer_elements()
-                }
-                CurrentTab::Cli => {
-                    self.cli_tab.footer_elements()
-                }
-                CurrentTab::Logger => {
-                    self.logger_tab.footer_elements()
-                }
+                CurrentTab::Explorer => self.explorer_tab.footer_elements(),
+                CurrentTab::Cli => self.cli_tab.footer_elements(),
+                CurrentTab::Logger => self.logger_tab.footer_elements(),
             };
             elements.push(("s", "Server"));
         }
@@ -335,5 +323,4 @@ impl Listenable for Context {
         self.server_list.on_app_event(app_event.clone())?;
         Ok(())
     }
-
 }

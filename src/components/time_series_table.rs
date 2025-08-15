@@ -87,13 +87,8 @@ impl TimeSeriesValue {
 
     pub fn previous(&mut self) {
         let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.items.len() - 1
-                } else {
-                    i - 1
-                }
-            }
+            Some(0) => self.items.len() - 1,
+            Some(i) => i - 1,
             None => 0,
         };
         self.state.select(Some(i));
@@ -105,10 +100,7 @@ impl TimeSeriesValue {
             .bold()
             .fg(self.colors.header_fg)
             .bg(self.colors.header_bg);
-        let selected_style = Style::default()
-            // .add_modifier(Modifier::REVERSED)
-            // .bg(self.colors.selected_style_bg)
-            ;
+        let selected_style = Style::default();
 
         let header = ["No.", "Timestamp", "Value"]
             .into_iter()
@@ -118,9 +110,7 @@ impl TimeSeriesValue {
             .map(Cell::from)
             .collect::<Row>()
             .style(header_style)
-            .height(3)
-            ;
-
+            .height(3);
 
         let rows = self.items.iter().enumerate().map(|(i, data)| {
             let color = match i % 2 {
@@ -192,7 +182,6 @@ impl Renderable for TimeSeriesValue {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
         self.render_table(frame, rect);
         self.render_scrollbar(frame, rect);
-
         Ok(())
     }
 
@@ -200,8 +189,6 @@ impl Renderable for TimeSeriesValue {
         let mut elements = vec![];
         elements.push(("↑/j", "Up"));
         elements.push(("↓/k", "Down"));
-        // elements.push(("←/h", "Close"));
-        // elements.push(("→/l", "Open"));
         elements
     }
 }

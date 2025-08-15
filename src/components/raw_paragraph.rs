@@ -115,5 +115,4 @@ impl<'a> RawParagraph<'a> {
     fn max_offset(&self) -> u16 {
         (self.paragraph.line_count(self.weight) as u16).saturating_sub(self.height)
     }
-
 }

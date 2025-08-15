@@ -255,9 +255,7 @@ impl Listenable for Form {
                 }
                 KeyEvent { code: KeyCode::Enter, .. } => {}
                 KeyEvent { code: KeyCode::Char('m'), modifiers: KeyModifiers::CONTROL, .. } => {}
-                KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => {
-                    text_area.select_all();
-                }
+                KeyEvent { code: KeyCode::Char('a'), modifiers: KeyModifiers::CONTROL, .. } => text_area.select_all(),
                 KeyEvent { code: KeyCode::Char('z'), modifiers: KeyModifiers::CONTROL, .. } => {
                     text_area.undo();
                 }
@@ -315,24 +313,12 @@ impl Listenable for Form {
                         self.next_type();
                     }
                 }
-                KeyCode::Char('1') => {
-                    self.key_type = 0;
-                }
-                KeyCode::Char('2') => {
-                    self.key_type = 1;
-                }
-                KeyCode::Char('3') => {
-                    self.key_type = 2;
-                }
-                KeyCode::Char('4') => {
-                    self.key_type = 3;
-                }
-                KeyCode::Char('5') => {
-                    self.key_type = 4;
-                }
-                KeyCode::Char('6') => {
-                    self.key_type = 5;
-                }
+                KeyCode::Char('1') => self.key_type = 0,
+                KeyCode::Char('2') => self.key_type = 1,
+                KeyCode::Char('3') => self.key_type = 2,
+                KeyCode::Char('4') => self.key_type = 3,
+                KeyCode::Char('5') => self.key_type = 4,
+                KeyCode::Char('6') => self.key_type = 5,
                 _ => {}
             }
             Ok(true)

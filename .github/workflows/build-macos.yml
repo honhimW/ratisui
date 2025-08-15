@@ -5,38 +5,30 @@ permissions:
 
 on:
   workflow_dispatch:
-    inputs:
-      target:
-        type: choice
-        required: true
-        description: Compile target
-        default: aarch64-apple-darwin
-        options:
-          - aarch64-apple-darwin
-          - x86_64-apple-darwin
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ macos-latest ]
+        os: [ macos-13 ]
         rust: [ stable ]
 
     steps:
       - name: Checkout
         uses: actions/Checkout@v4
-      - name: rust-toolchain
-        uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: stable
-          target: ${{ github.event.inputs.target }}
+      - name: Echo OS Info
+        run: uname -a
       - name: Cargo
         uses: actions-rs/cargo@v1
         with:
           use-cross: true
           command: build
-          args: --target ${{ github.event.inputs.target }} --release
+          args: --release
+      - name: Verify
+        run: |
+          ./target/release/ratisui --version
+          ./target/release/ratisui --help
       - name: Create Meta File
         run: |
           echo "License         : MIT" > META-INF
@@ -46,12 +38,12 @@ jobs:
       - name: Create Temp Dir
         run: |
           mkdir artifacts
-          mv ./target/${{ github.event.inputs.target }}/release/ratisui ./artifacts
+          mv ./target/release/ratisui ./artifacts
           mv META-INF ./artifacts
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ratisui-${{ github.event.inputs.target }}
+          name: ratisui
           compression-level: 9
           retention-days: 1
           path: ./artifacts/*

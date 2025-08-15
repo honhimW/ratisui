@@ -2,7 +2,38 @@
 
 ![gif](./assets/ratisui.gif)
 
+- [Installation](#Installation)
+  - [Package Manager](#package-manager)
+    - [Windows](#Windows)
+    - [Mac](#Mac)
+  - [Cargo](#Cargo)
+  - [Download](#download)
+- [Quick Start](#quick-start)
+- [Configuration](#data-storage)
+- [Features](#Features)
+
 ## Installation
+
+### Shell
+```shell
+curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/honhimW/ratisui/main/scripts/install.sh | sh
+```
+
+### Package Manager
+
+#### Windows
+
+##### WinGet
+```shell
+winget install HonhimW.Ratisui
+```
+
+#### Mac
+
+##### Homebrew Tap
+```shell
+brew install honhimW/tap/ratisui
+```
 
 ### Cargo
 ```shell

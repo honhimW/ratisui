@@ -101,13 +101,8 @@ impl ListValue {
 
     pub fn previous(&mut self) {
         let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.items.len() - 1
-                } else {
-                    i - 1
-                }
-            }
+            Some(0) => self.items.len() - 1,
+            Some(i) => i - 1,
             None => 0,
         };
         self.state.select(Some(i));
@@ -119,10 +114,7 @@ impl ListValue {
             .bold()
             .fg(self.colors.header_fg)
             .bg(self.colors.header_bg);
-        let selected_style = Style::default()
-            // .add_modifier(Modifier::REVERSED)
-            // .bg(self.colors.selected_style_bg)
-            ;
+        let selected_style = Style::default();
 
         let header = ["Index", "Value"]
             .into_iter()
@@ -217,7 +209,6 @@ impl Renderable for ListValue {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
         self.render_table(frame, rect);
         self.render_scrollbar(frame, rect);
-
         Ok(())
     }
 
@@ -225,8 +216,6 @@ impl Renderable for ListValue {
         let mut elements = vec![];
         elements.push(("↑/j", "Up"));
         elements.push(("↓/k", "Down"));
-        // elements.push(("←/h", "Close"));
-        // elements.push(("→/l", "Open"));
         elements
     }
 }
@@ -244,7 +233,7 @@ impl Listenable for ListValue {
                     self.previous();
                     true
                 },
-                _ => {false},
+                _ => false,
             };
             return Ok(accepted);
         }

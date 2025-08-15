@@ -1,31 +1,31 @@
 use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::console_output::{ConsoleData, OutputKind};
 use crate::components::redis_cli::RedisCli;
-use ratisui_core::redis_opt::{spawn_redis_opt, Disposable};
-use ratisui_core::utils::{bytes_to_string, escape_string, split_args, try_decode_arg};
 use anyhow::{Error, Result};
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, unbounded};
+use deadpool_redis::redis::{Cmd, Value, VerbatimFormat};
+use itertools::Itertools;
+use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Min};
 use ratatui::layout::{Layout, Rect};
 use ratatui::prelude::{Line, Stylize};
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
-use ratatui::Frame;
-use deadpool_redis::redis::{Cmd, Value, VerbatimFormat};
+use ratatui::widgets::WidgetRef;
+use ratisui_core::bus::{GlobalEvent, publish_event};
+use ratisui_core::configuration::{CliOutputFormatKind, load_history, save_history};
+use ratisui_core::marcos::KeyAsserter;
+use ratisui_core::redis_opt::{Disposable, spawn_redis_opt};
+use ratisui_core::serde_wrapper::to_ron_string;
+use ratisui_core::theme::get_color;
+use ratisui_core::utils::{bytes_to_string, escape_string, split_args, try_decode_arg};
 use std::cmp;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
-use itertools::Itertools;
-use ratatui::widgets::WidgetRef;
 use strum::Display;
 use throbber_widgets_tui::{Throbber, ThrobberState};
-use ratisui_core::bus::{publish_event, GlobalEvent};
-use ratisui_core::configuration::{load_history, save_history, CliOutputFormatKind};
-use ratisui_core::marcos::KeyAsserter;
-use ratisui_core::serde_wrapper::{to_ron_string};
-use ratisui_core::theme::get_color;
 
 pub struct CliTab {
     mode: Mode,
@@ -44,7 +44,7 @@ pub struct CliTab {
     listen_state: (ThrobberState, Instant),
     input_throbber_state: ThrobberState,
 
-    output_format: CliOutputFormatKind
+    output_format: CliOutputFormatKind,
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Display)]
@@ -76,10 +76,11 @@ impl Renderable for CliTab {
         let input_height = 1u16;
         let session_height = cmp::min(input_height.saturating_add(total_lines as u16), rect.height);
         let vertical = Layout::vertical([Length(session_height), Fill(0), Length(1)]).split(rect);
-        let session_vertical = Layout::vertical([Length(session_height - input_height), Length(input_height)]).split(vertical[0]);
+        let session_vertical =
+            Layout::vertical([Length(session_height - input_height), Length(input_height)])
+                .split(vertical[0]);
         self.render_output(frame, session_vertical[0])?;
-        let throbber = Throbber::default()
-            .throbber_set(throbber_widgets_tui::BRAILLE_EIGHT_DOUBLE);
+        let throbber = Throbber::default().throbber_set(throbber_widgets_tui::BRAILLE_EIGHT_DOUBLE);
         let horizontal = Layout::horizontal([Length(2), Fill(0)]).split(vertical[2]);
         frame.render_stateful_widget(throbber, horizontal[0], &mut self.input_throbber_state);
         frame.render_widget(Span::raw(format!("- {} -", self.mode)), horizontal[1]);
@@ -96,7 +97,7 @@ impl Renderable for CliTab {
                 Mode::Insert => {
                     elements.push(("Esc", "Normal"));
                     elements.push(("^Space", "Suggest"));
-                },
+                }
                 Mode::Normal => elements.push(("i", "Insert")),
             }
         }
@@ -114,9 +115,7 @@ impl Renderable for CliTab {
                         self.console_data.extend(lines);
                         self.console_data.build_paragraph();
                     }
-                    Err(..) => {
-                        break
-                    }
+                    Err(_) => break,
                 }
             }
         } else {
@@ -127,16 +126,21 @@ impl Renderable for CliTab {
                         self.console_data.extend(lines);
                         if let Some(lock_at) = self.lock_at {
                             let elapsed = lock_at.elapsed();
-                            let duration = chronoutil::RelativeDuration::from(elapsed).format_to_iso8601();
-                            self.console_data.push(OutputKind::Else(Style::default().dim()), "---");
-                            self.console_data.push(OutputKind::Else(Style::default().dim()), format!("Elapsed: {}", duration));
+                            let duration =
+                                chronoutil::RelativeDuration::from(elapsed).format_to_iso8601();
+                            self.console_data
+                                .push(OutputKind::Else(Style::default().dim()), "---");
+                            self.console_data.push(
+                                OutputKind::Else(Style::default().dim()),
+                                format!("Elapsed: {}", duration),
+                            );
                         }
                         self.lock_input = false;
                         self.console_data.push_std("");
                         self.console_data.build_paragraph();
                         needed = true;
                     }
-                    Err(..) => { break; }
+                    Err(_) => break,
                 }
             }
         }
@@ -146,72 +150,86 @@ impl Renderable for CliTab {
 
 impl Listenable for CliTab {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
-        if self.is_listening() {
-            if key_event.kind == KeyEventKind::Press {
+        if key_event.kind == KeyEventKind::Press {
+            if self.is_listening() {
                 match key_event {
-                    KeyEvent { code: KeyCode::Esc, .. } | KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, ..} => {
-                        self.do_dispose();
+                    KeyEvent {
+                        code: KeyCode::Esc, ..
                     }
-                    KeyEvent { code: KeyCode::Home, .. } => {
-                        self.scroll_start();
-                    }
-                    KeyEvent { code: KeyCode::End, .. } => {
-                        self.scroll_end();
-                    }
-                    KeyEvent { code: KeyCode::Up | KeyCode::Char('k'), .. } => {
-                        self.scroll_up();
-                    }
-                    KeyEvent { code: KeyCode::Down | KeyCode::Char('j'), .. } => {
-                        self.scroll_down();
-                    }
-                    KeyEvent { code: KeyCode::PageUp, .. } => {
-                        self.scroll_page_up();
-                    }
-                    KeyEvent { code: KeyCode::PageDown, .. } => {
-                        self.scroll_page_down();
-                    }
+                    | KeyEvent {
+                        code: KeyCode::Char('c'),
+                        modifiers: KeyModifiers::CONTROL,
+                        ..
+                    } => self.do_dispose(),
+                    KeyEvent {
+                        code: KeyCode::Home,
+                        ..
+                    } => self.scroll_start(),
+                    KeyEvent {
+                        code: KeyCode::End, ..
+                    } => self.scroll_end(),
+                    KeyEvent {
+                        code: KeyCode::Up | KeyCode::Char('k'),
+                        ..
+                    } => self.scroll_up(),
+                    KeyEvent {
+                        code: KeyCode::Down | KeyCode::Char('j'),
+                        ..
+                    } => self.scroll_down(),
+                    KeyEvent {
+                        code: KeyCode::PageUp,
+                        ..
+                    } => self.scroll_page_up(),
+                    KeyEvent {
+                        code: KeyCode::PageDown,
+                        ..
+                    } => self.scroll_page_down(),
                     _ => {}
                 }
+                return Ok(true);
             }
-            return Ok(true);
-        }
-        match self.mode {
-            Mode::Normal => {
-                if key_event.kind == KeyEventKind::Press {
-                    match key_event {
-                        KeyEvent { code: KeyCode::Char('i'), modifiers: KeyModifiers::NONE, .. } => {
-                            self.mode = Mode::Insert;
-                        }
-                        KeyEvent { code: KeyCode::Home, .. } => {
-                            self.scroll_start();
-                        }
-                        KeyEvent { code: KeyCode::End, .. } => {
-                            self.scroll_end();
-                        }
-                        KeyEvent { code: KeyCode::Up | KeyCode::Char('k'), .. } => {
-                            self.scroll_up();
-                        }
-                        KeyEvent { code: KeyCode::Down | KeyCode::Char('j'), .. } => {
-                            self.scroll_down();
-                        }
-                        KeyEvent { code: KeyCode::PageUp, .. } => {
-                            self.scroll_page_up();
-                        }
-                        KeyEvent { code: KeyCode::PageDown, .. } => {
-                            self.scroll_page_down();
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            Mode::Insert => {
-                if key_event.kind == KeyEventKind::Press {
+            match self.mode {
+                Mode::Normal => match key_event {
+                    KeyEvent {
+                        code: KeyCode::Char('i'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    } => self.mode = Mode::Insert,
+                    KeyEvent {
+                        code: KeyCode::Home,
+                        ..
+                    } => self.scroll_start(),
+                    KeyEvent {
+                        code: KeyCode::End, ..
+                    } => self.scroll_end(),
+                    KeyEvent {
+                        code: KeyCode::Up | KeyCode::Char('k'),
+                        ..
+                    } => self.scroll_up(),
+                    KeyEvent {
+                        code: KeyCode::Down | KeyCode::Char('j'),
+                        ..
+                    } => self.scroll_down(),
+                    KeyEvent {
+                        code: KeyCode::PageUp,
+                        ..
+                    } => self.scroll_page_up(),
+                    KeyEvent {
+                        code: KeyCode::PageDown,
+                        ..
+                    } => self.scroll_page_down(),
+                    _ => {}
+                },
+                Mode::Insert => {
                     if !self.lock_input {
                         self.input_throbber_state.calc_next();
                         let handled = self.redis_cli.handle_key_event(key_event)?;
                         if handled {
                             let current_input = self.redis_cli.get_input();
-                            if let Some((_, history_cmd)) = self.history.iter().rfind(|(_, cmd)| cmd.to_lowercase().starts_with(&current_input.to_lowercase())) {
+                            if let Some((_, history_cmd)) = self.history.iter().rfind(|(_, cmd)| {
+                                cmd.to_lowercase()
+                                    .starts_with(&current_input.to_lowercase())
+                            }) {
                                 self.redis_cli.set_auto_suggestion(history_cmd);
                             } else {
                                 self.redis_cli.set_auto_suggestion("");
@@ -223,7 +241,8 @@ impl Listenable for CliTab {
                         let command = self.get_command();
                         if let Some(command) = command {
                             self.lock_at = Some(Instant::now());
-                            self.console_data.push(OutputKind::CMD, format!(">_ {}", command));
+                            self.console_data
+                                .push(OutputKind::CMD, format!(">_ {}", command));
                             self.scroll_end();
                             self.console_data.build_paragraph();
                             self.redis_cli = RedisCli::new();
@@ -232,32 +251,41 @@ impl Listenable for CliTab {
                         }
                     }
                     match key_event {
-                        KeyEvent { code: KeyCode::Esc, .. } => {
-                            self.mode = Mode::Normal;
-                        }
-                        KeyEvent { code: KeyCode::Enter, .. } => {
+                        KeyEvent {
+                            code: KeyCode::Esc, ..
+                        } => self.mode = Mode::Normal,
+                        KeyEvent {
+                            code: KeyCode::Enter,
+                            ..
+                        } => {
                             let command = self.get_command();
                             if let Some(command) = command {
                                 self.commit_command(&command);
                             }
                         }
-                        KeyEvent { code: KeyCode::BackTab, .. } => {
+                        KeyEvent {
+                            code: KeyCode::BackTab | KeyCode::Tab,
+                            ..
+                        } => {
                             return Ok(false);
                         }
-                        KeyEvent { code: KeyCode::Tab, .. } => {
-                            return Ok(false);
-                        }
-                        KeyEvent { code: KeyCode::Up, .. } => {
+                        KeyEvent {
+                            code: KeyCode::Up, ..
+                        } => {
                             self.history_viewpoint = self.history_viewpoint.saturating_sub(1);
                             if let Some((_, command)) = self.history.get(self.history_viewpoint) {
                                 self.redis_cli = RedisCli::new();
                                 self.redis_cli.insert_str(command);
                             }
                         }
-                        KeyEvent { code: KeyCode::Down, .. } => {
+                        KeyEvent {
+                            code: KeyCode::Down,
+                            ..
+                        } => {
                             if self.history_viewpoint < self.history.len().saturating_sub(1) {
                                 self.history_viewpoint = self.history_viewpoint.saturating_add(1);
-                                if let Some((_, command)) = self.history.get(self.history_viewpoint) {
+                                if let Some((_, command)) = self.history.get(self.history_viewpoint)
+                                {
                                     self.redis_cli = RedisCli::new();
                                     self.redis_cli.insert_str(command);
                                 }
@@ -266,24 +294,34 @@ impl Listenable for CliTab {
                                 self.redis_cli = RedisCli::new();
                             }
                         }
-                        KeyEvent { code: KeyCode::Home, modifiers: KeyModifiers::CONTROL, .. } => {
-                            self.scroll_start();
-                        }
-                        KeyEvent { code: KeyCode::End, modifiers: KeyModifiers::CONTROL, .. } => {
-                            self.scroll_end();
-                        }
-                        KeyEvent { code: KeyCode::Char('k'), modifiers: KeyModifiers::CONTROL, .. } => {
-                            self.scroll_up();
-                        }
-                        KeyEvent { code: KeyCode::Char('j'), modifiers: KeyModifiers::CONTROL, .. } => {
-                            self.scroll_down();
-                        }
-                        KeyEvent { code: KeyCode::PageUp, .. } => {
-                            self.scroll_page_up();
-                        }
-                        KeyEvent { code: KeyCode::PageDown, .. } => {
-                            self.scroll_page_down();
-                        }
+                        KeyEvent {
+                            code: KeyCode::Home,
+                            modifiers: KeyModifiers::CONTROL,
+                            ..
+                        } => self.scroll_start(),
+                        KeyEvent {
+                            code: KeyCode::End,
+                            modifiers: KeyModifiers::CONTROL,
+                            ..
+                        } => self.scroll_end(),
+                        KeyEvent {
+                            code: KeyCode::Char('k'),
+                            modifiers: KeyModifiers::CONTROL,
+                            ..
+                        } => self.scroll_up(),
+                        KeyEvent {
+                            code: KeyCode::Char('j'),
+                            modifiers: KeyModifiers::CONTROL,
+                            ..
+                        } => self.scroll_down(),
+                        KeyEvent {
+                            code: KeyCode::PageUp,
+                            ..
+                        } => self.scroll_page_up(),
+                        KeyEvent {
+                            code: KeyCode::PageDown,
+                            ..
+                        } => self.scroll_page_down(),
                         _ => {}
                     }
                     return Ok(true);
@@ -366,7 +404,8 @@ impl CliTab {
     fn commit_command(&mut self, command: &String) {
         self.lock_input = true;
         self.lock_at = Some(Instant::now());
-        self.console_data.push(OutputKind::CMD, format!(">_ {}", command));
+        self.console_data
+            .push(OutputKind::CMD, format!(">_ {}", command));
         self.scroll_end();
         self.console_data.build_paragraph();
         if command.is_empty() {
@@ -408,7 +447,8 @@ Binary:
                  fs#C:\Users\user\file#
                  should not contain any blank character
 Example:
-  SET base64:value base64#YmFzZTY0#"#.to_string(),
+  SET base64:value base64#YmFzZTY0#"#
+                    .to_string(),
             });
             return;
         }
@@ -455,7 +495,7 @@ Example:
                     match try_decode_arg(arg) {
                         Ok(vec) => {
                             cmd.arg(vec);
-                        },
+                        }
                         Err(e) => {
                             sender.send(Value::VerbatimString {
                                 format: VerbatimFormat::Unknown(String::from("ERROR")),
@@ -472,7 +512,7 @@ Example:
                             format: VerbatimFormat::Unknown(String::from("ERROR")),
                             text: format!("{:?}", e),
                         })?;
-                    },
+                    }
                 }
                 Ok(())
             })
@@ -536,7 +576,8 @@ Example:
             let horizontal = Layout::horizontal([Length(3), Min(10)]).split(vertical[0]);
             frame.render_widget(Span::raw(">_ "), horizontal[0]);
             let frame_area = frame.area();
-            self.redis_cli.update_frame(frame_area.height, frame_area.width);
+            self.redis_cli
+                .update_frame(frame_area.height, frame_area.width);
             self.redis_cli.render_frame(frame, horizontal[1])?;
         }
         Ok(())
@@ -560,62 +601,48 @@ Example:
     }
 }
 
-
 fn value_to_lines_in_ron(value: &Value, _: u16) -> Vec<(OutputKind, String)> {
     match value {
         Value::BulkString(bulk_string) => {
-            let bulk_string = bytes_to_string(bulk_string.clone()).unwrap_or_else(|e| e.to_string());
+            let bulk_string =
+                bytes_to_string(bulk_string.clone()).unwrap_or_else(|e| e.to_string());
             vec![(OutputKind::Raw, bulk_string)]
         }
-        Value::Nil => {
-            vec![(OutputKind::STD, "(Nil)".to_string())]
-        }
-        Value::Int(i) => {
-            vec![(OutputKind::STD, format!("{}", i))]
-        }
-        Value::SimpleString(s) => {
-            vec![(OutputKind::STD, s.clone())]
-        }
-        Value::Okay => {
-            vec![(OutputKind::STD, "Okay".to_string())]
-        }
-        Value::Double(d) => {
-            vec![(OutputKind::STD, format!("{}", d))]
-        }
-        Value::Boolean(b) => {
-            vec![(OutputKind::STD, format!("{}", b))]
-        }
-        Value::BigNumber(big_number) => {
-            vec![(OutputKind::STD, format!("{}", big_number))]
-        }
-        Value::ServerError(e) => {
-            vec![(OutputKind::ERR, format!("{:?}", e))]
-        }
-        Value::VerbatimString { format, text, .. } => {
-            match format {
-                VerbatimFormat::Unknown(s) => {
-                    if s == "ERROR" {
-                        text.lines().map(|line| (OutputKind::ERR, format!("{line}"))).collect_vec()
-                    } else if s == "PROMPT" {
-                        text.lines().map(|line| {
-                            (OutputKind::Else(Style::default().dim()), format!("{line}"))
-                        }).collect_vec()
-                    } else {
-                        vec![(OutputKind::STD, format!("\"{}\"", escape_string(s)))]
-                    }
-                }
-                _ => {
-                    text.lines().map(|line| {
-                        (OutputKind::Else(Style::default().dim()), format!("{line}"))
-                    }).collect_vec()
+        Value::Nil => vec![(OutputKind::STD, "(Nil)".to_string())],
+        Value::Int(i) => vec![(OutputKind::STD, format!("{}", i))],
+        Value::SimpleString(s) => vec![(OutputKind::STD, s.clone())],
+        Value::Okay => vec![(OutputKind::STD, "Okay".to_string())],
+        Value::Double(d) => vec![(OutputKind::STD, format!("{}", d))],
+        Value::Boolean(b) => vec![(OutputKind::STD, format!("{}", b))],
+        Value::BigNumber(big_number) => vec![(OutputKind::STD, format!("{}", big_number))],
+        Value::ServerError(e) => vec![(OutputKind::ERR, format!("{:?}", e))],
+        Value::VerbatimString { format, text, .. } => match format {
+            VerbatimFormat::Unknown(s) => {
+                if s == "ERROR" {
+                    text.lines()
+                        .map(|line| (OutputKind::ERR, format!("{line}")))
+                        .collect_vec()
+                } else if s == "PROMPT" {
+                    text.lines()
+                        .map(|line| (OutputKind::Else(Style::default().dim()), format!("{line}")))
+                        .collect_vec()
+                } else {
+                    vec![(OutputKind::STD, format!("\"{}\"", escape_string(s)))]
                 }
             }
-        }
+            _ => text
+                .lines()
+                .map(|line| (OutputKind::Else(Style::default().dim()), format!("{line}")))
+                .collect_vec(),
+        },
         value => {
             if let Ok(s) = to_ron_string(&value) {
                 vec![(OutputKind::Raw, s)]
             } else {
-                vec![(OutputKind::ERR, format!("Could not convert to RON: {:?}", value))]
+                vec![(
+                    OutputKind::ERR,
+                    format!("Could not convert to RON: {:?}", value),
+                )]
             }
         }
     }
@@ -623,24 +650,15 @@ fn value_to_lines_in_ron(value: &Value, _: u16) -> Vec<(OutputKind, String)> {
 
 fn value_to_lines_in_redis(value: &Value, pad: u16) -> Vec<(OutputKind, String)> {
     let prepend = " ".repeat(pad as usize);
-    let format = |str: &str| {
-        (OutputKind::STD, format!("{prepend}{str}"))
-    };
-    let format_err = |str: &str| {
-        (OutputKind::ERR, format!("{prepend}{str}"))
-    };
-    let format_no_pad = |str: &str| {
-        (OutputKind::STD, format!("{str}"))
-    };
+    let format = |str: &str| (OutputKind::STD, format!("{prepend}{str}"));
+    let format_err = |str: &str| (OutputKind::ERR, format!("{prepend}{str}"));
+    let format_no_pad = |str: &str| (OutputKind::STD, format!("{str}"));
     match value {
-        Value::Nil => {
-            vec![format_no_pad("(Nil)")]
-        }
-        Value::Int(int) => {
-            vec![format_no_pad(int.to_string().as_ref())]
-        }
+        Value::Nil => vec![format_no_pad("(Nil)")],
+        Value::Int(int) => vec![format_no_pad(int.to_string().as_ref())],
         Value::BulkString(bulk_string) => {
-            let bulk_string = bytes_to_string(bulk_string.clone()).unwrap_or_else(|e| e.to_string());
+            let bulk_string =
+                bytes_to_string(bulk_string.clone()).unwrap_or_else(|e| e.to_string());
             if pad == 0 {
                 vec![(OutputKind::Raw, bulk_string)]
             } else {
@@ -680,9 +698,7 @@ fn value_to_lines_in_redis(value: &Value, pad: u16) -> Vec<(OutputKind, String)>
             let lines = string.lines();
             lines.map(|line| format_no_pad(line.as_ref())).collect_vec()
         }
-        Value::Okay => {
-            vec![format_no_pad("Okay")]
-        }
+        Value::Okay => vec![format_no_pad("Okay")],
         Value::Map(map) => {
             let mut lines = vec![];
             let mut i = 1;
@@ -718,9 +734,7 @@ fn value_to_lines_in_redis(value: &Value, pad: u16) -> Vec<(OutputKind, String)>
             }
             lines
         }
-        Value::Attribute { .. } => {
-            vec![format_no_pad("Attribute, not supported yet")]
-        }
+        Value::Attribute { .. } => vec![format_no_pad("Attribute, not supported yet")],
         Value::Set(set) => {
             let mut lines = vec![];
             let mut i = 1;
@@ -742,33 +756,37 @@ fn value_to_lines_in_redis(value: &Value, pad: u16) -> Vec<(OutputKind, String)>
             }
             lines
         }
-        Value::Double(double) => {
-            vec![format_no_pad(&double.to_string())]
-        }
-        Value::Boolean(boolean) => {
-            vec![format_no_pad(&boolean.to_string())]
-        }
-        Value::VerbatimString { format: _format, text, .. } => {
-            match _format {
-                VerbatimFormat::Unknown(s) => {
-                    if s == "ERROR" {
-                        text.lines().map(|line| format_err(line.as_ref())).collect_vec()
-                    } else if s == "PROMPT" {
-                        text.lines().map(|line| {
-                            (OutputKind::Else(Style::default().dim()), format!("{prepend}{line}"))
-                        }).collect_vec()
-                    } else {
-                        vec![format_no_pad(format!("\"{}\"", escape_string(s)).as_ref())]
-                    }
-                }
-                _ => {
-                    text.lines().map(|line| format_no_pad(line.as_ref())).collect_vec()
+        Value::Double(double) => vec![format_no_pad(&double.to_string())],
+        Value::Boolean(boolean) => vec![format_no_pad(&boolean.to_string())],
+        Value::VerbatimString {
+            format: _format,
+            text,
+            ..
+        } => match _format {
+            VerbatimFormat::Unknown(s) => {
+                if s == "ERROR" {
+                    text.lines()
+                        .map(|line| format_err(line.as_ref()))
+                        .collect_vec()
+                } else if s == "PROMPT" {
+                    text.lines()
+                        .map(|line| {
+                            (
+                                OutputKind::Else(Style::default().dim()),
+                                format!("{prepend}{line}"),
+                            )
+                        })
+                        .collect_vec()
+                } else {
+                    vec![format_no_pad(format!("\"{}\"", escape_string(s)).as_ref())]
                 }
             }
-        }
-        Value::BigNumber(big_number) => {
-            vec![format_no_pad(&big_number.to_string())]
-        }
+            _ => text
+                .lines()
+                .map(|line| format_no_pad(line.as_ref()))
+                .collect_vec(),
+        },
+        Value::BigNumber(big_number) => vec![format_no_pad(&big_number.to_string())],
         Value::Push { data, .. } => {
             let mut lines = vec![];
             for value in data {
@@ -777,8 +795,6 @@ fn value_to_lines_in_redis(value: &Value, pad: u16) -> Vec<(OutputKind, String)>
             }
             lines
         }
-        Value::ServerError(e) => {
-            vec![format_err(&format!("{:?}", e))]
-        }
+        Value::ServerError(e) => vec![format_err(&format!("{:?}", e))],
     }
 }

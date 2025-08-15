@@ -1,12 +1,15 @@
-use itertools::Itertools;
-use deadpool_redis::redis::{PushKind, Value, VerbatimFormat};
-use serde::{Deserialize, Serialize};
-use anyhow::Result;
-use ron::ser::PrettyConfig;
 use crate::utils::bytes_to_string;
+use anyhow::Result;
+use deadpool_redis::redis::{PushKind, Value, VerbatimFormat};
+use itertools::Itertools;
+use ron::ser::PrettyConfig;
+use serde::{Deserialize, Serialize};
 
 pub fn to_ron_string(value: &Value) -> Result<String> {
-    Ok(ron::ser::to_string_pretty(&IValue::from(value), PrettyConfig::default())?)
+    Ok(ron::ser::to_string_pretty(
+        &IValue::from(value),
+        PrettyConfig::default(),
+    )?)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -82,16 +85,30 @@ impl From<Value> for IValue {
             Value::Array(val) => IValue::Arr(val.iter().map(|x| IValue::from(x)).collect_vec()),
             Value::SimpleString(val) => IValue::S(val),
             Value::Okay => IValue::Okay,
-            Value::Map(val) => IValue::Map(val.iter().map(|(x1, x2)| (IValue::from(x1), IValue::from(x2))).collect_vec()),
-            Value::Attribute { data, attributes } => {
-                IValue::Attr { data: Box::new(IValue::from(*data)), attributes: attributes.iter().map(|(x1, x2)| (IValue::from(x1), IValue::from(x2))).collect_vec() }
+            Value::Map(val) => IValue::Map(
+                val.iter()
+                    .map(|(x1, x2)| (IValue::from(x1), IValue::from(x2)))
+                    .collect_vec(),
+            ),
+            Value::Attribute { data, attributes } => IValue::Attr {
+                data: Box::new(IValue::from(*data)),
+                attributes: attributes
+                    .iter()
+                    .map(|(x1, x2)| (IValue::from(x1), IValue::from(x2)))
+                    .collect_vec(),
             },
             Value::Set(val) => IValue::Set(val.iter().map(|x| IValue::from(x)).collect_vec()),
             Value::Double(val) => IValue::F(val),
             Value::Boolean(val) => IValue::B(val),
-            Value::VerbatimString { format, text } => IValue::VS { format: IVerbatimFormat::from(format), text },
+            Value::VerbatimString { format, text } => IValue::VS {
+                format: IVerbatimFormat::from(format),
+                text,
+            },
             Value::BigNumber(val) => IValue::BigNumber(val.to_string()),
-            Value::Push { kind, data } => IValue::Push { kind: IPushKind::from(kind), data: data.iter().map(|x| IValue::from(x)).collect_vec() },
+            Value::Push { kind, data } => IValue::Push {
+                kind: IPushKind::from(kind),
+                data: data.iter().map(|x| IValue::from(x)).collect_vec(),
+            },
             Value::ServerError(val) => IValue::ServerError(val.details().unwrap_or_default().to_string()),
         }
     }
