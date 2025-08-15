@@ -23,6 +23,10 @@ jobs:
           use-cross: true
           command: build
           args: --release
+      - name: Verify
+        run: |
+          ./target/release/ratisui --version
+          ./target/release/ratisui --help
       - name: Create Meta File
         run: |
           echo "License         : MIT" > META-INF
