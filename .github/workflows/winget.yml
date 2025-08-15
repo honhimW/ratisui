@@ -1,0 +1,33 @@
+name: Winget
+
+permissions:
+  contents: write
+  packages: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag'
+        required: true
+        type: string
+
+jobs:
+  winget_create_pr:
+    runs-on: ubuntu-latest
+    steps:
+    # - name: Checkout code
+    #   uses: actions/checkout@v4
+      # You may pin to the exact commit or the version.
+      # uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e
+    - name: Release WinGet
+      uses: vedantmgoyal9/winget-releaser@v2
+      with:
+        # The PackageIdentifier of the package (case-sensitive).
+        identifier: HonhimW.Ratisui
+        release-tag: ${{ github.event.inputs.tag }}
+        # The maximum number of versions to keep in WinGet Community Repository (Default: 0 - no limit)
+        max-versions-to-keep: 3
+        # GitHub token to create pull request on Windows Package Manager Community Repository.
+        token: ${{ secrets.WINGET_TOKEN }}
+          
