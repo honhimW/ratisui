@@ -1,5 +1,5 @@
 #!/bin/sh
-# curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/honhimW/ratisui/main/scripts/install.sh
+# curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/honhimW/ratisui/main/scripts/install.sh | sh
 
 set -e
 
@@ -7,7 +7,7 @@ REPO="honhimW/ratisui"
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
-case "$OS_$ARCH" in
+case "$OS-$ARCH" in
   Linux-x86_64)   ASSET="ratisui-linux-amd64.tar.gz" ;;
   Linux-aarch64)  ASSET="ratisui-linux-aarch64.tar.gz" ;;
   Darwin-x86_64)  ASSET="ratisui-macos-intel.tar.gz" ;;
