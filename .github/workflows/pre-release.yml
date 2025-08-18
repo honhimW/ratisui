@@ -19,7 +19,7 @@ jobs:
       upload_url: ${{ steps.set_output.outputs.upload_url }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Create Release
         if: github.event_name == 'workflow_dispatch'
         id: create_release
@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Build
         run: cargo build --release
       - name: Package (Linux)
@@ -103,7 +103,7 @@ jobs:
         rust: [stable]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: rust-toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
