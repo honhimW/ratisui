@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/Checkout@v4
+        uses: actions/Checkout@v5
       - name: Echo OS Info
         run: uname -a
       - name: Cargo
