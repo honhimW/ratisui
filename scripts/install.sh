@@ -69,6 +69,13 @@ echo "Created at: $CREATED_AT"
 # Do download
 TMP_DIR="$(mktemp -d)"
 
+# Do finally
+cleanup() {
+  rm -rf "$TMP_DIR"
+  echo "Cleanup temporary directory succeed."
+}
+trap cleanup EXIT
+
 echo "Downloading ..."
 curl --proto '=https' --tlsv1.2 -#SfL "$DOWNLOAD_URL" -o "$TMP_DIR/$ASSET"
 
@@ -93,13 +100,12 @@ mkdir -p "$INSTALL_DIR"
 mv "$TMP_DIR/ratisui" "$INSTALL_DIR/ratisui"
 chmod +x "$INSTALL_DIR/ratisui"
 
-# Clear up
-rm -rf "$TMP_DIR"
-
 # Hint
 if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
   echo "make sure '$INSTALL_DIR' is added to PATH."
+  echo ""
   echo '  export PATH="$HOME/.local/bin:$PATH"'
+  echo ""
 fi
 
 # Validation
