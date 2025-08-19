@@ -1,14 +1,15 @@
+use std::sync::Arc;
 use crate::context;
 use ratisui_core::input::Input;
 use anyhow::{Result};
-use ratatui::crossterm::event::KeyEvent;
+use ratatui::crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::text::Line;
 use ratatui::Frame;
 use ratatui::style::Color;
 use ratisui_core::bus::GlobalEvent;
 use ratisui_core::cli::AppArguments;
-use ratisui_core::configuration::{Configuration, Databases};
+use ratisui_core::configuration::Configuration;
 
 pub struct App {
     pub state: AppState,
@@ -26,8 +27,7 @@ pub enum AppState {
 
 #[derive(Clone, Debug)]
 pub enum AppEvent {
-    Init,
-    InitConfig(Configuration, AppArguments),
+    InitConfig(Arc<Configuration>, Arc<AppArguments>),
     Reset,
     Destroy,
     Bus(GlobalEvent),
@@ -43,6 +43,11 @@ pub trait Listenable {
 
     /// Returns if the key event was accepted, usually a key event should only be accepted once
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        Ok(false)
+    }
+
+    /// Returns if the mouse event was accepted, usually a key event should only be accepted once
+    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
         Ok(false)
     }
 
@@ -66,9 +71,9 @@ pub trait Renderable {
 }
 
 impl App {
-    pub fn new(databases: Databases) -> Self {
+    pub fn new() -> Self {
         Self {
-            context: context::Context::new(databases),
+            context: context::Context::new(),
             state: AppState::Preparing,
             input: Input::new(),
         }

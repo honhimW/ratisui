@@ -10,6 +10,8 @@ use ratisui_macros::characterize;
 /// ```
 /// Macro expansion:
 /// ```rust
+/// use ratatui::crossterm::event::KeyModifiers;
+///
 /// pub trait KeyAsserter {
 ///     fn is_n_a(&self) -> bool;
 ///     fn is_c_a(&self) -> bool;

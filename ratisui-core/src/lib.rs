@@ -29,5 +29,6 @@ pub mod cli;
 pub mod input;
 pub mod highlight_value;
 pub mod serde_wrapper;
+pub mod mouse;
 
 mod notify_mutex;

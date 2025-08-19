@@ -6,7 +6,7 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use deadpool_redis::redis::{Cmd, Value, VerbatimFormat};
 use itertools::Itertools;
 use ratatui::Frame;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind};
 use ratatui::layout::Constraint::{Fill, Length, Min};
 use ratatui::layout::{Layout, Rect};
 use ratatui::prelude::{Line, Stylize};
@@ -332,6 +332,21 @@ impl Listenable for CliTab {
         Ok(false)
     }
 
+    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
+        Ok(match mouse_event.kind {
+            MouseEventKind::ScrollDown => {
+                self.scroll_down();
+                true
+            }
+            MouseEventKind::ScrollUp => {
+                self.scroll_up();
+                true
+            }
+            _ => false
+        })
+    }
+
+
     fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
         match app_event.clone() {
             AppEvent::InitConfig(app_config, _) => {
@@ -341,7 +356,7 @@ impl Listenable for CliTab {
                     self.history.extend(deque);
                     self.history_viewpoint = self.history.len();
                 }
-                self.output_format = app_config.cli_output_format;
+                self.output_format = app_config.cli_output_format.clone();
                 self.console_capacity = app_config.console_capacity;
                 self.console_data = ConsoleData::new(self.console_capacity);
             }
@@ -431,6 +446,9 @@ impl CliTab {
             return;
         } else if "exit".eq_ignore_ascii_case(&command) {
             let _ = publish_event(GlobalEvent::Exit);
+            return;
+        } else if "restart".eq_ignore_ascii_case(&command) {
+            let _ = publish_event(GlobalEvent::Restart);
             return;
         } else if "help".eq_ignore_ascii_case(&command) {
             let _ = self.data_sender.send(Value::VerbatimString {

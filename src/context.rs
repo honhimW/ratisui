@@ -1,38 +1,47 @@
+use std::sync::Arc;
 use crate::app::{centered_rect, AppEvent, Listenable, Renderable, TabImplementation};
-use ratisui_core::bus::{GlobalEvent, Kind, Message};
+use crate::components::cmd_viewer::CmdViewer;
+use crate::components::fps::FpsCalculator;
 use crate::components::servers::ServerList;
-use ratisui_core::configuration::Databases;
 use crate::tabs::cli::CliTab;
 use crate::tabs::explorer::ExplorerTab;
 use crate::tabs::logger::LoggerTab;
-use ratisui_core::utils::none_match;
-use anyhow::Result;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use anyhow::{anyhow, Result};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use ratatui::layout::Constraint::{Fill, Length, Max, Min};
 use ratatui::layout::{Alignment, Layout, Rect};
 use ratatui::prelude::{Color, Span, Style, Stylize, Text};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, WidgetRef, Wrap};
 use ratatui::{symbols, Frame};
-use std::time::Instant;
-use strum::{EnumCount, EnumIter, IntoEnumIterator};
+use ratisui_core::bus::{publish_msg, GlobalEvent, Kind, Message};
+use ratisui_core::configuration::{load_database_configuration, load_theme_configuration, Configuration, Databases};
 use ratisui_core::marcos::KeyAsserter;
-use ratisui_core::redis_opt::redis_operations;
+use ratisui_core::redis_opt::{redis_operations, switch_client};
 use ratisui_core::theme::get_color;
-use crate::components::cmd_viewer::CmdViewer;
+use ratisui_core::utils::none_match;
+use std::time::Instant;
+use log::{info, warn};
+use strum::{EnumCount, EnumIter, IntoEnumIterator};
+use ratisui_core::cli::AppArguments;
+use ratisui_core::theme;
+use crate::components::app_configuration_editor::Options;
 
 pub struct Context {
     show_server_switcher: bool,
+    show_app_options: bool,
     current_tab: CurrentTab,
     current_tab_index: usize,
     explorer_tab: ExplorerTab,
     cli_tab: CliTab,
     logger_tab: LoggerTab,
     server_list: ServerList,
+    app_options: Options,
     title: String,
     show_cmd_viewer: bool,
+    initial_configuration: Arc<Configuration>,
     pub toast: Option<Message>,
-    pub fps: f32,
+    pub fps_calculator: FpsCalculator,
 }
 
 #[derive(Eq, PartialEq, EnumCount, EnumIter)]
@@ -43,19 +52,23 @@ enum CurrentTab {
 }
 
 impl Context {
-    pub fn new(databases: Databases) -> Self {
+    pub fn new() -> Self {
         Self {
             show_server_switcher: false,
+            show_app_options: false,
             current_tab: CurrentTab::Explorer,
             current_tab_index: 0,
             explorer_tab: ExplorerTab::new(),
             cli_tab: CliTab::new(),
             logger_tab: LoggerTab::new(),
-            server_list: ServerList::new(&databases),
+            // server_list: ServerList::new(&databases),
+            server_list: ServerList::new(&Databases::empty()),
+            app_options: Options::default(),
             title: "redis ver: ?.?.?".to_string(),
             show_cmd_viewer: false,
+            initial_configuration: Arc::new(Configuration::default()),
             toast: None,
-            fps: 0.0,
+            fps_calculator: FpsCalculator::default(),
         }
     }
 
@@ -76,23 +89,23 @@ impl Context {
     }
 
     pub fn get_all_tabs(&self) -> Vec<&dyn TabImplementation> {
-        vec![
-            &self.explorer_tab,
-            &self.cli_tab,
-            &self.logger_tab,
-        ]
+        vec![&self.explorer_tab, &self.cli_tab, &self.logger_tab]
     }
 
     fn next_tab(&mut self) {
         let tmp_index = self.current_tab_index + 1;
         self.current_tab_index = tmp_index % CurrentTab::COUNT;
-        self.current_tab = CurrentTab::iter().get(self.current_tab_index).unwrap_or(CurrentTab::Explorer);
+        self.current_tab = CurrentTab::iter()
+            .get(self.current_tab_index)
+            .unwrap_or(CurrentTab::Explorer);
     }
 
     fn prev_tab(&mut self) {
         let tmp_index = self.current_tab_index + (CurrentTab::COUNT - 1);
         self.current_tab_index = tmp_index % CurrentTab::COUNT;
-        self.current_tab = CurrentTab::iter().get(self.current_tab_index).unwrap_or(CurrentTab::Explorer);
+        self.current_tab = CurrentTab::iter()
+            .get(self.current_tab_index)
+            .unwrap_or(CurrentTab::Explorer);
     }
 
     fn render_bg(&self, frame: &mut Frame, area: Rect) -> Result<()> {
@@ -107,22 +120,34 @@ impl Context {
     }
 
     fn render_tabs(&self, frame: &mut Frame, area: Rect) -> Result<()> {
-        let titles = self.get_all_tabs().iter().map(|tab| tab.title()).collect::<Vec<_>>();
+        let titles = self
+            .get_all_tabs()
+            .iter()
+            .map(|tab| tab.title())
+            .collect::<Vec<_>>();
         let current_tab = self.get_current_tab();
-        let highlight_style = Style::default().fg(get_color(|t| &t.tab.title))
+        let highlight_style = Style::default()
+            .fg(get_color(|t| &t.tab.title))
             .bg(current_tab.highlight());
-        frame.render_widget(Tabs::new(titles)
-                                .highlight_style(highlight_style)
-                                .select(self.current_tab_index)
-                                .padding("", "")
-                                .divider("|"), area);
+        frame.render_widget(
+            Tabs::new(titles)
+                .highlight_style(highlight_style)
+                .select(self.current_tab_index)
+                .padding("", "")
+                .divider("|"),
+            area,
+        );
 
         Ok(())
     }
 
     fn render_fps(&self, frame: &mut Frame, area: Rect) -> Result<()> {
-        frame.render_widget(Text::from(format!("{:.1}", self.fps))
-                                .style(Style::default().fg(get_color(|t| &t.context.fps))), area);
+        let fps = self.fps_calculator.fps.unwrap_or(0.0);
+        frame.render_widget(
+            Text::from(format!("{fps:.1}"))
+                .style(Style::default().fg(get_color(|t| &t.context.fps))),
+            area,
+        );
         Ok(())
     }
 
@@ -149,7 +174,13 @@ impl Context {
         let mut command_text = Text::default();
         let footers = self.footer_elements();
         for (icon, desc) in footers {
-            let command_icon = Span::styled(format!(" {} ", icon), Style::default().bold().fg(Color::default()).bg(get_color(|t| &t.context.key_bg)));
+            let command_icon = Span::styled(
+                format!(" {} ", icon),
+                Style::default()
+                    .bold()
+                    .fg(Color::default())
+                    .bg(get_color(|t| &t.context.key_bg)),
+            );
             let command_desc = Span::styled(format!(" {} ", desc), Style::default().bold());
             command_text.push_span(command_icon);
             command_text.push_span(command_desc);
@@ -169,9 +200,17 @@ impl Context {
         Ok(())
     }
 
-    fn render_toast(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        if let Some(ref toast) = self.toast {
-            frame.render_widget(Clear::default(), area);
+    fn render_app_options(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        if self.show_app_options {
+            let popup_area = centered_rect(74, 30, area);
+            self.app_options.render_frame(frame, popup_area)?;
+        }
+        Ok(())
+    }
+
+    fn render_toast(&mut self, frame: &mut Frame) -> Result<()> {
+        if let Some(toast) = &self.toast && toast.expired_at > Instant::now() {
+            let rect = frame.area();
             let bg_color = match toast.kind {
                 Kind::Error => get_color(|t| &t.toast.error),
                 Kind::Warn => get_color(|t| &t.toast.warn),
@@ -181,13 +220,21 @@ impl Context {
             text.push_line(Line::raw(format!("  {}", toast.msg.clone())));
             let paragraph = Paragraph::new(text)
                 .wrap(Wrap { trim: false })
-                .block(Block::bordered()
-                    .borders(Borders::from_bits_retain(0b1011))
-                    .border_set(symbols::border::EMPTY)
-                    .title_style(Style::default().bold())
-                    .title(toast.title.clone().unwrap_or(toast.kind.to_string())))
+                .block(
+                    Block::bordered()
+                        .borders(Borders::from_bits_retain(0b1011))
+                        .border_set(symbols::border::EMPTY)
+                        .title_style(Style::default().bold())
+                        .title(toast.title.clone().unwrap_or(toast.kind.to_string())),
+                )
                 .bg(bg_color);
-            frame.render_widget(paragraph, area);
+            let line_count = paragraph.line_count(35);
+
+            let top = Layout::vertical([Length(line_count as u16), Fill(0)]).split(rect)[0];
+            let top_right_area = Layout::horizontal([Fill(0), Length(35)]).split(top)[1];
+
+            frame.render_widget(Clear::default(), top_right_area);
+            frame.render_widget(paragraph, top_right_area);
         }
         Ok(())
     }
@@ -221,32 +268,34 @@ impl Renderable for Context {
         } else {
             self.render_selected_tab(frame, inner_area)?;
         }
-        
+
         self.render_footer(frame, footer_area)?;
         self.render_server_switcher(frame, rect)?;
-        if let Some(ref toast) = self.toast {
-            if toast.expired_at > Instant::now() {
-                let top = Layout::vertical([Length(4), Fill(0)]).split(rect)[0];
-                let top_right_area = Layout::horizontal([Fill(0), Length(35)]).split(top)[1];
-                self.render_toast(frame, top_right_area)?;
-            }
-        }
+        self.render_app_options(frame, rect)?;
+        self.render_toast(frame)?;
 
         Ok(())
     }
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
-        let mut elements;
+        let mut elements = vec![];
         if self.show_server_switcher {
-            elements = self.server_list.footer_elements();
-        } else {
-            elements = match self.current_tab {
+            elements.extend(self.server_list.footer_elements());
+        }
+        if self.show_app_options {
+            elements.extend(self.app_options.footer_elements());
+        }
+
+        if !self.show_server_switcher && !self.show_app_options {
+            elements.extend(match self.current_tab {
                 CurrentTab::Explorer => self.explorer_tab.footer_elements(),
                 CurrentTab::Cli => self.cli_tab.footer_elements(),
                 CurrentTab::Logger => self.logger_tab.footer_elements(),
-            };
+            });
             elements.push(("s", "Server"));
+            elements.push(("o", "Options"));
         }
+
         elements.push(("^o", "Output"));
         elements.push(("^F5", "Reload"));
         elements.push(("^c", "Quit"));
@@ -256,11 +305,11 @@ impl Renderable for Context {
 
     fn handle_data(&mut self) -> Result<bool> {
         let mut needed = false;
-        if let Some(ref toast) = self.toast {
-            if toast.expired_at < Instant::now() {
-                self.toast = None;
-                needed = true;
-            }
+        if let Some(ref toast) = self.toast
+            && toast.expired_at < Instant::now()
+        {
+            self.toast = None;
+            needed = true;
         }
         let current_tab = self.get_current_tab_as_mut();
         let current_tab_needed = current_tab.handle_data()?;
@@ -280,8 +329,19 @@ impl Listenable for Context {
             }
         }
 
+        if self.show_app_options {
+            if self.app_options.handle_key_event(key_event)? {
+                return Ok(true);
+            }
+            if none_match(&key_event, KeyCode::Esc) {
+                self.show_app_options = false;
+                return Ok(true);
+            }
+        }
+
         if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('h') {
-            // TODO show help
+            let _ = publish_msg(Message::warning("Not yet implemented."));
+            return Ok(true);
         }
 
         if key_event.is_c_o() {
@@ -299,18 +359,71 @@ impl Listenable for Context {
             KeyCode::BackTab => self.prev_tab(),
             _ => {}
         }
-        if none_match(&key_event, KeyCode::Char('s')) {
+        if key_event.is_n_s() {
             self.show_server_switcher = true;
             return Ok(true);
         }
+        if key_event.is_n_o() {
+            self.show_app_options = true;
+            self.app_options = Options::default();
+            self.app_options.init_values(Arc::clone(&self.initial_configuration));
+            return Ok(true);
+        }
+
         Ok(false)
+    }
+
+    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
+        use ratisui_core::mouse::MouseEventHelper;
+        if mouse_event.is_left_down() {
+            return Ok(false);
+        }
+        if mouse_event.is_left_up() {
+            if mouse_event.row == 0 {
+                let tabs = self.get_all_tabs();
+                let column = mouse_event.column as usize;
+                let mut start_pos = 0;
+
+                for (i, tab) in tabs.iter().enumerate() {
+                    let end_pos = start_pos + tab.title().width();
+                    if start_pos <= column && column < end_pos {
+                        if let Some(t) = CurrentTab::iter().get(i) {
+                            self.current_tab_index = i;
+                            self.current_tab = t;
+                        };
+                        break;
+                    }
+                    // separator width 1
+                    start_pos = end_pos + 1;
+                }
+                return Ok(true);
+            }
+        };
+        let current_tab = self.get_current_tab_as_mut();
+        if current_tab.handle_mouse_event(mouse_event)? {
+            return Ok(true);
+        }
+        Ok(true)
     }
 
     fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
         match app_event.clone() {
+            AppEvent::InitConfig(app_config, arguments) => {
+                self.initial_configuration = Arc::clone(&app_config);
+                apply_theme(&arguments, &app_config)?;
+                let db_config = if arguments.once {
+                    Databases::empty()
+                } else {
+                    load_database_configuration()?
+                };
+                self.server_list = ServerList::new(&db_config);
+                apply_db(&arguments, &db_config)?;
+            }
             AppEvent::Bus(global_event) => match global_event {
                 GlobalEvent::ClientChanged => {
-                    let v = redis_operations().and_then(|opt| opt.get_server_info("redis_version")).unwrap_or("?.?.?".to_string());
+                    let v = redis_operations()
+                        .and_then(|opt| opt.get_server_info("redis_version"))
+                        .unwrap_or("?.?.?".to_string());
                     self.title = format!("redis ver: {v}");
                 }
                 _ => {}
@@ -321,6 +434,44 @@ impl Listenable for Context {
         self.cli_tab.on_app_event(app_event.clone())?;
         self.logger_tab.on_app_event(app_event.clone())?;
         self.server_list.on_app_event(app_event.clone())?;
+        self.app_options.on_app_event(app_event.clone())?;
         Ok(())
     }
+}
+
+fn apply_theme(app_arguments: &AppArguments, app_config: &Configuration) -> Result<()> {
+    let theme_name = app_arguments
+        .theme
+        .clone()
+        .or_else(|| app_config.theme.clone());
+    let theme = load_theme_configuration(theme_name)?;
+    theme::set_theme(theme);
+    Ok(())
+}
+
+fn apply_db(app_arguments: &AppArguments, db_config: &Databases) -> Result<()> {
+    let default_db = app_arguments
+        .target
+        .clone()
+        .or_else(|| db_config.default_database.clone());
+
+    if let Some(db) = default_db {
+        if let Some(database) = db_config.databases.get(&db) {
+            let database_clone = database.clone();
+            tokio::spawn(async move {
+                match switch_client(db.clone(), &database_clone) {
+                    Ok(_) => {
+                        info!("Successfully connected to default database '{db}'");
+                        info!("{database_clone}");
+                    }
+                    Err(_) => {
+                        warn!("Failed to connect to default database.");
+                    }
+                };
+            });
+        } else {
+            Err(anyhow!("Unknown database '{db}'."))?;
+        }
+    };
+    Ok(())
 }

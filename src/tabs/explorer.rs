@@ -15,7 +15,7 @@ use bitflags::bitflags;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use deadpool_redis::redis::{FromRedisValue, Value};
 use log::info;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind};
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::prelude::{Line, Style, Stylize, Text};
@@ -36,6 +36,7 @@ use std::collections::HashMap;
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
+use ratisui_core::mouse::MouseEventHelper;
 
 const PAGE_SIZE: isize = 100;
 
@@ -536,9 +537,7 @@ impl ExplorerTab {
             )
             .node_no_children_symbol("- ")
             .highlight_symbol("");
-        tokio::task::block_in_place(|| {
-            frame.render_stateful_widget(tree, area, &mut self.tree_state);
-        });
+        frame.render_stateful_widget(tree, area, &mut self.tree_state);
         Ok(())
     }
 
@@ -1025,6 +1024,57 @@ impl ExplorerTab {
                 let vec = self.tree_state.selected().to_vec();
                 let changed_selected_key = vec.last().cloned();
                 if changed_selected_key != current_selected_key && let Some(id) = changed_selected_key {
+                    let option = self
+                        .scan_keys_result
+                        .iter()
+                        .find(|redis_key| id.eq(&redis_key.name))
+                        .cloned();
+                    self.selected_key = option;
+                    self.selected_raw_value = None;
+                    self.selected_list_value = None;
+                    self.selected_set_value = None;
+                    self.selected_zset_value = None;
+                    self.selected_hash_value = None;
+                    self.selected_stream_value = None;
+                    self.selected_time_series_value = None;
+                    if self.selected_key.is_some() {
+                        let sender = self.data_sender.clone();
+                        tokio::spawn(async move {
+                            let data = Self::do_get_key_info(id.clone()).await?;
+                            sender.send(data.clone())?;
+                            if let Some(key_type) = data.key_type {
+                                let data = Self::do_get_value(id.clone(), key_type, 0).await?;
+                                sender.send(data)?;
+                            }
+                            Ok::<(), Error>(())
+                        });
+                    }
+                }
+            }
+            return Ok(accepted);
+        }
+        Ok(false)
+    }
+
+    fn handle_tree_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
+        match mouse_event.kind {
+            MouseEventKind::ScrollDown => {
+                self.tree_state.scroll_down(3);
+                return Ok(true);
+            }
+            MouseEventKind::ScrollUp => {
+                self.tree_state.scroll_up(3);
+                return Ok(true);
+            }
+            _ => {}
+        }
+        if mouse_event.modifiers == KeyModifiers::NONE && mouse_event.is_left_up() {
+            mouse_event.row;
+            let accepted = self.tree_state.click_at((mouse_event.column, mouse_event.row).into());
+            if accepted {
+                let vec = self.tree_state.selected().to_vec();
+                let changed_selected_key = vec.last().cloned();
+                if let Some(id) = changed_selected_key {
                     let option = self
                         .scan_keys_result
                         .iter()
@@ -1586,6 +1636,11 @@ impl Listenable for ExplorerTab {
             }
             _ => {}
         }
+        Ok(false)
+    }
+
+    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
+        self.handle_tree_mouse_event(mouse_event)?;
         Ok(false)
     }
 

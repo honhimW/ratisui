@@ -101,6 +101,9 @@ static GLOBAL_CHANNEL: Lazy<Bus<GlobalEvent>> = Lazy::new(|| {
 #[derive(Clone, Debug)]
 pub enum GlobalEvent {
     Exit,
+    Restart,
+    // Force refresh ui
+    Tick,
     ClientChanged,
     #[allow(unused)]
     Dynamic(String),
