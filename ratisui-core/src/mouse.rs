@@ -1,9 +1,13 @@
 use ratatui::crossterm::event::MouseEventKind::*;
 use ratatui::crossterm::event::{MouseButton, MouseEvent};
 use MouseButton::{Left, Middle, Right};
+use ratatui::layout::{Position, Rect};
 
 #[allow(unused)]
 pub trait MouseEventHelper {
+    fn as_position(&self) -> Position;
+    fn within(&self, rect: &Rect) -> bool;
+
     fn is_left_down(&self) -> bool;
     fn is_left_up(&self) -> bool;
     fn is_right_down(&self) -> bool;
@@ -21,6 +25,19 @@ pub trait MouseEventHelper {
 }
 
 impl MouseEventHelper for MouseEvent {
+
+    fn as_position(&self) -> Position {
+        Position {
+            x: self.column,
+            y: self.row,
+        }
+    }
+
+    fn within(&self, rect: &Rect) -> bool {
+        rect.contains(self.as_position())
+    }
+
+
     fn is_left_down(&self) -> bool {
         matches!(self.kind, Down(Left))
     }
@@ -77,4 +94,3 @@ impl MouseEventHelper for MouseEvent {
         matches!(self.kind, ScrollRight)
     }
 }
-

@@ -20,7 +20,7 @@ use crate::components::popup::Popup;
 use anyhow::{Result, anyhow};
 use itertools::Itertools;
 use log::info;
-use ratatui::crossterm::event::{KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyEvent, KeyModifiers, MouseEvent};
 use ratatui::layout::Alignment;
 use ratatui::layout::Constraint::Length;
 use ratatui::widgets::block::Position;
@@ -44,6 +44,8 @@ use ratisui_core::theme::get_color;
 use std::cmp;
 use std::string::ToString;
 use unicode_width::UnicodeWidthStr;
+use ratisui_core::marcos::KeyAsserter;
+use ratisui_core::mouse::MouseEventHelper;
 
 const ITEM_HEIGHT: usize = 4;
 
@@ -112,6 +114,8 @@ pub struct ServerList {
     create_form: Form,
     edit_form: Form,
     save_on_exit: bool,
+
+    list_rect: Rect,
 }
 
 impl ServerList {
@@ -165,6 +169,8 @@ impl ServerList {
             create_form: Form::default().title("New"),
             edit_form: Form::default().title("Edit"),
             save_on_exit: true,
+
+            list_rect: Rect::default(),
         }
     }
 
@@ -473,6 +479,7 @@ impl ServerList {
 
 impl Renderable for ServerList {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
+        self.list_rect = rect;
         frame.render_widget(Clear::default(), rect);
         let block = Block::bordered()
             .title("Servers")
@@ -530,6 +537,9 @@ impl Renderable for ServerList {
 
 impl Listenable for ServerList {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        if key_event.is_c_c() {
+            return Ok(false);
+        }
         if key_event.kind == KeyEventKind::Press {
             if self.show_delete_popup {
                 return self.handle_delete_popup_key_event(key_event);
@@ -579,6 +589,26 @@ impl Listenable for ServerList {
         }
         Ok(false)
     }
+
+    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
+        if self.show_create_popup {
+            if !self.create_form.handle_mouse_event(mouse_event)? && mouse_event.is_left_up() {
+                self.show_create_popup = false;
+            }
+            return Ok(true);
+        }
+        if self.show_edit_popup {
+            if !self.edit_form.handle_mouse_event(mouse_event)? && mouse_event.is_left_up() {
+                self.show_edit_popup = false;
+            }
+            return Ok(true);
+        }
+        if mouse_event.within(&self.list_rect) {
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
 
     fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
         match app_event {

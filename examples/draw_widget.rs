@@ -26,7 +26,7 @@ fn print_picture(buf: &mut Buffer) {
 
     let area = Rect {
         height: rect.height - 1,
-        ..rect.clone()
+        ..*rect
     };
 
     let menu_area = Rect {

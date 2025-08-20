@@ -1,7 +1,8 @@
+use anyhow::Result;
 use crate::app::{Listenable, Renderable};
 use crate::components::servers::Data;
 use ratisui_core::configuration::{Database, Protocol, SshTunnel};
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use ratatui::layout::Constraint::{Fill, Length, Percentage};
 use ratatui::layout::{Layout, Rect};
 use ratatui::style::{Style, Stylize};
@@ -11,6 +12,7 @@ use ratatui::Frame;
 use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
 use tui_textarea::TextArea;
 use uuid::Uuid;
+use ratisui_core::mouse::MouseEventHelper;
 use ratisui_core::theme::get_color;
 
 pub struct Form {
@@ -31,6 +33,22 @@ pub struct Form {
     ssh_port_text_area: TextArea<'static>,
     ssh_username_text_area: TextArea<'static>,
     ssh_password_text_area: TextArea<'static>,
+
+    form_rect: Rect,
+    name_rect: Rect,
+    host_rect: Rect,
+    port_rect: Rect,
+    authentication_rect: Rect,
+    username_rect: Rect,
+    password_rect: Rect,
+    tls_rect: Rect,
+    db_rect: Rect,
+    protocol_rect: Rect,
+    use_ssh_rect: Rect,
+    ssh_host_rect: Rect,
+    ssh_port_rect: Rect,
+    ssh_username_rect: Rect,
+    ssh_password_rect: Rect,
 }
 
 #[derive(Default, Eq, PartialEq, EnumCount, EnumIter, Display)]
@@ -90,6 +108,22 @@ impl Default for Form {
             ssh_port_text_area: TextArea::default(),
             ssh_username_text_area: TextArea::default(),
             ssh_password_text_area: TextArea::default(),
+
+            form_rect: Default::default(),
+            name_rect: Default::default(),
+            host_rect: Default::default(),
+            port_rect: Default::default(),
+            authentication_rect: Default::default(),
+            username_rect: Default::default(),
+            password_rect: Default::default(),
+            tls_rect: Default::default(),
+            db_rect: Default::default(),
+            protocol_rect: Default::default(),
+            use_ssh_rect: Default::default(),
+            ssh_host_rect: Default::default(),
+            ssh_port_rect: Default::default(),
+            ssh_username_rect: Default::default(),
+            ssh_password_rect: Default::default(),
         };
         form.name_text_area.set_placeholder_text("must not be blank");
         form.name_text_area.set_placeholder_style(Style::default().fg(get_color(|t| &t.editor.warning)).dim());
@@ -190,6 +224,13 @@ impl Form {
         }
     }
 
+    fn select(&mut self, editing: Editing) {
+        if let Some(i) = Editing::iter().position(|e| e == editing) {
+            self.editing = i;
+            self.change_editing();
+        }
+    }
+
     pub fn next(&mut self) {
         let tmp = self.editing + 1;
         self.editing = tmp % Editing::COUNT;
@@ -274,6 +315,7 @@ impl Form {
         let value = &self.name_text_area;
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[1]);
+        self.name_rect = rc[1];
     }
 
     fn render_host_port(&mut self, frame: &mut Frame, rect: Rect) {
@@ -287,6 +329,7 @@ impl Form {
             let value = &self.host_text_area;
             frame.render_widget(key, host_area[0]);
             frame.render_widget(value, host_area[1]);
+            self.host_rect = host_area[1];
         }
         {
             let key = self.span(Editing::Port);
@@ -294,6 +337,7 @@ impl Form {
             let value = &self.port_text_area;
             frame.render_widget(key, port_area[0]);
             frame.render_widget(value, port_area[1]);
+            self.port_rect = port_area[1];
         }
     }
 
@@ -304,6 +348,7 @@ impl Form {
         let value = Span::raw(if self.enabled_authentication { "◄ Username & Password ►" } else { "◄ None ►" }).style(key.style);
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[1]);
+        self.authentication_rect = rc[1];
     }
 
     fn render_username(&mut self, frame: &mut Frame, rect: Rect) {
@@ -314,6 +359,7 @@ impl Form {
         let value = &self.username_text_area;
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[1]);
+        self.username_rect = rc[1];
     }
 
     fn render_password(&mut self, frame: &mut Frame, rect: Rect) {
@@ -324,15 +370,17 @@ impl Form {
         let value = &self.password_text_area;
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[1]);
+        self.password_rect = rc[1];
     }
 
-    fn render_use_tls(&self, frame: &mut Frame, rect: Rect) {
+    fn render_use_tls(&mut self, frame: &mut Frame, rect: Rect) {
         let horizontal = Layout::horizontal([Length(18), Fill(0)]);
         let rc = horizontal.split(rect);
         let key = self.span(Editing::UseTls);
         let value = Span::raw(if self.use_tls { "◄ Yes ►" } else { "◄ No ►" }).style(key.style);
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[1]);
+        self.tls_rect = rc[1];
     }
 
     fn render_db(&mut self, frame: &mut Frame, rect: Rect) {
@@ -343,24 +391,27 @@ impl Form {
         let value = &self.db_text_area;
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[1]);
+        self.db_rect = rc[1];
     }
 
-    fn render_protocol(&self, frame: &mut Frame, rect: Rect) {
+    fn render_protocol(&mut self, frame: &mut Frame, rect: Rect) {
         let horizontal = Layout::horizontal([Length(18), Fill(0)]);
         let rc = horizontal.split(rect);
         let key = self.span(Editing::Protocol);
         let value = Span::raw(format!("◄ {} ►", self.protocol.to_string())).style(key.style);
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[1]);
+        self.protocol_rect = rc[1];
     }
 
-    fn render_use_ssh_tunnel(&self, frame: &mut Frame, rect: Rect) {
+    fn render_use_ssh_tunnel(&mut self, frame: &mut Frame, rect: Rect) {
         let horizontal = Layout::horizontal([Length(18), Fill(0)]);
         let rc = horizontal.split(rect);
         let key = self.span(Editing::UseSshTunnel);
         let value = Span::raw(if self.use_ssh_tunnel { "◄ Yes ►" } else { "◄ No ►" }).style(key.style);
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[1]);
+        self.use_ssh_rect = rc[1];
     }
 
     fn render_ssh_host_port(&mut self, frame: &mut Frame, rect: Rect) {
@@ -374,6 +425,7 @@ impl Form {
             let value = &self.ssh_host_text_area;
             frame.render_widget(key, host_area[0]);
             frame.render_widget(value, host_area[1]);
+            self.ssh_host_rect = host_area[1];
         }
         {
             let key = self.span(Editing::SshPort);
@@ -381,6 +433,7 @@ impl Form {
             let value = &self.ssh_port_text_area;
             frame.render_widget(key, port_area[0]);
             frame.render_widget(value, port_area[1]);
+            self.ssh_port_rect = port_area[1];
         }
     }
 
@@ -392,6 +445,7 @@ impl Form {
         let value = &self.ssh_username_text_area;
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[1]);
+        self.ssh_username_rect = rc[1];
     }
 
     fn render_ssh_password(&mut self, frame: &mut Frame, rect: Rect) {
@@ -402,12 +456,13 @@ impl Form {
         let value = &self.ssh_password_text_area;
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[1]);
+        self.ssh_password_rect = rc[1];
     }
 
 }
 
 impl Renderable for Form {
-    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> anyhow::Result<()> {
+    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
         let mut total_height = 9;
         if self.enabled_authentication {
             total_height += 2;
@@ -424,6 +479,7 @@ impl Renderable for Form {
         let block = Block::bordered()
             .title(self.title.clone())
             .border_type(BorderType::Rounded);
+        self.form_rect = area.clone();
         let block_inner_area = block
             .inner(area);
         let block_inner_area = Layout::horizontal([Length(1), Fill(0), Length(1)]).split(block_inner_area)[1];
@@ -507,7 +563,7 @@ impl Renderable for Form {
 }
 
 impl Listenable for Form {
-    fn handle_key_event(&mut self, key_event: KeyEvent) -> anyhow::Result<bool> {
+    fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
         let editing = self.current();
         match key_event.code {
             KeyCode::Tab => {
@@ -519,9 +575,6 @@ impl Listenable for Form {
                 return Ok(true);
             }
             _ => {}
-        }
-        if key_event.kind != KeyEventKind::Press {
-            return Ok(true);
         }
         let editor = match editing {
             Editing::Name => Some(&mut self.name_text_area),
@@ -630,5 +683,114 @@ impl Listenable for Form {
             }
             Ok(true)
         }
+    }
+
+    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
+        if mouse_event.is_left_up() && mouse_event.within(&self.form_rect) {
+            if mouse_event.within(&self.name_rect) {
+                self.select(Editing::Name);
+            }
+            if mouse_event.within(&self.host_rect) {
+                self.select(Editing::Host);
+            }
+            if mouse_event.within(&self.port_rect) {
+                self.select(Editing::Port);
+            }
+            if mouse_event.within(&self.authentication_rect) {
+                self.select(Editing::EnabledAuthentication);
+                if self.enabled_authentication {
+                    // '◄' || '►'
+                    if mouse_event.column == self.authentication_rect.x
+                        || mouse_event.column == self.authentication_rect.x + 22 {
+                        self.enabled_authentication = !self.enabled_authentication;
+                    }
+                } else {
+                    // '◄' || '►'
+                    if mouse_event.column == self.authentication_rect.x
+                        || mouse_event.column == self.authentication_rect.x + 7 {
+                        self.enabled_authentication = !self.enabled_authentication;
+                    }
+                }
+            }
+            if self.enabled_authentication {
+                if mouse_event.within(&self.username_rect) {
+                    self.select(Editing::Username);
+                }
+                if mouse_event.within(&self.password_rect) {
+                    self.select(Editing::Password);
+                }
+            }
+            if mouse_event.within(&self.tls_rect) {
+                self.select(Editing::UseTls);
+                if self.use_tls {
+                    // '◄' || '►'
+                    if mouse_event.column == self.tls_rect.x
+                        || mouse_event.column == self.tls_rect.x + 6 {
+                        self.use_tls = !self.use_tls;
+                    }
+                } else {
+                    // '◄' || '►'
+                    if mouse_event.column == self.tls_rect.x
+                        || mouse_event.column == self.tls_rect.x + 5 {
+                        self.use_tls = !self.use_tls;
+                    }
+                }
+
+            }
+            if mouse_event.within(&self.db_rect) {
+                self.select(Editing::Db);
+            }
+            if mouse_event.within(&self.protocol_rect) {
+                self.select(Editing::Protocol);
+                match self.protocol {
+                    Protocol::RESP2 => {
+                        // '◄' || '►'
+                        if mouse_event.column == self.protocol_rect.x
+                            || mouse_event.column == self.protocol_rect.x + 8 {
+                            self.protocol = Protocol::RESP3;
+                        }
+                    }
+                    Protocol::RESP3 => {
+                        // '◄' || '►'
+                        if mouse_event.column == self.protocol_rect.x
+                            || mouse_event.column == self.protocol_rect.x + 8 {
+                            self.protocol = Protocol::RESP2;
+                        }
+                    }
+                }
+            }
+            if mouse_event.within(&self.use_ssh_rect) {
+                self.select(Editing::UseSshTunnel);
+                if self.use_ssh_tunnel {
+                    // '◄' || '►'
+                    if mouse_event.column == self.use_ssh_rect.x
+                        || mouse_event.column == self.use_ssh_rect.x + 6 {
+                        self.use_ssh_tunnel = !self.use_ssh_tunnel;
+                    }
+                } else {
+                    // '◄' || '►'
+                    if mouse_event.column == self.use_ssh_rect.x
+                        || mouse_event.column == self.use_ssh_rect.x + 5 {
+                        self.use_ssh_tunnel = !self.use_ssh_tunnel;
+                    }
+                }
+            }
+            if self.use_ssh_tunnel {
+                if mouse_event.within(&self.ssh_host_rect) {
+                    self.select(Editing::SshHost);
+                }
+                if mouse_event.within(&self.ssh_port_rect) {
+                    self.select(Editing::SshPort);
+                }
+                if mouse_event.within(&self.ssh_username_rect) {
+                    self.select(Editing::SshUsername);
+                }
+                if mouse_event.within(&self.ssh_password_rect) {
+                    self.select(Editing::SshPassword);
+                }
+            }
+            return Ok(true);
+        }
+        Ok(false)
     }
 }

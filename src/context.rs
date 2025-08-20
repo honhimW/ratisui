@@ -24,6 +24,7 @@ use std::time::Instant;
 use log::{info, warn};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 use ratisui_core::cli::AppArguments;
+use ratisui_core::mouse::MouseEventHelper;
 use ratisui_core::theme;
 use crate::components::app_configuration_editor::Options;
 
@@ -42,6 +43,8 @@ pub struct Context {
     initial_configuration: Arc<Configuration>,
     pub toast: Option<Message>,
     pub fps_calculator: FpsCalculator,
+
+    tab_area: Rect,
 }
 
 #[derive(Eq, PartialEq, EnumCount, EnumIter)]
@@ -69,6 +72,7 @@ impl Context {
             initial_configuration: Arc::new(Configuration::default()),
             toast: None,
             fps_calculator: FpsCalculator::default(),
+            tab_area: Rect::default(),
         }
     }
 
@@ -119,7 +123,7 @@ impl Context {
         Ok(())
     }
 
-    fn render_tabs(&self, frame: &mut Frame, area: Rect) -> Result<()> {
+    fn render_tabs(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let titles = self
             .get_all_tabs()
             .iter()
@@ -129,15 +133,23 @@ impl Context {
         let highlight_style = Style::default()
             .fg(get_color(|t| &t.tab.title))
             .bg(current_tab.highlight());
-        frame.render_widget(
-            Tabs::new(titles)
-                .highlight_style(highlight_style)
-                .select(self.current_tab_index)
-                .padding("", "")
-                .divider("|"),
-            area,
-        );
 
+        let left_padding = "";
+        let right_padding = "";
+        let divider = "|";
+        let titles_width: usize = titles.iter().map(|x| x.width()).sum();
+        let width = left_padding.len() + titles_width + right_padding.len() + (titles.len().saturating_sub(1)) * divider.len();
+        self.tab_area = Rect {
+            width: width as u16,
+            ..area
+        };
+
+        let tabs = Tabs::new(titles)
+            .highlight_style(highlight_style)
+            .select(self.current_tab_index)
+            .padding(left_padding, right_padding)
+            .divider(divider);
+        frame.render_widget(tabs,area);
         Ok(())
     }
 
@@ -374,12 +386,24 @@ impl Listenable for Context {
     }
 
     fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
-        use ratisui_core::mouse::MouseEventHelper;
-        if mouse_event.is_left_down() {
-            return Ok(false);
+        if self.show_server_switcher {
+            if !self.server_list.handle_mouse_event(mouse_event)? && mouse_event.is_left_up() {
+                self.show_server_switcher = false;
+            }
+            return Ok(true);
+        }
+        if self.show_app_options {
+            if !self.app_options.handle_mouse_event(mouse_event)? && mouse_event.is_left_up() {
+                self.show_app_options = false;
+            }
+            return Ok(true);
+        }
+        let current_tab = self.get_current_tab_as_mut();
+        if current_tab.handle_mouse_event(mouse_event)? {
+            return Ok(true);
         }
         if mouse_event.is_left_up() {
-            if mouse_event.row == 0 {
+            if self.tab_area.contains(mouse_event.as_position()) {
                 let tabs = self.get_all_tabs();
                 let column = mouse_event.column as usize;
                 let mut start_pos = 0;
@@ -399,11 +423,8 @@ impl Listenable for Context {
                 return Ok(true);
             }
         };
-        let current_tab = self.get_current_tab_as_mut();
-        if current_tab.handle_mouse_event(mouse_event)? {
-            return Ok(true);
-        }
-        Ok(true)
+
+        Ok(false)
     }
 
     fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
