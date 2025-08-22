@@ -71,6 +71,9 @@ pub struct ExplorerTab {
     offset: isize,
 
     has_search_module: bool,
+
+    tree_rect: Rect,
+    value_rect: Rect,
 }
 
 #[derive(Default, Clone)]
@@ -282,6 +285,9 @@ impl ExplorerTab {
             data_receiver: rx,
             offset: 0,
             has_search_module: false,
+
+            tree_rect: Default::default(),
+            value_rect: Default::default(),
         }
     }
 
@@ -1368,6 +1374,8 @@ impl Renderable for ExplorerTab {
                 .constraints([Constraint::Percentage(20), Constraint::Fill(1)])
                 .split(rect),
         };
+        self.tree_rect = chunks[0];
+        self.value_rect = chunks[1];
         self.render_values_block(frame, chunks[1])?;
         self.render_keys_block(frame, chunks[0])?;
 
@@ -1640,7 +1648,13 @@ impl Listenable for ExplorerTab {
     }
 
     fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
-        self.handle_tree_mouse_event(mouse_event)?;
+        if mouse_event.within(&self.tree_rect) && mouse_event.is_left_up() {
+            self.handle_tree_mouse_event(mouse_event)?;
+            self.toggle_screen(KeysTree);
+        }
+        if mouse_event.within(&self.value_rect) && mouse_event.is_left_up() {
+            self.toggle_screen(ValuesViewer);
+        }
         Ok(false)
     }
 

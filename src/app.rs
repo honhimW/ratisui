@@ -82,6 +82,12 @@ impl App {
     pub fn health(&self) -> bool {
         matches!(self.state, AppState::Running | AppState::Preparing)
     }
+
+    pub fn close(&mut self) -> Result<()> {
+        self.state = AppState::Closing;
+        self.context.on_app_event(AppEvent::Destroy)?;
+        Ok(())
+    }
 }
 
 pub fn centered_rect(percentage_x: u16, percentage_y: u16, area: Rect) -> Rect {

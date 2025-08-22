@@ -23,10 +23,9 @@ mod context;
 mod tabs;
 mod tui;
 
-use crate::app::AppState::Closed;
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
 use crate::tui::{TerminalBackEnd, Tui};
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use clap::Parser;
 use log::{error, info};
 use ratatui::crossterm::event::{Event, KeyCode, KeyModifiers};
@@ -42,6 +41,7 @@ use std::cmp;
 use std::sync::Arc;
 use std::time::Duration;
 use ratatui::crossterm::event::KeyEventKind::Press;
+use ratatui::crossterm::style::Stylize;
 use tokio::time::interval;
 
 #[tokio::main]
@@ -54,7 +54,6 @@ async fn main() -> Result<()> {
     let mut app_result;
     loop {
         let app_config = load_app_configuration()?;
-
         let tui = Tui::new(app_config.enable_mouse_capture);
         let terminal = tui.init()?;
         let app = App::new();
@@ -70,7 +69,9 @@ async fn main() -> Result<()> {
             Ok(false) => break,
             Ok(true) => tui_logger::move_events(),
             Err(e) => {
-                eprintln!("{:?}", e);
+                let content = e.to_string().red().bold();
+                eprintln!("{}", content);
+                break;
             }
         }
     }
@@ -125,13 +126,12 @@ async fn run(
             }
             match global_event {
                 GlobalEvent::Exit => {
-                    app.state = AppState::Closing;
-                    app.context.on_app_event(AppEvent::Destroy)?;
+                    app.close()?;
                     continue;
                 }
                 GlobalEvent::Restart => {
-                    app.state = AppState::Closing;
-                    app.context.on_app_event(AppEvent::Destroy)?;
+                    app.close()?;
+                    app.state = AppState::Closed;
                     return Ok(true);
                 }
                 GlobalEvent::Tick => {}
@@ -172,6 +172,12 @@ async fn run(
                         Event::Mouse(mouse_event) => {
                             app.context.handle_mouse_event(mouse_event)?;
                         }
+                        Event::Resize(width, height) => {
+                            if width < 64 || height < 16 {
+                                app.close()?;
+                                bail!("This application requires a larger frame size(64*16) to run as expected.");
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -201,11 +207,10 @@ async fn run(
         });
 
         if let Err(e) = render_result {
-            app.state = AppState::Closing;
-            app.context.on_app_event(AppEvent::Destroy)?;
-            return Err(anyhow!(e));
+            app.close()?;
+            bail!(e);
         }
     }
-    app.state = Closed;
+    app.state = AppState::Closed;
     Ok(false)
 }
