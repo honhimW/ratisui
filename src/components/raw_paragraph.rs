@@ -3,9 +3,9 @@ use anyhow::Result;
 use ratatui::layout::{Position, Rect};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
+use ratisui_core::utils::ContentType;
 use std::borrow::Cow;
 use std::cmp;
-use ratisui_core::utils::ContentType;
 
 pub struct RawParagraph<'a> {
     #[allow(unused)]
@@ -48,7 +48,7 @@ impl<'a> RawParagraph<'a> {
         let mut position = self.position.clone();
         position.y = 0;
         self.position = position;
-        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
+        let current = std::mem::take(&mut self.paragraph);
         self.paragraph = current.scroll((
             position.y,
             position.x,
@@ -59,7 +59,7 @@ impl<'a> RawParagraph<'a> {
         let mut position = self.position.clone();
         position.y = self.max_offset();
         self.position = position;
-        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
+        let current = std::mem::take(&mut self.paragraph);
         self.paragraph = current.scroll((
             position.y,
             position.x,
@@ -70,7 +70,7 @@ impl<'a> RawParagraph<'a> {
         let mut position = self.position.clone();
         position.y = position.y.saturating_sub(3);
         self.position = position;
-        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
+        let current = std::mem::take(&mut self.paragraph);
         self.paragraph = current.scroll((
             position.y,
             position.x,
@@ -81,7 +81,7 @@ impl<'a> RawParagraph<'a> {
         let mut position = self.position.clone();
         position.y = cmp::min(position.y.saturating_add(3), self.max_offset());
         self.position = position;
-        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
+        let current = std::mem::take(&mut self.paragraph);
         self.paragraph = current.scroll((
             position.y,
             position.x,
@@ -92,7 +92,7 @@ impl<'a> RawParagraph<'a> {
         let mut position = self.position.clone();
         position.y = position.y.saturating_sub(self.height);
         self.position = position;
-        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
+        let current = std::mem::take(&mut self.paragraph);
 
         self.paragraph = current.scroll((
             position.y,
@@ -104,7 +104,7 @@ impl<'a> RawParagraph<'a> {
         let mut position = self.position.clone();
         position.y = cmp::min(position.y.saturating_add(self.height), self.max_offset());
         self.position = position;
-        let current = std::mem::replace(&mut self.paragraph, Paragraph::default());
+        let current = std::mem::take(&mut self.paragraph);
 
         self.paragraph = current.scroll((
             position.y,

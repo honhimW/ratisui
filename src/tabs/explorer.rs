@@ -74,6 +74,7 @@ pub struct ExplorerTab {
 
     tree_rect: Rect,
     value_rect: Rect,
+    value_inner_rect: Rect,
 }
 
 #[derive(Default, Clone)]
@@ -288,6 +289,7 @@ impl ExplorerTab {
 
             tree_rect: Default::default(),
             value_rect: Default::default(),
+            value_inner_rect: Default::default(),
         }
     }
 
@@ -449,6 +451,7 @@ impl ExplorerTab {
             .borders(Borders::ALL)
             .border_style(self.border_color(ValuesViewer));
         let block_inner_area = values_block.inner(area);
+        self.value_inner_rect = block_inner_area;
         frame.render_widget(values_block, area);
         if let Some(ref mut raw_value) = self.selected_raw_value {
             raw_value.render(frame, block_inner_area)?;
@@ -1651,6 +1654,55 @@ impl Listenable for ExplorerTab {
         if mouse_event.within(&self.tree_rect) && mouse_event.is_left_up() {
             self.handle_tree_mouse_event(mouse_event)?;
             self.toggle_screen(KeysTree);
+        }
+        if mouse_event.within(&self.value_inner_rect) {
+            if let Some(ref mut list_value) = self.selected_list_value {
+                let accepted = list_value.handle_mouse_event(mouse_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut set_value) = self.selected_set_value {
+                let accepted = set_value.handle_mouse_event(mouse_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut zset_value) = self.selected_zset_value {
+                let accepted = zset_value.handle_mouse_event(mouse_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut hash_value) = self.selected_hash_value {
+                let accepted = hash_value.handle_mouse_event(mouse_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut stream_view) = self.selected_stream_value {
+                let accepted = stream_view.handle_mouse_event(mouse_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut time_series_value) = self.selected_time_series_value {
+                let accepted = time_series_value.handle_mouse_event(mouse_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            
+            if mouse_event.is_scroll_up() {
+                if let Some(ref mut raw) = self.selected_raw_value {
+                    raw.scroll_up()
+                }
+            }
+            if mouse_event.is_scroll_down() {
+                if let Some(ref mut raw) = self.selected_raw_value {
+                    raw.scroll_down()
+                }
+            }
         }
         if mouse_event.within(&self.value_rect) && mouse_event.is_left_up() {
             self.toggle_screen(ValuesViewer);

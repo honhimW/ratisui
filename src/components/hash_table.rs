@@ -18,7 +18,7 @@ use crate::components::raw_value::raw_value_to_highlight_text;
 use crate::components::TableColors;
 use anyhow::Result;
 use itertools::Itertools;
-use ratatui::crossterm::event::KeyEvent;
+use ratatui::crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEventKind},
@@ -35,6 +35,7 @@ use std::borrow::Cow;
 use std::cmp;
 use std::collections::HashMap;
 use unicode_width::UnicodeWidthStr;
+use ratisui_core::mouse::MouseEventHelper;
 
 const ITEM_HEIGHT: usize = 4;
 
@@ -243,6 +244,19 @@ impl Listenable for HashValue {
             };
             return Ok(accepted);
         }
+        Ok(false)
+    }
+
+    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
+        if mouse_event.is_scroll_up() {
+            self.previous();
+            return Ok(true);
+        }
+        if mouse_event.is_scroll_down() {
+            self.next();
+            return Ok(true);
+        }
+
         Ok(false)
     }
 }
