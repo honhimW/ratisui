@@ -29,7 +29,7 @@ deadpool-redis = { workspace = true, features = [
 ] }
 
 strum = { workspace = true, features = ["derive"] }
-ron = { version = "0.11.0", features = ["default"] }
+ron = { workspace = true }
 dirs = "6.0.0"
 base64 = "0.22.1"
 hex = "0.4.3"

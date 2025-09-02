@@ -7,7 +7,7 @@ rust-version = { workspace = true }
 build = "build.rs"
 
 [workspace.package]
-version = "0.5.5"
+version = "0.6.0"
 rust-version = "1.88.0"
 edition = "2024"
 
@@ -24,6 +24,7 @@ tree-sitter = "0.24"
 crossbeam-channel = "0.5"
 strum = "0.27.0"
 deadpool-redis = "0.22.0"
+ron = { version = "0.11.0", features = ["default"] }
 
 [dependencies]
 anyhow = { workspace = true }
@@ -66,7 +67,7 @@ arboard = "3.6.1"
 #cc = "*"
 
 [dev-dependencies]
-ron = { version = "0.10.1", features = ["default"] }
+ron = { workspace = true }
 deadpool-redis = { workspace = true, features = [
     "serde",
     "cluster",
