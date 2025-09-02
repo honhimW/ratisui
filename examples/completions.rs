@@ -21,6 +21,7 @@ use tui_textarea::{CursorMove, TextArea};
 fn main() -> Result<()> {
     let mut terminal = ratatui::init();
     let mut text_area = TextArea::default();
+    text_area.move_cursor(CursorMove::Jump(0, 0));
     text_area.set_block(Block::bordered().border_type(BorderType::Thick));
     let mut table_state = TableState::default();
     let mut scroll_state = ScrollbarState::default();

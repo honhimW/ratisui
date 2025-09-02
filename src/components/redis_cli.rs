@@ -203,6 +203,17 @@ static COMMANDS: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
         range: (0, -1),
         insert_text: "exit".to_string(),
     };
+    let restart_item = CompletionItem {
+        kind: CompletionItemKind::Other,
+        label: Label {
+            label: "RESTART".to_string(),
+            detail: Some("restart the application".to_string()),
+            description: None,
+        },
+        parameters: vec![],
+        range: (0, -1),
+        insert_text: "restart".to_string(),
+    };
     let help_item = CompletionItem {
         kind: CompletionItemKind::Other,
         label: Label {
@@ -216,6 +227,7 @@ static COMMANDS: Lazy<Vec<CompletionItem>> = Lazy::new(|| {
     };
     items.push(clear_item);
     items.push(exit_item);
+    items.push(restart_item);
     items.push(help_item);
     if let Ok(commands) = result {
         resolve_commands(commands, &mut items);

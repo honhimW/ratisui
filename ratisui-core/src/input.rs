@@ -123,7 +123,7 @@ impl Input {
                     }
 
                     tx.send(InputEvent::Input(e))?;
-                    //Note: right after an input event we might have a reason to stop
+                    // Note: right after an input event we might have a reason to stop
                     // polling (external editor opening) so lets do a quick poll until the next input
                     // this fixes https://github.com/extrawurst/gitui/issues/1506
                     poll_duration = FAST_POLL_DURATION;

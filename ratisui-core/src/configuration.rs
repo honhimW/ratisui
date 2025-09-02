@@ -168,6 +168,8 @@ pub struct Configuration {
     pub cli_output_format: CliOutputFormatKind,
     #[serde(default = "console_capacity")]
     pub console_capacity: usize,
+    #[serde(default = "enable_mouse_capture")]
+    pub enable_mouse_capture: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
@@ -201,6 +203,8 @@ fn console_capacity() -> usize {
     3000
 }
 
+fn enable_mouse_capture() -> bool { false }
+
 #[derive(Serialize, Deserialize)]
 pub struct Databases {
     pub default_database: Option<String>,
@@ -217,6 +221,7 @@ impl Default for Configuration {
             history_size: history_size(),
             cli_output_format: cli_output_kind(),
             console_capacity: console_capacity(),
+            enable_mouse_capture: enable_mouse_capture(),
         }
     }
 }

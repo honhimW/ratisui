@@ -23,29 +23,25 @@ mod context;
 mod tabs;
 mod tui;
 
-use crate::app::AppState::Closed;
 use crate::app::{App, AppEvent, AppState, Listenable, Renderable};
-use crate::components::fps::FpsCalculator;
-use crate::tui::TerminalBackEnd;
-use anyhow::{anyhow, Result};
+use crate::tui::{TerminalBackEnd, Tui};
+use anyhow::{Result, anyhow, bail};
 use clap::Parser;
-use log::{error, info, warn};
-use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use log::{error, info};
+use ratatui::crossterm::event::{Event, KeyCode, KeyModifiers};
 use ratisui_core::bus::{
-    publish_event, publish_msg, subscribe_global_channel, subscribe_message_channel, GlobalEvent,
-    Message,
+    GlobalEvent, Message, publish_event, publish_msg, subscribe_global_channel,
+    subscribe_message_channel,
 };
 use ratisui_core::cli::AppArguments;
-use ratisui_core::configuration::{
-    load_app_configuration, load_database_configuration, load_theme_configuration, Configuration,
-    Databases,
-};
+use ratisui_core::configuration::{Configuration, load_app_configuration};
 use ratisui_core::input::InputEvent;
 use ratisui_core::marcos::KeyAsserter;
-use ratisui_core::redis_opt::switch_client;
-use ratisui_core::theme;
 use std::cmp;
+use std::sync::Arc;
 use std::time::Duration;
+use ratatui::crossterm::event::KeyEventKind::Press;
+use ratatui::crossterm::style::Stylize;
 use tokio::time::interval;
 
 #[tokio::main]
@@ -55,29 +51,29 @@ async fn main() -> Result<()> {
     tui_logger::init_logger(log::LevelFilter::Trace).map_err(|e| anyhow!(e))?;
     tui_logger::set_default_level(log::LevelFilter::Trace);
 
-    let app_config = load_app_configuration()?;
-    let db_config = if arguments.once {
-        Databases::empty()
-    } else {
-        load_database_configuration()?
-    };
-
-    apply_theme(&arguments, &app_config)?;
-    apply_db(&arguments, &db_config)?;
-
-    let terminal = tui::init()?;
-    let app = App::new(db_config);
-    let app_result = run(app, terminal, app_config, arguments).await;
-
-    if let Err(e) = tui::restore() {
-        eprintln!(
-            "failed to restore terminal. Run `reset` or restart your terminal to recover: {}",
-            e,
-        );
-    }
-
-    if let Err(e) = app_result {
-        eprintln!("{:?}", e);
+    let mut app_result;
+    loop {
+        let app_config = load_app_configuration()?;
+        let tui = Tui::new(app_config.enable_mouse_capture);
+        let terminal = tui.init()?;
+        let app = App::new();
+        app_result = run(app, terminal, app_config, arguments.clone()).await;
+        if let Err(e) = tui.restore() {
+            eprintln!(
+                "failed to restore terminal. Run `reset` or restart your terminal to recover: {}",
+                e,
+            );
+            break;
+        }
+        match app_result {
+            Ok(false) => break,
+            Ok(true) => tui_logger::move_events(),
+            Err(e) => {
+                let content = e.to_string().red().bold();
+                eprintln!("{}", content);
+                break;
+            }
+        }
     }
 
     Ok(())
@@ -87,35 +83,37 @@ async fn run(
     mut app: App,
     mut terminal: TerminalBackEnd,
     config: Configuration,
-    aguments: AppArguments,
-) -> Result<()> {
+    arguments: AppArguments,
+) -> Result<bool> {
     let fps = cmp::min(config.fps as usize, 60);
     let delay_millis = 1000 / fps;
     let delay_duration = Duration::from_millis(delay_millis as u64);
-    let mut fps_calculator = FpsCalculator::default();
     let mut interval = interval(delay_duration);
     let global_channel = subscribe_global_channel()?;
     let message_channel = subscribe_message_channel()?;
     let input_channel = app.input.receiver();
-    publish_event(GlobalEvent::Dynamic(String::from("start")))?;
+
+    let config_arc = Arc::new(config);
+    let arguments_arc = Arc::new(arguments);
+    app.context.on_app_event(AppEvent::InitConfig(
+        Arc::clone(&config_arc),
+        Arc::clone(&arguments_arc),
+    ))?;
+    app.state = AppState::Running;
+
+    // In windows and Linux, there is a Resize input event after initialize.
+    // Mac may not having such event.
+    publish_event(GlobalEvent::Tick)?;
     loop {
         if !app.health() {
             break;
         }
         interval.tick().await;
 
-        if matches!(app.state, AppState::Preparing) {
-            app.context.on_app_event(AppEvent::Init)?;
-            app.context
-                .on_app_event(AppEvent::InitConfig(config.clone(), aguments.clone()))?;
-            app.state = AppState::Running;
-            continue;
-        }
-
-        if global_channel.is_empty()
+        if !app.context.handle_data()?
+            && global_channel.is_empty()
             && message_channel.is_empty()
             && input_channel.is_empty()
-            && !app.context.handle_data()?
         {
             continue;
         }
@@ -126,16 +124,29 @@ async fn run(
                 app.context.on_app_event(AppEvent::Destroy)?;
                 continue;
             }
-            app.context.on_app_event(AppEvent::Bus(global_event))?;
+            match global_event {
+                GlobalEvent::Exit => {
+                    app.close()?;
+                    continue;
+                }
+                GlobalEvent::Restart => {
+                    app.close()?;
+                    app.state = AppState::Closed;
+                    return Ok(true);
+                }
+                GlobalEvent::Tick => {}
+                _ => app.context.on_app_event(AppEvent::Bus(global_event))?,
+            }
         }
 
+        let mut input_event_counter = 0;
         loop {
             let event_result = input_channel.try_recv();
-            if let Ok(input_event) = event_result {
-                match input_event {
-                    InputEvent::Input(input) => {
-                        if let Event::Key(key_event) = input {
-                            if key_event.kind == KeyEventKind::Press {
+            match event_result {
+                Ok(InputEvent::Input(input)) => {
+                    match input {
+                        Event::Key(key_event) => {
+                            if key_event.kind == Press {
                                 if key_event.modifiers == KeyModifiers::CONTROL
                                     && key_event.code == KeyCode::F(5)
                                 {
@@ -151,35 +162,43 @@ async fn run(
                                         Err(e) => {
                                             error!("Handle key event error: {:?}", e);
                                             let _ = publish_msg(
-                                                Message::error(format!("{}", e))
-                                                    .title("Handle Error"),
+                                                Message::error(format!("{}", e)).title("Handle Error"),
                                             );
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                    InputEvent::State(state) => {
-                        info!("Input state changed: {:?}", state);
+                        Event::Mouse(mouse_event) => {
+                            app.context.handle_mouse_event(mouse_event)?;
+                        }
+                        Event::Resize(width, height) => {
+                            if width < 64 || height < 16 {
+                                app.close()?;
+                                bail!("This application requires a larger frame size(64*16) to run as expected.");
+                            }
+                        }
+                        _ => {}
                     }
                 }
-            } else {
+                Ok(InputEvent::State(state)) => {
+                    info!("Input state changed: {:?}", state);
+                }
+                Err(_) => break,
+            }
+            input_event_counter += 1;
+            // Prevent from too many input
+            if input_event_counter > 50 {
                 break;
             }
         }
 
-        let render_result = terminal.draw(|frame| {
-            fps_calculator.calculate_fps();
-            if let Some(fps) = fps_calculator.fps.clone() {
-                app.context.fps = fps;
-            } else {
-                app.context.fps = 0.0;
-            }
+        if let Ok(msg) = message_channel.try_recv() {
+            app.context.toast = Some(msg);
+        }
 
-            if let Ok(msg) = message_channel.try_recv() {
-                app.context.toast = Some(msg);
-            }
+        let render_result = terminal.draw(|frame| {
+            app.context.fps_calculator.calculate_fps();
             let render_result = app.context.render_frame(frame, frame.area());
             if let Err(e) = render_result {
                 error!("Render error: {:?}", e);
@@ -188,47 +207,10 @@ async fn run(
         });
 
         if let Err(e) = render_result {
-            app.state = AppState::Closing;
-            return Err(anyhow!(e));
+            app.close()?;
+            bail!(e);
         }
     }
-    app.state = Closed;
-    Ok(())
-}
-
-fn apply_theme(app_arguments: &AppArguments, app_config: &Configuration) -> Result<()> {
-    let theme_name = app_arguments
-        .theme
-        .clone()
-        .or_else(|| app_config.theme.clone());
-    let theme = load_theme_configuration(theme_name)?;
-    theme::set_theme(theme);
-    Ok(())
-}
-
-fn apply_db(app_arguments: &AppArguments, db_config: &Databases) -> Result<()> {
-    let default_db = app_arguments
-        .target
-        .clone()
-        .or_else(|| db_config.default_database.clone());
-
-    if let Some(db) = default_db {
-        if let Some(database) = db_config.databases.get(&db) {
-            let database_clone = database.clone();
-            tokio::spawn(async move {
-                match switch_client(db.clone(), &database_clone) {
-                    Ok(_) => {
-                        info!("Successfully connected to default database '{db}'");
-                        info!("{database_clone}");
-                    }
-                    Err(_) => {
-                        warn!("Failed to connect to default database.");
-                    }
-                };
-            });
-        } else {
-            Err(anyhow!("Unknown database '{db}'."))?;
-        }
-    };
-    Ok(())
+    app.state = AppState::Closed;
+    Ok(false)
 }

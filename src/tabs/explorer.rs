@@ -15,7 +15,7 @@ use bitflags::bitflags;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use deadpool_redis::redis::{FromRedisValue, Value};
 use log::info;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind};
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::prelude::{Line, Style, Stylize, Text};
@@ -36,6 +36,7 @@ use std::collections::HashMap;
 use tokio::join;
 use tui_textarea::TextArea;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
+use ratisui_core::mouse::MouseEventHelper;
 
 const PAGE_SIZE: isize = 100;
 
@@ -70,6 +71,10 @@ pub struct ExplorerTab {
     offset: isize,
 
     has_search_module: bool,
+
+    tree_rect: Rect,
+    value_rect: Rect,
+    value_inner_rect: Rect,
 }
 
 #[derive(Default, Clone)]
@@ -281,6 +286,10 @@ impl ExplorerTab {
             data_receiver: rx,
             offset: 0,
             has_search_module: false,
+
+            tree_rect: Default::default(),
+            value_rect: Default::default(),
+            value_inner_rect: Default::default(),
         }
     }
 
@@ -442,9 +451,10 @@ impl ExplorerTab {
             .borders(Borders::ALL)
             .border_style(self.border_color(ValuesViewer));
         let block_inner_area = values_block.inner(area);
+        self.value_inner_rect = block_inner_area;
         frame.render_widget(values_block, area);
         if let Some(ref mut raw_value) = self.selected_raw_value {
-            raw_value.render(frame, block_inner_area)?;
+            raw_value.render_frame(frame, block_inner_area)?;
         } else if let Some(ref mut list_value) = self.selected_list_value {
             list_value.render_frame(frame, block_inner_area)?;
         } else if let Some(ref mut set_value) = self.selected_set_value {
@@ -536,9 +546,7 @@ impl ExplorerTab {
             )
             .node_no_children_symbol("- ")
             .highlight_symbol("");
-        tokio::task::block_in_place(|| {
-            frame.render_stateful_widget(tree, area, &mut self.tree_state);
-        });
+        frame.render_stateful_widget(tree, area, &mut self.tree_state);
         Ok(())
     }
 
@@ -1057,6 +1065,57 @@ impl ExplorerTab {
         Ok(false)
     }
 
+    fn handle_tree_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
+        match mouse_event.kind {
+            MouseEventKind::ScrollDown => {
+                self.tree_state.scroll_down(3);
+                return Ok(true);
+            }
+            MouseEventKind::ScrollUp => {
+                self.tree_state.scroll_up(3);
+                return Ok(true);
+            }
+            _ => {}
+        }
+        if mouse_event.modifiers == KeyModifiers::NONE && mouse_event.is_left_up() {
+            mouse_event.row;
+            let accepted = self.tree_state.click_at((mouse_event.column, mouse_event.row).into());
+            if accepted {
+                let vec = self.tree_state.selected().to_vec();
+                let changed_selected_key = vec.last().cloned();
+                if let Some(id) = changed_selected_key {
+                    let option = self
+                        .scan_keys_result
+                        .iter()
+                        .find(|redis_key| id.eq(&redis_key.name))
+                        .cloned();
+                    self.selected_key = option;
+                    self.selected_raw_value = None;
+                    self.selected_list_value = None;
+                    self.selected_set_value = None;
+                    self.selected_zset_value = None;
+                    self.selected_hash_value = None;
+                    self.selected_stream_value = None;
+                    self.selected_time_series_value = None;
+                    if self.selected_key.is_some() {
+                        let sender = self.data_sender.clone();
+                        tokio::spawn(async move {
+                            let data = Self::do_get_key_info(id.clone()).await?;
+                            sender.send(data.clone())?;
+                            if let Some(key_type) = data.key_type {
+                                let data = Self::do_get_value(id.clone(), key_type, 0).await?;
+                                sender.send(data)?;
+                            }
+                            Ok::<(), Error>(())
+                        });
+                    }
+                }
+            }
+            return Ok(accepted);
+        }
+        Ok(false)
+    }
+
     async fn do_get_key_info(key_name: String) -> Result<Data> {
         let mut data = Data::default();
         data.key_name = key_name.clone();
@@ -1318,6 +1377,8 @@ impl Renderable for ExplorerTab {
                 .constraints([Constraint::Percentage(20), Constraint::Fill(1)])
                 .split(rect),
         };
+        self.tree_rect = chunks[0];
+        self.value_rect = chunks[1];
         self.render_values_block(frame, chunks[1])?;
         self.render_keys_block(frame, chunks[0])?;
 
@@ -1358,11 +1419,17 @@ impl Renderable for ExplorerTab {
                 elements.push(("c", "Create"));
                 elements.push(("d/Del", "Delete"));
                 elements.push(("r", "Rename"));
-                elements.push(("↑/j", "Up"));
-                elements.push(("↓/k", "Down"));
+                elements.push(("↓/j", "Down"));
+                elements.push(("↑/k", "Up"));
                 elements.push(("←/h", "Close"));
                 elements.push(("→/l", "Open"));
             } else if self.current_screen == ValuesViewer {
+                if let Some(ref raw_paragraph) = self.selected_raw_value {
+                    raw_paragraph.footer_elements().iter().for_each(|(k, v)| {
+                        elements.push((k, v));
+                    });
+                    elements.push(("←/h", "Close"));
+                }
                 if let Some(ref list_value) = self.selected_list_value {
                     list_value.footer_elements().iter().for_each(|(k, v)| {
                         elements.push((k, v));
@@ -1454,33 +1521,10 @@ impl Listenable for ExplorerTab {
         }
 
         if ValuesViewer == self.current_screen {
-            if let Some(ref mut raw_value) = self.selected_raw_value && key_event.modifiers == KeyModifiers::NONE {
-                match key_event.code {
-                    KeyCode::Char('j') | KeyCode::Down => {
-                        raw_value.scroll_down();
-                        return Ok(true);
-                    }
-                    KeyCode::Char('k') | KeyCode::Up => {
-                        raw_value.scroll_up();
-                        return Ok(true);
-                    }
-                    KeyCode::PageDown => {
-                        raw_value.scroll_page_down();
-                        return Ok(true);
-                    }
-                    KeyCode::PageUp => {
-                        raw_value.scroll_page_up();
-                        return Ok(true);
-                    }
-                    KeyCode::End => {
-                        raw_value.scroll_end();
-                        return Ok(true);
-                    }
-                    KeyCode::Home => {
-                        raw_value.scroll_start();
-                        return Ok(true);
-                    }
-                    _ => {}
+            if let Some(ref mut raw_value) = self.selected_raw_value {
+                let accepted = raw_value.handle_key_event(key_event)?;
+                if accepted {
+                    return Ok(true);
                 }
             }
 
@@ -1585,6 +1629,66 @@ impl Listenable for ExplorerTab {
                 return Ok(true);
             }
             _ => {}
+        }
+        Ok(false)
+    }
+
+    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
+        if mouse_event.within(&self.tree_rect) && mouse_event.is_left_up() {
+            self.handle_tree_mouse_event(mouse_event)?;
+            self.toggle_screen(KeysTree);
+        }
+        if mouse_event.within(&self.value_inner_rect) {
+            if let Some(ref mut list_value) = self.selected_list_value {
+                let accepted = list_value.handle_mouse_event(mouse_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut set_value) = self.selected_set_value {
+                let accepted = set_value.handle_mouse_event(mouse_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut zset_value) = self.selected_zset_value {
+                let accepted = zset_value.handle_mouse_event(mouse_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut hash_value) = self.selected_hash_value {
+                let accepted = hash_value.handle_mouse_event(mouse_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut stream_view) = self.selected_stream_value {
+                let accepted = stream_view.handle_mouse_event(mouse_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+            if let Some(ref mut time_series_value) = self.selected_time_series_value {
+                let accepted = time_series_value.handle_mouse_event(mouse_event)?;
+                if accepted {
+                    return Ok(true);
+                }
+            }
+
+            if mouse_event.is_scroll_up() {
+                if let Some(ref mut raw) = self.selected_raw_value {
+                    raw.scroll_up()
+                }
+            }
+            if mouse_event.is_scroll_down() {
+                if let Some(ref mut raw) = self.selected_raw_value {
+                    raw.scroll_down()
+                }
+            }
+        }
+        if mouse_event.within(&self.value_rect) && mouse_event.is_left_up() {
+            self.toggle_screen(ValuesViewer);
         }
         Ok(false)
     }

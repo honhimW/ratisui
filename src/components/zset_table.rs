@@ -18,7 +18,7 @@ use crate::components::raw_value::raw_value_to_highlight_text;
 use crate::components::TableColors;
 use anyhow::Result;
 use itertools::Itertools;
-use ratatui::crossterm::event::KeyEvent;
+use ratatui::crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::layout::Constraint::{Length, Min};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEventKind},
@@ -31,6 +31,7 @@ use ratatui::{
     }
     , Frame,
 };
+use ratisui_core::mouse::MouseEventHelper;
 use std::borrow::Cow;
 use std::cmp;
 use unicode_width::UnicodeWidthStr;
@@ -222,8 +223,8 @@ impl Renderable for ZSetValue {
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
         let mut elements = vec![];
-        elements.push(("↑/j", "Up"));
-        elements.push(("↓/k", "Down"));
+        elements.push(("↓/j", "Down"));
+        elements.push(("↑/k", "Up"));
         elements
     }
 }
@@ -245,6 +246,19 @@ impl Listenable for ZSetValue {
             };
             return Ok(accepted);
         }
+        Ok(false)
+    }
+
+    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
+        if mouse_event.is_scroll_up() {
+            self.previous();
+            return Ok(true);
+        }
+        if mouse_event.is_scroll_down() {
+            self.next();
+            return Ok(true);
+        }
+
         Ok(false)
     }
 }

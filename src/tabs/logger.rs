@@ -1,6 +1,7 @@
-use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
+use anyhow::Result;
+use crate::app::{Listenable, Renderable, TabImplementation};
 use log::LevelFilter;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 use ratatui::prelude::{Line, Stylize};
 use ratatui::style::{Color, Style};
@@ -37,7 +38,7 @@ impl TabImplementation for LoggerTab {
 }
 
 impl Renderable for LoggerTab {
-    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> anyhow::Result<()>
+    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()>
     where
         Self: Sized,
     {
@@ -66,8 +67,8 @@ impl Renderable for LoggerTab {
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
         let mut elements = vec![];
-        elements.push(("↑/j", "Up"));
-        elements.push(("↓/k", "Down"));
+        elements.push(("↓/j", "Down"));
+        elements.push(("↑/k", "Up"));
         elements.push(("←/h", "Level Up"));
         elements.push(("→/l", "Level Down"));
         elements.push(("f", "Focus"));
@@ -77,7 +78,7 @@ impl Renderable for LoggerTab {
 }
 
 impl Listenable for LoggerTab {
-    fn handle_key_event(&mut self, _key_event: KeyEvent) -> anyhow::Result<bool> {
+    fn handle_key_event(&mut self, _key_event: KeyEvent) -> Result<bool> {
         if _key_event.modifiers == KeyModifiers::NONE && _key_event.kind == KeyEventKind::Press {
             match _key_event.code {
                 KeyCode::Char('k') | KeyCode::Up => self.state.transition(TuiWidgetEvent::UpKey),
@@ -98,17 +99,17 @@ impl Listenable for LoggerTab {
         Ok(false)
     }
 
-    fn on_app_event(&mut self, _app_event: AppEvent) -> anyhow::Result<()> {
-        match _app_event {
-            AppEvent::Init => {
-                // error!("Error Message");
-                // warn!("Warning Message");
-                // info!("Info Message");
-                // debug!("Debug Message");
-                // trace!("Trace Message");
+    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> Result<bool> {
+        Ok(match mouse_event.kind {
+            MouseEventKind::ScrollDown => {
+                self.state.transition(TuiWidgetEvent::NextPageKey);
+                true
             }
-            _ => {}
-        }
-        Ok(())
+            MouseEventKind::ScrollUp => {
+                self.state.transition(TuiWidgetEvent::PrevPageKey);
+                true
+            }
+            _ => false
+        })
     }
 }
