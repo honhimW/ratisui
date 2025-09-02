@@ -332,8 +332,8 @@ impl Renderable for Options {
 
         match editing {
             Editing::Fps | Editing::ScanSize | Editing::HistorySize | Editing::ConsoleCapacity => {
-                elements.push(("↑/j", "+10"));
-                elements.push(("↓/k", "-10"));
+                elements.push(("↓/j", "-10"));
+                elements.push(("↑/k", "+10"));
                 elements.push(("→/l", "+1"));
                 elements.push(("←/h", "-1"));
             }

@@ -369,8 +369,8 @@ impl Renderable for SteamView {
         } else {
             elements.push(("←/h", "Id"));
         }
-        elements.push(("↑/j", "Up"));
-        elements.push(("↓/k", "Down"));
+        elements.push(("↓/j", "Down"));
+        elements.push(("↑/k", "Up"));
         elements
     }
 }

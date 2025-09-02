@@ -524,8 +524,8 @@ impl Renderable for ServerList {
             return elements;
         }
 
-        elements.push(("↑/j", "Up"));
-        elements.push(("↓/k", "Down"));
+        elements.push(("↓/j", "Down"));
+        elements.push(("↑/k", "Up"));
         elements.push(("Enter", "Choose"));
         elements.push(("c", "Create"));
         elements.push(("d", "Delete"));

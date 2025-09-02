@@ -454,7 +454,7 @@ impl ExplorerTab {
         self.value_inner_rect = block_inner_area;
         frame.render_widget(values_block, area);
         if let Some(ref mut raw_value) = self.selected_raw_value {
-            raw_value.render(frame, block_inner_area)?;
+            raw_value.render_frame(frame, block_inner_area)?;
         } else if let Some(ref mut list_value) = self.selected_list_value {
             list_value.render_frame(frame, block_inner_area)?;
         } else if let Some(ref mut set_value) = self.selected_set_value {
@@ -1419,11 +1419,17 @@ impl Renderable for ExplorerTab {
                 elements.push(("c", "Create"));
                 elements.push(("d/Del", "Delete"));
                 elements.push(("r", "Rename"));
-                elements.push(("↑/j", "Up"));
-                elements.push(("↓/k", "Down"));
+                elements.push(("↓/j", "Down"));
+                elements.push(("↑/k", "Up"));
                 elements.push(("←/h", "Close"));
                 elements.push(("→/l", "Open"));
             } else if self.current_screen == ValuesViewer {
+                if let Some(ref raw_paragraph) = self.selected_raw_value {
+                    raw_paragraph.footer_elements().iter().for_each(|(k, v)| {
+                        elements.push((k, v));
+                    });
+                    elements.push(("←/h", "Close"));
+                }
                 if let Some(ref list_value) = self.selected_list_value {
                     list_value.footer_elements().iter().for_each(|(k, v)| {
                         elements.push((k, v));
@@ -1515,33 +1521,10 @@ impl Listenable for ExplorerTab {
         }
 
         if ValuesViewer == self.current_screen {
-            if let Some(ref mut raw_value) = self.selected_raw_value && key_event.modifiers == KeyModifiers::NONE {
-                match key_event.code {
-                    KeyCode::Char('j') | KeyCode::Down => {
-                        raw_value.scroll_down();
-                        return Ok(true);
-                    }
-                    KeyCode::Char('k') | KeyCode::Up => {
-                        raw_value.scroll_up();
-                        return Ok(true);
-                    }
-                    KeyCode::PageDown => {
-                        raw_value.scroll_page_down();
-                        return Ok(true);
-                    }
-                    KeyCode::PageUp => {
-                        raw_value.scroll_page_up();
-                        return Ok(true);
-                    }
-                    KeyCode::End => {
-                        raw_value.scroll_end();
-                        return Ok(true);
-                    }
-                    KeyCode::Home => {
-                        raw_value.scroll_start();
-                        return Ok(true);
-                    }
-                    _ => {}
+            if let Some(ref mut raw_value) = self.selected_raw_value {
+                let accepted = raw_value.handle_key_event(key_event)?;
+                if accepted {
+                    return Ok(true);
                 }
             }
 
@@ -1692,7 +1675,7 @@ impl Listenable for ExplorerTab {
                     return Ok(true);
                 }
             }
-            
+
             if mouse_event.is_scroll_up() {
                 if let Some(ref mut raw) = self.selected_raw_value {
                     raw.scroll_up()

@@ -221,8 +221,8 @@ impl Renderable for HashValue {
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
         let mut elements = vec![];
-        elements.push(("↑/j", "Up"));
-        elements.push(("↓/k", "Down"));
+        elements.push(("↓/j", "Down"));
+        elements.push(("↑/k", "Up"));
         elements
     }
 }

@@ -67,8 +67,8 @@ impl Renderable for LoggerTab {
 
     fn footer_elements(&self) -> Vec<(&str, &str)> {
         let mut elements = vec![];
-        elements.push(("↑/j", "Up"));
-        elements.push(("↓/k", "Down"));
+        elements.push(("↓/j", "Down"));
+        elements.push(("↑/k", "Up"));
         elements.push(("←/h", "Level Up"));
         elements.push(("→/l", "Level Down"));
         elements.push(("f", "Focus"));

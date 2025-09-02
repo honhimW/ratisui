@@ -1,11 +1,15 @@
+use crate::app::{Listenable, Renderable};
 use crate::components::raw_value::raw_value_to_highlight_text_with_content_type;
 use anyhow::Result;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Position, Rect};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
+use ratisui_core::marcos::KeyAsserter;
 use ratisui_core::utils::ContentType;
 use std::borrow::Cow;
 use std::cmp;
+use ratisui_core::bus::{publish_msg, Message};
 
 pub struct RawParagraph<'a> {
     #[allow(unused)]
@@ -20,7 +24,11 @@ pub struct RawParagraph<'a> {
 
 impl<'a> RawParagraph<'a> {
     pub fn new(raw: String, content_type: Option<ContentType>, format: bool) -> Self {
-        let (text, _) = raw_value_to_highlight_text_with_content_type(Cow::from(raw.clone()), content_type.clone(), format);
+        let (text, _) = raw_value_to_highlight_text_with_content_type(
+            Cow::from(raw.clone()),
+            content_type.clone(),
+            format,
+        );
         let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
         Self {
             raw,
@@ -30,12 +38,6 @@ impl<'a> RawParagraph<'a> {
             height: 1,
             weight: 0,
         }
-    }
-
-    pub fn render(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        self.update(&area);
-        frame.render_widget(&self.paragraph, area);
-        Ok(())
     }
 
     fn update(&mut self, area: &Rect) {
@@ -49,10 +51,7 @@ impl<'a> RawParagraph<'a> {
         position.y = 0;
         self.position = position;
         let current = std::mem::take(&mut self.paragraph);
-        self.paragraph = current.scroll((
-            position.y,
-            position.x,
-        ));
+        self.paragraph = current.scroll((position.y, position.x));
     }
 
     pub fn scroll_end(&mut self) {
@@ -60,10 +59,7 @@ impl<'a> RawParagraph<'a> {
         position.y = self.max_offset();
         self.position = position;
         let current = std::mem::take(&mut self.paragraph);
-        self.paragraph = current.scroll((
-            position.y,
-            position.x,
-        ));
+        self.paragraph = current.scroll((position.y, position.x));
     }
 
     pub fn scroll_up(&mut self) {
@@ -71,10 +67,7 @@ impl<'a> RawParagraph<'a> {
         position.y = position.y.saturating_sub(3);
         self.position = position;
         let current = std::mem::take(&mut self.paragraph);
-        self.paragraph = current.scroll((
-            position.y,
-            position.x,
-        ));
+        self.paragraph = current.scroll((position.y, position.x));
     }
 
     pub fn scroll_down(&mut self) {
@@ -82,10 +75,7 @@ impl<'a> RawParagraph<'a> {
         position.y = cmp::min(position.y.saturating_add(3), self.max_offset());
         self.position = position;
         let current = std::mem::take(&mut self.paragraph);
-        self.paragraph = current.scroll((
-            position.y,
-            position.x,
-        ));
+        self.paragraph = current.scroll((position.y, position.x));
     }
 
     pub fn scroll_page_up(&mut self) {
@@ -94,10 +84,7 @@ impl<'a> RawParagraph<'a> {
         self.position = position;
         let current = std::mem::take(&mut self.paragraph);
 
-        self.paragraph = current.scroll((
-            position.y,
-            position.x,
-        ));
+        self.paragraph = current.scroll((position.y, position.x));
     }
 
     pub fn scroll_page_down(&mut self) {
@@ -106,13 +93,65 @@ impl<'a> RawParagraph<'a> {
         self.position = position;
         let current = std::mem::take(&mut self.paragraph);
 
-        self.paragraph = current.scroll((
-            position.y,
-            position.x,
-        ));
+        self.paragraph = current.scroll((position.y, position.x));
     }
 
     fn max_offset(&self) -> u16 {
         (self.paragraph.line_count(self.weight) as u16).saturating_sub(self.height)
+    }
+}
+
+impl<'a> Listenable for RawParagraph<'a> {
+    fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<bool> {
+        if key_event.is_c_y() {
+            arboard::Clipboard::new()?.set_text(self.raw.clone())?;
+            let _ = publish_msg(Message::info("Yanked to clipboard."));
+        }
+        if key_event.modifiers == KeyModifiers::NONE {
+            match key_event.code {
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.scroll_down();
+                    return Ok(true);
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.scroll_up();
+                    return Ok(true);
+                }
+                KeyCode::PageDown => {
+                    self.scroll_page_down();
+                    return Ok(true);
+                }
+                KeyCode::PageUp => {
+                    self.scroll_page_up();
+                    return Ok(true);
+                }
+                KeyCode::End => {
+                    self.scroll_end();
+                    return Ok(true);
+                }
+                KeyCode::Home => {
+                    self.scroll_start();
+                    return Ok(true);
+                }
+                _ => {}
+            }
+        }
+        Ok(false)
+    }
+}
+
+impl<'a> Renderable for RawParagraph<'a> {
+    fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
+        self.update(&rect);
+        frame.render_widget(&self.paragraph, rect);
+        Ok(())
+    }
+
+    fn footer_elements(&self) -> Vec<(&str, &str)> {
+        let mut elements = vec![];
+        elements.push(("^y", "Yank"));
+        elements.push(("↓/j", "Down"));
+        elements.push(("↑/k", "Up"));
+        elements
     }
 }
