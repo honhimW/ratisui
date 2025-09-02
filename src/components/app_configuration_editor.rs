@@ -1,20 +1,21 @@
 use crate::app::{Listenable, Renderable};
 use ratatui::Frame;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use ratatui::layout::Constraint::{Fill, Length, Percentage};
 use ratatui::layout::{Layout, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, BorderType, Clear};
+use ratisui_core::bus::{GlobalEvent, publish_event};
 use ratisui_core::configuration::{CliOutputFormatKind, Configuration, save_configuration};
 use ratisui_core::marcos::KeyAsserter;
+use ratisui_core::mouse::MouseEventHelper;
 use ratisui_core::theme::get_color;
 use ratisui_core::utils::clean_text_area;
 use std::cmp;
 use std::sync::Arc;
 use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
 use tui_textarea::TextArea;
-use ratisui_core::bus::{publish_event, GlobalEvent};
 
 pub struct Options {
     default_configuration: Configuration,
@@ -28,6 +29,16 @@ pub struct Options {
     cli_output_format: OutputFormat,
     console_capacity: TextArea<'static>,
     enable_mouse_capture: bool,
+
+    form_rect: Rect,
+    fps_rect: Rect,
+    scan_size_rect: Rect,
+    try_format_rect: Rect,
+    theme_rect: Rect,
+    history_size_rect: Rect,
+    cli_out_put_format_rect: Rect,
+    console_capacity_rect: Rect,
+    enable_mouse_capture_rect: Rect,
 }
 
 #[derive(Default, Eq, PartialEq, EnumCount, EnumIter, Display)]
@@ -76,6 +87,16 @@ impl Default for Options {
             cli_output_format: OutputFormat::default(),
             console_capacity: TextArea::default(),
             enable_mouse_capture: false,
+
+            form_rect: Rect::default(),
+            fps_rect: Rect::default(),
+            scan_size_rect: Rect::default(),
+            try_format_rect: Rect::default(),
+            theme_rect: Rect::default(),
+            history_size_rect: Rect::default(),
+            cli_out_put_format_rect: Rect::default(),
+            console_capacity_rect: Rect::default(),
+            enable_mouse_capture_rect: Rect::default(),
         };
         option
             .fps
@@ -85,6 +106,13 @@ impl Default for Options {
 }
 
 impl Options {
+    fn select(&mut self, editing: Editing) {
+        if let Some(i) = Editing::iter().position(|e| e == editing) {
+            self.editing = i;
+            self.change_editing();
+        }
+    }
+
     pub fn next(&mut self) {
         let tmp = self.editing + 1;
         self.editing = tmp % Editing::COUNT;
@@ -141,6 +169,7 @@ impl Options {
         let value = &self.fps;
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[2]);
+        self.fps_rect = rc[2];
     }
 
     fn render_scan_size(&mut self, frame: &mut Frame, rect: Rect) {
@@ -151,6 +180,7 @@ impl Options {
         let value = &self.scan_size;
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[2]);
+        self.scan_size_rect = rc[2];
     }
 
     fn render_theme(&mut self, frame: &mut Frame, rect: Rect) {
@@ -161,6 +191,7 @@ impl Options {
         let value = &self.theme;
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[2]);
+        self.theme_rect = rc[2];
     }
 
     fn render_try_format(&mut self, frame: &mut Frame, rect: Rect) {
@@ -175,6 +206,7 @@ impl Options {
         .style(key.style);
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[2]);
+        self.try_format_rect = rc[2];
     }
 
     fn render_history_size(&mut self, frame: &mut Frame, rect: Rect) {
@@ -185,6 +217,7 @@ impl Options {
         let value = &self.history_size;
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[2]);
+        self.history_size_rect = rc[2];
     }
 
     fn render_console_capacity(&mut self, frame: &mut Frame, rect: Rect) {
@@ -195,6 +228,7 @@ impl Options {
         let value = &self.console_capacity;
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[2]);
+        self.console_capacity_rect = rc[2];
     }
 
     fn render_cli_output_format(&mut self, frame: &mut Frame, rect: Rect) {
@@ -205,6 +239,7 @@ impl Options {
             Span::raw(format!("◄ {} ►", self.cli_output_format.to_string())).style(key.style);
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[2]);
+        self.cli_out_put_format_rect = rc[2];
     }
 
     fn render_enable_mouse_capture(&mut self, frame: &mut Frame, rect: Rect) {
@@ -219,6 +254,7 @@ impl Options {
         .style(key.style);
         frame.render_widget(key, rc[0]);
         frame.render_widget(value, rc[2]);
+        self.enable_mouse_capture_rect = rc[2];
     }
 
     fn get_fps(&self) -> u8 {
@@ -295,6 +331,7 @@ impl Renderable for Options {
         let block = Block::bordered()
             .title("Options(*restart)")
             .border_type(BorderType::Rounded);
+        self.form_rect = area;
         let block_inner_area = block.inner(area);
         let block_inner_area =
             Layout::horizontal([Length(1), Fill(0), Length(1)]).split(block_inner_area)[1];
@@ -366,7 +403,8 @@ impl Listenable for Options {
             code: KeyCode::Enter,
             modifiers: KeyModifiers::NONE,
             ..
-        } = key_event {
+        } = key_event
+        {
             let fps = self.get_fps();
             let scan_size = self.get_scan_size();
             let history_size = self.get_history_size();
@@ -524,4 +562,82 @@ impl Listenable for Options {
         }
     }
 
+    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> anyhow::Result<bool> {
+        if mouse_event.is_left_up() && mouse_event.within(&self.form_rect) {
+            if mouse_event.within(&self.fps_rect) {
+                self.select(Editing::Fps);
+            }
+            if mouse_event.within(&self.scan_size_rect) {
+                self.select(Editing::ScanSize);
+            }
+            if mouse_event.within(&self.try_format_rect) {
+                self.select(Editing::TryFormat);
+                if self.try_format {
+                    // '◄' || '►'
+                    if mouse_event.column == self.try_format_rect.x
+                        || mouse_event.column == self.try_format_rect.x + 6
+                    {
+                        self.try_format = !self.try_format;
+                    }
+                } else {
+                    // '◄' || '►'
+                    if mouse_event.column == self.try_format_rect.x
+                        || mouse_event.column == self.try_format_rect.x + 5
+                    {
+                        self.try_format = !self.try_format;
+                    }
+                }
+            }
+            if mouse_event.within(&self.theme_rect) {
+                self.select(Editing::Theme);
+            }
+            if mouse_event.within(&self.history_size_rect) {
+                self.select(Editing::HistorySize);
+            }
+            if mouse_event.within(&self.console_capacity_rect) {
+                self.select(Editing::ConsoleCapacity);
+            }
+            if mouse_event.within(&self.cli_out_put_format_rect) {
+                self.select(Editing::CliOutputFormat);
+                match self.cli_output_format {
+                    OutputFormat::Redis => {
+                        // '◄' || '►'
+                        if mouse_event.column == self.cli_out_put_format_rect.x
+                            || mouse_event.column == self.cli_out_put_format_rect.x + 8
+                        {
+                            self.cli_output_format = OutputFormat::Ron;
+                        }
+                    }
+                    OutputFormat::Ron => {
+                        // '◄' || '►'
+                        if mouse_event.column == self.cli_out_put_format_rect.x
+                            || mouse_event.column == self.cli_out_put_format_rect.x + 6
+                        {
+                            self.cli_output_format = OutputFormat::Redis;
+                        }
+                    }
+                }
+            }
+            if mouse_event.within(&self.enable_mouse_capture_rect) {
+                self.select(Editing::EnableMouseCapture);
+                if self.enable_mouse_capture {
+                    // '◄' || '►'
+                    if mouse_event.column == self.enable_mouse_capture_rect.x
+                        || mouse_event.column == self.enable_mouse_capture_rect.x + 6
+                    {
+                        self.enable_mouse_capture = !self.enable_mouse_capture;
+                    }
+                } else {
+                    // '◄' || '►'
+                    if mouse_event.column == self.enable_mouse_capture_rect.x
+                        || mouse_event.column == self.enable_mouse_capture_rect.x + 5
+                    {
+                        self.enable_mouse_capture = !self.enable_mouse_capture;
+                    }
+                }
+            }
+            return Ok(true);
+        }
+        Ok(false)
+    }
 }
