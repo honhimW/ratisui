@@ -219,12 +219,15 @@ jobs:
       uses: dtolnay/rust-toolchain@v1
       with:
         toolchain: stable
+    - name: Use Cargo Bins
+      uses: cargo-bins/cargo-binstall@main
     - name: Install Komac
-      run: cargo install --locked komac
+      run: cargo binstall komac -y
     - name: WinGet New Version
+      env:
+        GITHUB_TOKEN: "${{ secrets.WINGET_TOKEN }}"
       run: |
         komac update HonhimW.Ratisui \
             --version "${{ github.event.inputs.major_version }}" \
             --urls "https://github.com/honhimW/ratisui/releases/download/${{ github.event.inputs.major_version }}/ratisui-windows-amd64.zip" \
-            --token "${{ secrets.WINGET_TOKEN }}"
             --submit
