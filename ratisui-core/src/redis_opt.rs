@@ -3,7 +3,6 @@ use crate::configuration::{to_protocol_version, Database};
 use crate::ssh_tunnel::SshTunnel;
 use crate::utils::split_args;
 use anyhow::{anyhow, bail, Context, Error, Result};
-use crossbeam_channel::Sender;
 use deadpool_redis::redis::ConnectionAddr::{Tcp, TcpTls};
 use deadpool_redis::redis::{
     cmd, Arg, AsyncCommands, AsyncIter, Client, Cmd, ConnectionInfo, ConnectionLike,
@@ -21,6 +20,8 @@ use std::ops::DerefMut;
 use std::sync::RwLock;
 use std::task::Poll;
 use std::time::{Duration, Instant};
+use crossbeam_channel::Sender;
+use tokio::sync::mpsc::error::TryRecvError;
 use tokio::time::interval;
 
 #[macro_export]
@@ -516,18 +517,10 @@ impl RedisOperations {
         }
     }
 
-    pub async fn monitor(&self, sender: Sender<Value>) -> Result<impl Disposable + use<>> {
-        struct DisposableMonitor(tokio::sync::watch::Sender<bool>);
-
-        impl Disposable for DisposableMonitor {
-            fn disposable(&mut self) -> Result<()> {
-                self.0.send(true)?;
-                Ok(())
-            }
-        }
-        tokio::sync::mpsc::channel::<bool>(2);
+    pub async fn monitor(&self, sender: Sender<Value>) -> Result<DisposableMonitor> {
         let (tx, rx) = tokio::sync::watch::channel(false);
-        let disposable_monitor = DisposableMonitor(tx);
+        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let disposable_monitor = DisposableMonitor::new(tx, event_rx);
         let mut streams = vec![];
         if self.is_cluster() {
             for (_, holder) in self.nodes.iter() {
@@ -563,11 +556,11 @@ impl RedisOperations {
                 let waker = futures::task::noop_waker_ref();
                 let mut context = std::task::Context::from_waker(waker);
                 for stream in streams.iter_mut() {
-                    loop {
+                    for _ in 0..300 {
                         let poll = stream.poll_next_unpin(&mut context);
                         match poll {
                             Poll::Ready(Some(v)) => {
-                                sender.send(v)?;
+                                event_tx.send(v)?;
                                 anchor = Instant::now();
                                 gap = Duration::from_secs(60);
                             }
@@ -577,7 +570,7 @@ impl RedisOperations {
                             Poll::Pending => {
                                 let duration = anchor.elapsed();
                                 if duration > gap {
-                                    sender.send(Value::SimpleString(format!(
+                                    event_tx.send(Value::SimpleString(format!(
                                         "Pending {}s ...",
                                         duration.as_secs()
                                     )))?;
@@ -599,22 +592,10 @@ impl RedisOperations {
         Ok(disposable_monitor)
     }
 
-    pub async fn subscribe<K: ToRedisArgs + Send + Sync>(
-        &self,
-        key: K,
-        sender: Sender<Value>,
-    ) -> Result<impl Disposable + use<K>> {
-        struct DisposableMonitor(tokio::sync::watch::Sender<bool>);
-
-        impl Disposable for DisposableMonitor {
-            fn disposable(&mut self) -> Result<()> {
-                self.0.send(true)?;
-                Ok(())
-            }
-        }
-        tokio::sync::mpsc::channel::<bool>(2);
+    pub async fn subscribe<K: ToRedisArgs + Send + Sync>(&self, key: K, sender: Sender<Value>) -> Result<DisposableMonitor> {
         let (tx, rx) = tokio::sync::watch::channel(false);
-        let disposable_monitor = DisposableMonitor(tx);
+        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let disposable_monitor = DisposableMonitor::new(tx, event_rx);
         let mut streams = vec![];
         if self.is_cluster() {
             for (_, holder) in self.nodes.iter() {
@@ -654,7 +635,7 @@ impl RedisOperations {
                 let waker = futures::task::noop_waker_ref();
                 let mut context = std::task::Context::from_waker(waker);
                 for stream in streams.iter_mut() {
-                    loop {
+                    for _ in 0..300 {
                         let poll = stream.poll_next_unpin(&mut context);
                         match poll {
                             Poll::Ready(Some(msg)) => {
@@ -664,7 +645,7 @@ impl RedisOperations {
                                     Value::SimpleString(channel_name.to_string()),
                                     payload,
                                 )]);
-                                sender.send(value)?;
+                                event_tx.send(value)?;
                                 anchor = Instant::now();
                                 gap = Duration::from_secs(60);
                             }
@@ -674,7 +655,7 @@ impl RedisOperations {
                             Poll::Pending => {
                                 let duration = anchor.elapsed();
                                 if duration > gap {
-                                    sender.send(Value::SimpleString(format!(
+                                    event_tx.send(Value::SimpleString(format!(
                                         "Pending {}s ...",
                                         duration.as_secs()
                                     )))?;
@@ -696,22 +677,10 @@ impl RedisOperations {
         Ok(disposable_monitor)
     }
 
-    pub async fn psubscribe<K: ToRedisArgs + Send + Sync>(
-        &self,
-        key: K,
-        sender: Sender<Value>,
-    ) -> Result<impl Disposable + use<K>> {
-        struct DisposableMonitor(tokio::sync::watch::Sender<bool>);
-
-        impl Disposable for DisposableMonitor {
-            fn disposable(&mut self) -> Result<()> {
-                self.0.send(true)?;
-                Ok(())
-            }
-        }
-        tokio::sync::mpsc::channel::<bool>(2);
+    pub async fn psubscribe<K: ToRedisArgs + Send + Sync>(&self, key: K, sender: Sender<Value>) -> Result<DisposableMonitor> {
         let (tx, rx) = tokio::sync::watch::channel(false);
-        let disposable_monitor = DisposableMonitor(tx);
+        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let disposable_monitor = DisposableMonitor::new(tx, event_rx);
         let mut streams = vec![];
         if self.is_cluster() {
             for (_, holder) in self.nodes.iter() {
@@ -751,7 +720,7 @@ impl RedisOperations {
                 let waker = futures::task::noop_waker_ref();
                 let mut context = std::task::Context::from_waker(waker);
                 for stream in streams.iter_mut() {
-                    loop {
+                    for _ in 0..300 {
                         let poll = stream.poll_next_unpin(&mut context);
                         match poll {
                             Poll::Ready(Some(msg)) => {
@@ -761,7 +730,7 @@ impl RedisOperations {
                                     Value::SimpleString(channel_name.to_string()),
                                     payload,
                                 )]);
-                                sender.send(value)?;
+                                event_tx.send(value)?;
                                 anchor = Instant::now();
                                 gap = Duration::from_secs(60);
                             }
@@ -771,7 +740,7 @@ impl RedisOperations {
                             Poll::Pending => {
                                 let duration = anchor.elapsed();
                                 if duration > gap {
-                                    sender.send(Value::SimpleString(format!(
+                                    event_tx.send(Value::SimpleString(format!(
                                         "Pending {}s ...",
                                         duration.as_secs()
                                     )))?;
@@ -1452,7 +1421,29 @@ impl RedisOperations {
 }
 
 pub trait Disposable: Send {
-    fn disposable(&mut self) -> Result<()>;
+    fn dispose(&mut self) -> Result<()>;
+}
+
+pub struct DisposableMonitor {
+    trigger: tokio::sync::watch::Sender<bool>,
+    event: tokio::sync::mpsc::UnboundedReceiver<Value>,
+}
+
+impl DisposableMonitor {
+    pub fn new(tx: tokio::sync::watch::Sender<bool>, rx: tokio::sync::mpsc::UnboundedReceiver<Value>) -> Self {
+        DisposableMonitor { trigger: tx, event: rx }
+    }
+
+    pub fn try_recv(&mut self) -> std::result::Result<Value, TryRecvError> {
+        self.event.try_recv()
+    }
+}
+
+impl Disposable for DisposableMonitor {
+    fn dispose(&mut self) -> Result<()> {
+        self.trigger.send(true)?;
+        Ok(())
+    }
 }
 
 struct IClusterConnection(deadpool_redis::cluster::Connection);
