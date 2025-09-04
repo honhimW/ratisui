@@ -106,6 +106,7 @@ impl<'a> Listenable for RawParagraph<'a> {
         if key_event.is_c_y() {
             arboard::Clipboard::new()?.set_text(self.raw.clone())?;
             let _ = publish_msg(Message::info("Yanked to clipboard."));
+            return Ok(true);
         }
         if key_event.modifiers == KeyModifiers::NONE {
             match key_event.code {
