@@ -533,7 +533,7 @@ fn get_rows(
     input: impl Into<String>,
     items: &Vec<CompletionItem>,
     version: Option<String>,
-) -> Vec<Row> {
+) -> Vec<Row<'_>> {
     let input = input.into();
     let mut rows = vec![];
     for item in items {
@@ -852,7 +852,7 @@ pub enum CompletionItemKind {
 
 /// Redis Commands Completion Items Definition
 
-fn highlight_doc(doc: &Doc) -> Text {
+fn highlight_doc(doc: &Doc) -> Text<'_> {
     let mut text = Text::default();
     let attr_color = get_color(|t| &t.tab.cli.doc.attribute);
     text.push_line(
