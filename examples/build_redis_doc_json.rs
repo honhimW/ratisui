@@ -18,24 +18,13 @@ fn main() -> Result<()> {
 
     for command_entry_result in content_commands_dir {
         let command_entry = command_entry_result?;
-        let command_dir_path = command_entry.path();
-        if command_dir_path.is_dir() {
-            let command_dir = fs::read_dir(command_dir_path)?;
-            for command_entry_result in command_dir {
-                let command_entry = command_entry_result?;
-                let raw_file_path = command_entry.path();
-                if raw_file_path.is_file() {
-                    if let Some(file_name) = raw_file_path.file_name() {
-                        if file_name.to_string_lossy() == "index.md" {
-                            println!("{}", raw_file_path.to_string_lossy());
-                            let raw = fs::read_to_string(raw_file_path)?;
-                            let raw = get_middle_content(raw);
-                            let v: Value = serde_yaml::from_str(raw.as_str())?;
-                            array.push(build_json(v));
-                        }
-                    }
-                }
-            }
+        let command_path = command_entry.path();
+        if let Some(file_name) = command_path.file_name() && file_name.to_string_lossy().ends_with(".md") {
+            println!("{:?}", file_name);
+            let raw = fs::read_to_string(command_path)?;
+            let raw = get_middle_content(raw);
+            let v: Value = serde_yaml::from_str(raw.as_str())?;
+            array.push(build_json(v));
         }
     }
 
