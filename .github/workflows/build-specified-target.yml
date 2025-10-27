@@ -95,7 +95,7 @@ jobs:
           mv ./target/${{ github.event.inputs.target }}/release/ratisui ./artifacts
           mv META-INF ./artifacts
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ratisui-${{ github.event.inputs.target }}
           compression-level: 9
