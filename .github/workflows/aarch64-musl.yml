@@ -1,0 +1,34 @@
+name: Build Aarch64 Musl
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        rust: [stable]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+    - name: rust-toolchain
+      uses: dtolnay/rust-toolchain@v1
+      with:
+        toolchain: stable
+        target: aarch64-unknown-linux-musl
+    - name: Cargo
+      uses: actions-rs/cargo@v1
+      with:
+          use-cross: true
+          command: build
+          args: --target aarch64-unknown-linux-musl --release
+    - name: Archive
+      run: tar -czvf ./target/aarch64-unknown-linux-musl/release/ratisui-linux-aarch64.tar.gz LICENSE README.md -C ./target/aarch64-unknown-linux-musl/release ratisui
+    - name: Print Dir
+      run: ls -lah ./target/aarch64-unknown-linux-musl/release
