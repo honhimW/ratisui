@@ -6,7 +6,9 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use deadpool_redis::redis::{Cmd, Value, VerbatimFormat};
 use itertools::Itertools;
 use ratatui::Frame;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind};
+use ratatui::crossterm::event::{
+    KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
+};
 use ratatui::layout::Constraint::{Fill, Length, Min};
 use ratatui::layout::{Layout, Rect};
 use ratatui::prelude::{Line, Stylize};
@@ -16,13 +18,13 @@ use ratatui::widgets::WidgetRef;
 use ratisui_core::bus::{GlobalEvent, publish_event};
 use ratisui_core::configuration::{CliOutputFormatKind, load_history, save_history};
 use ratisui_core::marcos::KeyAsserter;
-use ratisui_core::redis_opt::{Disposable, spawn_redis_opt};
+use ratisui_core::redis_opt::{Disposable, DisposableMonitor, spawn_redis_opt};
 use ratisui_core::serde_wrapper::to_ron_string;
 use ratisui_core::theme::get_color;
 use ratisui_core::utils::{bytes_to_string, escape_string, split_args, try_decode_arg};
 use std::cmp;
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 use strum::Display;
 use throbber_widgets_tui::{Throbber, ThrobberState};
@@ -40,7 +42,7 @@ pub struct CliTab {
     console_data: ConsoleData<'static>,
     data_sender: Sender<Value>,
     data_receiver: Receiver<Value>,
-    disposable: Arc<Mutex<Option<Box<dyn Disposable>>>>,
+    disposable: Arc<RwLock<Option<DisposableMonitor>>>,
     listen_state: (ThrobberState, Instant),
     input_throbber_state: ThrobberState,
 
@@ -108,18 +110,24 @@ impl Renderable for CliTab {
         let mut needed = false;
         if self.is_listening() {
             needed = true;
-            loop {
-                match self.data_receiver.try_recv() {
-                    Ok(v) => {
-                        let lines = self.value_to_lines(&v, 0);
-                        self.console_data.extend(lines);
-                        self.console_data.build_paragraph();
+            let arc = Arc::clone(&self.disposable);
+            let mut result = arc.write();
+            for _ in 0..100 {
+                if let Ok(ref mut disposable) = result
+                    && let Some(instance) = disposable.as_mut()
+                {
+                    match instance.try_recv() {
+                        Ok(v) => {
+                            let lines = self.value_to_lines(&v, 0);
+                            self.console_data.extend(lines);
+                            self.console_data.build_paragraph();
+                        }
+                        Err(_) => break,
                     }
-                    Err(_) => break,
                 }
             }
         } else {
-            loop {
+            for _ in 0..100 {
                 match self.data_receiver.try_recv() {
                     Ok(v) => {
                         let lines = self.value_to_lines(&v, 0);
@@ -342,10 +350,9 @@ impl Listenable for CliTab {
                 self.scroll_up();
                 true
             }
-            _ => false
+            _ => false,
         })
     }
-
 
     fn on_app_event(&mut self, app_event: AppEvent) -> Result<()> {
         match app_event.clone() {
@@ -394,7 +401,7 @@ impl CliTab {
             console_data: ConsoleData::new(default_console_capacity),
             data_sender: tx,
             data_receiver: rx,
-            disposable: Arc::new(Mutex::new(None)),
+            disposable: Arc::new(RwLock::new(None)),
             listen_state: (ThrobberState::default(), Instant::now()),
             input_throbber_state: ThrobberState::default(),
             output_format: CliOutputFormatKind::default(),
@@ -407,10 +414,10 @@ impl CliTab {
 
     fn do_dispose(&mut self) {
         let arc = Arc::clone(&self.disposable);
-        let result = arc.lock();
+        let result = arc.write();
         if let Ok(mut disposable) = result {
             if let Some(instance) = disposable.as_mut() {
-                let _ = instance.disposable();
+                let _ = instance.dispose();
             }
             *disposable = None;
         }
@@ -478,8 +485,8 @@ Example:
             let sender_clone = self.data_sender.clone();
             spawn_redis_opt(move |operations| async move {
                 let x = operations.monitor(sender_clone).await?;
-                if let Ok(mut monitor) = arc.lock() {
-                    *monitor = Some(Box::new(x));
+                if let Ok(mut monitor) = arc.write() {
+                    *monitor = Some(x);
                 }
                 Ok::<(), Error>(())
             })
@@ -489,8 +496,8 @@ Example:
             let sender_clone = self.data_sender.clone();
             spawn_redis_opt(move |operations| async move {
                 let x = operations.subscribe(args[1].clone(), sender_clone).await?;
-                if let Ok(mut subscriber) = arc.lock() {
-                    *subscriber = Some(Box::new(x));
+                if let Ok(mut subscriber) = arc.write() {
+                    *subscriber = Some(x);
                 }
                 Ok::<(), Error>(())
             })
@@ -500,8 +507,8 @@ Example:
             let sender_clone = self.data_sender.clone();
             spawn_redis_opt(move |operations| async move {
                 let x = operations.psubscribe(args[1].clone(), sender_clone).await?;
-                if let Ok(mut p_subscriber) = arc.lock() {
-                    *p_subscriber = Some(Box::new(x));
+                if let Ok(mut p_subscriber) = arc.write() {
+                    *p_subscriber = Some(x);
                 }
                 Ok::<(), Error>(())
             })
@@ -571,7 +578,7 @@ Example:
 
     fn is_listening(&self) -> bool {
         let arc = Arc::clone(&self.disposable);
-        let read_result = arc.lock();
+        let read_result = arc.read();
         if let Ok(disposable) = read_result {
             disposable.is_some()
         } else {
@@ -695,8 +702,12 @@ fn value_to_lines_in_redis(value: &Value, pad: u16) -> Vec<(OutputKind, String)>
                     if let Some((kind, first_line)) = sub_lines.get(0) {
                         if first_line.len() > 2 {
                             match kind {
-                                OutputKind::STD => lines.push(format(&format!("{i}) {first_line}"))),
-                                OutputKind::ERR => lines.push(format_err(&format!("{i}) {first_line}"))),
+                                OutputKind::STD => {
+                                    lines.push(format(&format!("{i}) {first_line}")))
+                                }
+                                OutputKind::ERR => {
+                                    lines.push(format_err(&format!("{i}) {first_line}")))
+                                }
                                 _ => {}
                             }
                         } else {
@@ -727,7 +738,9 @@ fn value_to_lines_in_redis(value: &Value, pad: u16) -> Vec<(OutputKind, String)>
                     if let Some((kind, first_line)) = k_lines.get(0) {
                         match kind {
                             OutputKind::STD => lines.push(format(&format!("{i}) {first_line}"))),
-                            OutputKind::ERR => lines.push(format_err(&format!("{i}) {first_line}"))),
+                            OutputKind::ERR => {
+                                lines.push(format_err(&format!("{i}) {first_line}")))
+                            }
                             _ => {}
                         }
                     }
@@ -740,7 +753,9 @@ fn value_to_lines_in_redis(value: &Value, pad: u16) -> Vec<(OutputKind, String)>
                     if let Some((kind, first_line)) = v_lines.get(0) {
                         match kind {
                             OutputKind::STD => lines.push(format(&format!("{i}) {first_line}"))),
-                            OutputKind::ERR => lines.push(format_err(&format!("{i}) {first_line}"))),
+                            OutputKind::ERR => {
+                                lines.push(format_err(&format!("{i}) {first_line}")))
+                            }
                             _ => {}
                         }
                     }
@@ -762,7 +777,9 @@ fn value_to_lines_in_redis(value: &Value, pad: u16) -> Vec<(OutputKind, String)>
                     if let Some((kind, first_line)) = sub_lines.get(0) {
                         match kind {
                             OutputKind::STD => lines.push(format(&format!("{i}) {first_line}"))),
-                            OutputKind::ERR => lines.push(format_err(&format!("{i}) {first_line}"))),
+                            OutputKind::ERR => {
+                                lines.push(format_err(&format!("{i}) {first_line}")))
+                            }
                             _ => {}
                         }
                     }

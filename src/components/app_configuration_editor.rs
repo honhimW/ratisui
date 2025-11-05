@@ -36,8 +36,8 @@ pub struct Options {
     try_format_rect: Rect,
     theme_rect: Rect,
     history_size_rect: Rect,
-    cli_out_put_format_rect: Rect,
     console_capacity_rect: Rect,
+    cli_out_put_format_rect: Rect,
     enable_mouse_capture_rect: Rect,
 }
 
@@ -54,10 +54,10 @@ enum Editing {
     Theme,
     #[strum(serialize = "History Size")]
     HistorySize,
-    #[strum(serialize = "Cli Output Format")]
-    CliOutputFormat,
     #[strum(serialize = "Console Capacity")]
     ConsoleCapacity,
+    #[strum(serialize = "Cli Output Format")]
+    CliOutputFormat,
     #[strum(serialize = "Enable Mouse Capture")]
     EnableMouseCapture,
 }

@@ -1,6 +1,6 @@
 [package]
 name = "ratisui-macros"
-version = { workspace = true }
+version.workspace = true
 edition = {workspace = true}
 
 [lib]
