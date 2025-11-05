@@ -154,7 +154,7 @@ jobs:
         asset_name: ratisui-linux-aarch64.tar.gz
         asset_content_type: application/octet-stream
 
-  build-linux-musl:
+  build-linux-musl-amd64:
     runs-on: ${{ matrix.os }}
     needs: create_release
     strategy:
@@ -162,8 +162,7 @@ jobs:
         os: [ubuntu-22.04]
         rust: [stable]
     outputs:
-      linux_amd64_sha256: ${{ steps.linux_musl.outputs.amd64_sha256 }}
-      linux_aarch64_sha256: ${{ steps.linux_musl.outputs.aarch64_sha256 }}
+      linux_sha256: ${{ steps.linux_musl.outputs.amd64_sha256 }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v5
@@ -172,34 +171,18 @@ jobs:
       with:
         toolchain: stable
         target: x86_64-unknown-linux-musl
-    - name: Add aarch64 musl
-      uses: dtolnay/rust-toolchain@v1
-      with:
-        toolchain: stable
-        target: aarch64-unknown-linux-musl
-
     - name: Build amd64
       uses: actions-rs/cargo@v1
       with: 
           use-cross: true
           command: build
           args: --target x86_64-unknown-linux-musl --release
-    - name: Build aarch64
-      uses: actions-rs/cargo@v1
-      with:
-          use-cross: true
-          command: build
-          args: --target aarch64-unknown-linux-musl --release
     - name: Package (Linux-musl)
       id: linux_musl
       run: |
         tar -czvf ./target/x86_64-unknown-linux-musl/release/ratisui-linux-musl-amd64.tar.gz LICENSE README.md -C ./target/x86_64-unknown-linux-musl/release ratisui
-        tar -czvf ./target/aarch64-unknown-linux-musl/release/ratisui-linux-musl-aarch64.tar.gz LICENSE README.md -C ./target/aarch64-unknown-linux-musl/release ratisui
         AMD64_SHA256=$(sha256sum ./target/x86_64-unknown-linux-musl/release/ratisui-linux-musl-amd64.tar.gz | awk '{print $1}')
-        AARCH64_SHA256=$(sha256sum ./target/aarch64-unknown-linux-musl/release/ratisui-linux-musl-aarch64.tar.gz | awk '{print $1}')
         echo "amd64_sha256=$AMD64_SHA256" >> $GITHUB_OUTPUT
-        echo "aarch64_sha256=$AARCH64_SHA256" >> $GITHUB_OUTPUT
-
     - name: Upload Release Asset (Linux-musl-amd64)
       uses: actions/upload-release-asset@v1
       env:
@@ -209,6 +192,36 @@ jobs:
         asset_path: ./target/amd64-unknown-linux-musl/release/ratisui-linux-musl-amd64.tar.gz
         asset_name: ratisui-linux-musl-amd64.tar.gz
         asset_content_type: application/octet-stream
+
+  build-linux-musl-aarch64:
+    runs-on: ${{ matrix.os }}
+    needs: create_release
+    strategy:
+      matrix:
+        os: [ubuntu-22.04]
+        rust: [stable]
+    outputs:
+      linux_sha256: ${{ steps.linux_musl.outputs.aarch64_sha256 }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+    - name: Add aarch64 musl
+      uses: dtolnay/rust-toolchain@v1
+      with:
+        toolchain: stable
+        target: aarch64-unknown-linux-musl
+    - name: Build aarch64
+      uses: actions-rs/cargo@v1
+      with:
+          use-cross: true
+          command: build
+          args: --target aarch64-unknown-linux-musl --release
+    - name: Package (Linux-musl)
+      id: linux_musl
+      run: |
+        tar -czvf ./target/aarch64-unknown-linux-musl/release/ratisui-linux-musl-aarch64.tar.gz LICENSE README.md -C ./target/aarch64-unknown-linux-musl/release ratisui
+        AARCH64_SHA256=$(sha256sum ./target/aarch64-unknown-linux-musl/release/ratisui-linux-musl-aarch64.tar.gz | awk '{print $1}')
+        echo "aarch64_sha256=$AARCH64_SHA256" >> $GITHUB_OUTPUT
     - name: Upload Release Asset (Linux-musl-aarch64)
       uses: actions/upload-release-asset@v1
       env:
@@ -218,7 +231,7 @@ jobs:
         asset_path: ./target/aarch64-unknown-linux-musl/release/ratisui-linux-musl-aarch64.tar.gz
         asset_name: ratisui-linux-musl-aarch64.tar.gz
         asset_content_type: application/octet-stream
-  
+
   build-mac-intel:
     runs-on: ${{ matrix.os }}
     needs: create_release
