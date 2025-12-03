@@ -43,6 +43,9 @@ fn log_cmd(cmd: &Cmd) {
 fn format_cmd(cmd: &Cmd) -> String {
     let mut s = String::new();
     for x in cmd.args_iter() {
+        if !s.is_empty() {
+            s.push(' ');
+        }
         s.push('"');
         match x {
             Arg::Simple(a) => s.push_str(String::from_utf8_lossy(a).as_ref()),
