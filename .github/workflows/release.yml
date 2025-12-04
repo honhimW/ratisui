@@ -21,7 +21,7 @@ jobs:
     - name: Valid Version
       run: |
         PACKAGE_VERSION=$(cargo info ratisui | grep '^version:' | awk '{print $2}')
-        echo "Detected version: PACKAGE_VERSION"
+        echo "Detected version: $PACKAGE_VERSION"
         echo "Expected version: ${{ github.event.inputs.major_version }}"
 
         if [ "$PACKAGE_VERSION" = "${{ github.event.inputs.major_version }}" ]; then
