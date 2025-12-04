@@ -73,7 +73,7 @@ impl SshTunnel {
                 )
                 .await?;
             if let AuthResult::Failure { .. } = auth_result {
-                return bail!("ssh authenticate with public-key failure");
+                bail!("ssh authenticate with public-key failure")
             }
             let channel = ssh_client
                 .channel_open_direct_tcpip(
