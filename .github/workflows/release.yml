@@ -207,7 +207,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./target/amd64-unknown-linux-musl/release/ratisui-linux-musl-amd64.tar.gz
+        asset_path: ./target/x86_64-unknown-linux-musl/release/ratisui-linux-musl-amd64.tar.gz
         asset_name: ratisui-linux-musl-amd64.tar.gz
         asset_content_type: application/octet-stream
 
