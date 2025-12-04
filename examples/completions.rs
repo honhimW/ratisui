@@ -9,7 +9,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::symbols::scrollbar::Set;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Block, BorderType, Cell, Clear, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
+    Block, BorderType, Cell, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
     TableState,
 };
 use ratatui::Frame;
@@ -17,6 +17,7 @@ use std::cmp;
 use std::time::Duration;
 use strum::Display;
 use tui_textarea::{CursorMove, TextArea};
+use ratisui_core::utils::clear_frame;
 
 fn main() -> Result<()> {
     let mut terminal = ratatui::init();
@@ -78,7 +79,7 @@ fn main() -> Result<()> {
 
             frame.render_widget(&text_area, area);
             if show_table {
-                frame.render_widget(Clear::default(), menu_area);
+                clear_frame(frame, menu_area);
                 frame.render_stateful_widget(table, menu_area, &mut table_state);
                 if should_scroll {
                     frame.render_stateful_widget(

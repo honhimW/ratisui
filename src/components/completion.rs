@@ -8,14 +8,14 @@ use ratatui::style::{Color, Style, Stylize};
 use ratatui::symbols::scrollbar::Set;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{
-    Block, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    Block, Borders, Cell, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
     Table, TableState, Wrap,
 };
 use ratatui::{Frame, symbols};
 use ratisui_core::bus::GlobalEvent;
 use ratisui_core::redis_opt::redis_operations;
 use ratisui_core::theme::get_color;
-use ratisui_core::utils::{clean_text_area, compare_version_strings, right_pad};
+use ratisui_core::utils::{clean_text_area, clear_frame, compare_version_strings, right_pad};
 use std::cmp;
 use std::cmp::Ordering;
 use strum::Display;
@@ -135,7 +135,7 @@ impl Renderable for CompletableTextArea<'_> {
             );
         }
         if self.show_menu && self.completion_items.len() > 0 {
-            frame.render_widget(Clear::default(), menu_area);
+            clear_frame(frame, menu_area);
             let vertical = Layout::vertical([Fill(1), Length(1)]).split(menu_area);
             frame.render_stateful_widget(table, vertical[0], &mut self.table_state);
             self.render_menu_footer(frame, vertical[1]);
@@ -513,7 +513,7 @@ impl CompletableTextArea<'_> {
             width: desc_width,
             height: desc_height,
         };
-        frame.render_widget(Clear::default(), desc_area);
+        clear_frame(frame, desc_area);
         frame.render_widget(paragraph, desc_area);
     }
 }

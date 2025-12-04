@@ -5,9 +5,10 @@ use ratatui::style::Style;
 use ratatui::symbols::border::Set;
 use ratatui::text::Text;
 use ratatui::widgets::block::Position;
-use ratatui::widgets::{Block, Borders, Clear};
+use ratatui::widgets::{Block, Borders};
 use ratatui::{symbols};
 use std::fmt::{Display, Formatter};
+use ratisui_core::utils::clear_buffer;
 
 pub struct Popup<W: Widget> {
     pub title_position: Position,
@@ -99,7 +100,7 @@ impl<W: Widget> Popup<W> {
 
 impl<W: Widget> Widget for Popup<W> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        Clear::default().render(area, buf);
+        clear_buffer(buf, area);
         let popup_block = Block::default()
             .title_position(self.title_position)
             .title(self.title.unwrap_or_else(String::new))

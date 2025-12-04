@@ -12,14 +12,14 @@ use ratatui::layout::Constraint::{Fill, Length, Max, Min};
 use ratatui::layout::{Alignment, Layout, Rect};
 use ratatui::prelude::{Color, Span, Style, Stylize, Text};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, WidgetRef, Wrap};
+use ratatui::widgets::{Block, Borders, Paragraph, Tabs, WidgetRef, Wrap};
 use ratatui::{symbols, Frame};
 use ratisui_core::bus::{publish_msg, GlobalEvent, Kind, Message};
 use ratisui_core::configuration::{load_database_configuration, load_theme_configuration, Configuration, Databases};
 use ratisui_core::marcos::KeyAsserter;
 use ratisui_core::redis_opt::{redis_operations, switch_client};
 use ratisui_core::theme::get_color;
-use ratisui_core::utils::none_match;
+use ratisui_core::utils::{clear_frame, none_match};
 use std::time::Instant;
 use log::{info, warn};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
@@ -245,7 +245,7 @@ impl Context {
             let top = Layout::vertical([Length(line_count as u16), Fill(0)]).split(rect)[0];
             let top_right_area = Layout::horizontal([Fill(0), Length(35)]).split(top)[1];
 
-            frame.render_widget(Clear::default(), top_right_area);
+            clear_frame(frame, top_right_area);
             frame.render_widget(paragraph, top_right_area);
         }
         Ok(())

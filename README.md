@@ -2,15 +2,25 @@
 
 ![gif](./assets/ratisui.gif)
 
-- [Installation](#Installation)
-  - [Package Manager](#package-manager)
-    - [Windows](#Windows)
-    - [Mac](#Mac)
-  - [Cargo](#Cargo)
-  - [Download](#download)
-- [Quick Start](#quick-start)
-- [Configuration](#data-storage)
-- [Features](#Features)
+<!-- TOC -->
+* [Ratisui](#ratisui)
+  * [Installation](#installation)
+    * [Shell](#shell)
+    * [Package Manager](#package-manager)
+      * [Windows](#windows)
+        * [WinGet](#winget)
+      * [Mac](#mac)
+        * [Homebrew Tap](#homebrew-tap)
+    * [Cargo](#cargo)
+    * [Download](#download)
+    * [Build from source](#build-from-source)
+  * [Quick Start](#quick-start)
+  * [Data storage](#data-storage)
+    * [Application Configuration](#application-configuration)
+    * [Databases Configuration](#databases-configuration)
+    * [Themes Configuration](#themes-configuration)
+  * [Features](#features)
+<!-- TOC -->
 
 ## Installation
 

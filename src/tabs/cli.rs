@@ -2,10 +2,9 @@ use crate::app::{AppEvent, Listenable, Renderable, TabImplementation};
 use crate::components::console_output::{ConsoleData, OutputKind};
 use crate::components::redis_cli::RedisCli;
 use anyhow::{Error, Result};
-use crossbeam_channel::{Receiver, Sender, unbounded};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use deadpool_redis::redis::{Cmd, Value, VerbatimFormat};
 use itertools::Itertools;
-use ratatui::Frame;
 use ratatui::crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
 };
@@ -15,13 +14,14 @@ use ratatui::prelude::{Line, Stylize};
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use ratatui::widgets::WidgetRef;
-use ratisui_core::bus::{GlobalEvent, publish_event};
-use ratisui_core::configuration::{CliOutputFormatKind, load_history, save_history};
+use ratatui::Frame;
+use ratisui_core::bus::{publish_event, GlobalEvent};
+use ratisui_core::configuration::{load_history, save_history, CliOutputFormatKind};
 use ratisui_core::marcos::KeyAsserter;
-use ratisui_core::redis_opt::{Disposable, DisposableMonitor, spawn_redis_opt};
+use ratisui_core::redis_opt::{spawn_redis_opt, Disposable, DisposableMonitor};
 use ratisui_core::serde_wrapper::to_ron_string;
 use ratisui_core::theme::get_color;
-use ratisui_core::utils::{bytes_to_string, escape_string, split_args, try_decode_arg};
+use ratisui_core::utils::{deserialize_bytes, escape_string, split_args, try_decode_arg, ContentType};
 use std::cmp;
 use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
@@ -629,9 +629,9 @@ Example:
 fn value_to_lines_in_ron(value: &Value, _: u16) -> Vec<(OutputKind, String)> {
     match value {
         Value::BulkString(bulk_string) => {
-            let bulk_string =
-                bytes_to_string(bulk_string.clone()).unwrap_or_else(|e| e.to_string());
-            vec![(OutputKind::Raw, bulk_string)]
+            let (bulk_string, content_type) = deserialize_bytes(bulk_string.clone())
+                .unwrap_or_else(|e| (e.to_string(), Some(ContentType::String)));
+            vec![(OutputKind::Raw(content_type), bulk_string)]
         }
         Value::Nil => vec![(OutputKind::STD, "(Nil)".to_string())],
         Value::Int(i) => vec![(OutputKind::STD, format!("{}", i))],
@@ -662,7 +662,7 @@ fn value_to_lines_in_ron(value: &Value, _: u16) -> Vec<(OutputKind, String)> {
         },
         value => {
             if let Ok(s) = to_ron_string(&value) {
-                vec![(OutputKind::Raw, s)]
+                vec![(OutputKind::Raw(Some(ContentType::Ron)), s)]
             } else {
                 vec![(
                     OutputKind::ERR,
@@ -682,10 +682,10 @@ fn value_to_lines_in_redis(value: &Value, pad: u16) -> Vec<(OutputKind, String)>
         Value::Nil => vec![format_no_pad("(Nil)")],
         Value::Int(int) => vec![format_no_pad(int.to_string().as_ref())],
         Value::BulkString(bulk_string) => {
-            let bulk_string =
-                bytes_to_string(bulk_string.clone()).unwrap_or_else(|e| e.to_string());
+            let (bulk_string, content_type) = deserialize_bytes(bulk_string.clone())
+                .unwrap_or_else(|e| (e.to_string(), Some(ContentType::String)));
             if pad == 0 {
-                vec![(OutputKind::Raw, bulk_string)]
+                vec![(OutputKind::Raw(content_type), bulk_string)]
             } else {
                 let bulk_string = bulk_string.replace("\t", "\\t");
                 // let bulk_string = format!("\"{}\"", bulk_string);

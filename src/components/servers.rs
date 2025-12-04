@@ -24,7 +24,7 @@ use ratatui::crossterm::event::{KeyEvent, KeyModifiers, MouseEvent};
 use ratatui::layout::Alignment;
 use ratatui::layout::Constraint::Length;
 use ratatui::widgets::block::Position;
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 use ratatui::{
     Frame,
     crossterm::event::{KeyCode, KeyEventKind},
@@ -46,6 +46,7 @@ use std::string::ToString;
 use unicode_width::UnicodeWidthStr;
 use ratisui_core::marcos::KeyAsserter;
 use ratisui_core::mouse::MouseEventHelper;
+use ratisui_core::utils::clear_frame;
 
 const ITEM_HEIGHT: usize = 4;
 
@@ -480,7 +481,7 @@ impl ServerList {
 impl Renderable for ServerList {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
         self.list_rect = rect;
-        frame.render_widget(Clear::default(), rect);
+        clear_frame(frame, rect);
         let block = Block::bordered()
             .title("Servers")
             .border_set(symbols::border::DOUBLE)

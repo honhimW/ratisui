@@ -1,10 +1,16 @@
+use crate::theme::get_color;
 use anyhow::anyhow;
 use base64::Engine;
 use jaded::Parser;
 use protobuf::UnknownValueRef;
 use protobuf::reflect::MessageDescriptor;
 use protobuf::well_known_types::any::Any;
+use ratatui::Frame;
+use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::layout::Rect;
+use ratatui::prelude::Style;
+use ratatui::widgets::{Block, Clear, Widget};
 use ron::ser::PrettyConfig;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -15,17 +21,17 @@ use strum::Display;
 use tui_textarea::TextArea;
 
 #[allow(unused)]
-#[derive(Default, Clone, Display)]
+#[derive(Default, Clone, Display, Debug)]
 pub enum ContentType {
     String,
     #[default]
     Json,
     Xml,
     Ron,
-    // JavaSerialized,
+    JavaSerialized,
+    Protobuf,
     // PhpSerialized,
     // CSharpSerialized,
-    // Protobuf,
 }
 
 pub fn none_match(key_event: &KeyEvent, key_code: KeyCode) -> bool {
@@ -61,11 +67,21 @@ pub fn clean_text_area(text_area: &mut TextArea) {
     });
 }
 
+pub fn clear_frame(frame: &mut Frame, area: Rect) {
+    clear_buffer(frame.buffer_mut(), area);
+}
+
+pub fn clear_buffer(buf: &mut Buffer, area: Rect) {
+    Clear::default().render(area, buf);
+    let block = Block::default().style(Style::default().bg(get_color(|t| &t.context.bg)));
+    block.render(area, buf);
+}
+
 pub fn deserialize_bytes(bytes: Vec<u8>) -> anyhow::Result<(String, Option<ContentType>)> {
     let des_result = des_java(bytes.clone());
     if des_result.is_ok() {
         let string = des_result?;
-        return Ok((string, Some(ContentType::Ron)));
+        return Ok((string, Some(ContentType::JavaSerialized)));
     }
 
     let des_utf8 = String::from_utf8(bytes.clone());
@@ -75,7 +91,7 @@ pub fn deserialize_bytes(bytes: Vec<u8>) -> anyhow::Result<(String, Option<Conte
     let des_result = des_protobuf(bytes.clone());
     if des_result.is_ok() {
         let string = des_result?;
-        return Ok((string, Some(ContentType::Ron)));
+        return Ok((string, Some(ContentType::Protobuf)));
     }
     Ok((
         bytes

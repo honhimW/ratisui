@@ -23,14 +23,14 @@ use ratatui::style::{Color, Modifier};
 use ratatui::text::Span;
 use ratatui::widgets::block::Position;
 use ratatui::widgets::{
-    Block, Borders, Clear, Padding, Paragraph, Scrollbar, ScrollbarOrientation,
+    Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation,
 };
 use ratatui::{Frame, symbols};
 use ratisui_core::bus::{GlobalEvent, Message, publish_event, publish_msg};
 use ratisui_core::marcos::KeyAsserter;
 use ratisui_core::redis_opt::{async_redis_opt, redis_operations, spawn_redis_opt};
 use ratisui_core::theme::get_color;
-use ratisui_core::utils::{ContentType, deserialize_bytes};
+use ratisui_core::utils::{ContentType, deserialize_bytes, clear_frame};
 use ratisui_core::utils::{bytes_to_string, clean_text_area};
 use std::collections::HashMap;
 use tokio::join;
@@ -484,7 +484,7 @@ impl ExplorerTab {
                 .border_style(self.border_color(KeysTree))
                 .title(format!("Scan Keys ({})", self.scan_keys_result.len())),
         );
-        frame.render_widget(Clear::default(), area);
+        clear_frame(frame, area);
         frame.render_widget(&self.filter_text_area, area);
         Ok(())
     }

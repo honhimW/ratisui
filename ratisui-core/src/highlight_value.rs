@@ -100,6 +100,8 @@ impl HighlightProcessor {
                 ContentType::String => self.process_plain()?,
                 ContentType::Json => self.process_json()?,
                 ContentType::Xml => self.process_xml()?,
+                ContentType::JavaSerialized |
+                ContentType::Protobuf |
                 ContentType::Ron => self.process_ron()?,
             };
             return Ok(());

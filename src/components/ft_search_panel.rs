@@ -6,12 +6,13 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::layout::Constraint::Percentage;
 use ratatui::layout::{Layout, Rect};
-use ratatui::widgets::{Block, BorderType, Clear};
+use ratatui::widgets::{Block, BorderType};
 use ratatui::Frame;
 use ratisui_core::redis_opt::spawn_redis_opt;
 use deadpool_redis::redis::{FromRedisValue, RedisResult, Value};
 use std::collections::HashMap;
 use substring::Substring;
+use ratisui_core::utils::clear_frame;
 
 pub struct FtSearchPanel<'a> {
     editing: Editing,
@@ -555,7 +556,7 @@ If you use the LIMIT option without sorting, the results returned are non-determ
 
 impl Renderable for FtSearchPanel<'_> {
     fn render_frame(&mut self, frame: &mut Frame, rect: Rect) -> Result<()> {
-        frame.render_widget(Clear::default(), rect);
+        clear_frame(frame, rect);
         let vertical = Layout::vertical([Percentage(50), Percentage(50)]).split(rect);
 
         let index_area = self.index_block.inner(vertical[0]);

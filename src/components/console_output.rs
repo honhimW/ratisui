@@ -10,8 +10,9 @@ use ratatui::buffer::Buffer;
 use ratatui::symbols::scrollbar::Set;
 use strum::Display;
 use OutputKind::{ERR, STD, CMD, Else, Raw};
-use crate::components::raw_value::raw_value_to_highlight_text;
+use crate::components::raw_value::raw_value_to_highlight_text_with_content_type;
 use ratisui_core::theme::get_color;
+use ratisui_core::utils::ContentType;
 
 pub struct ConsoleData<'a> {
     lines: VecDeque<(OutputKind, String)>,
@@ -33,7 +34,7 @@ pub enum OutputKind {
     STD,
     ERR,
     Else(Style),
-    Raw,
+    Raw(Option<ContentType>),
 }
 
 impl WidgetRef for ConsoleData<'_> {
@@ -83,19 +84,22 @@ impl ConsoleData<'_> {
                 STD => line![span!(Style::default().fg(get_color(|t| &t.tab.cli.console.out)); l.clone())],
                 ERR => line![span!(Style::default().fg(get_color(|t| &t.tab.cli.console.err)); l.clone())],
                 Else(style) => line![span!(*style; l.clone())],
-                Raw => line![],
+                Raw(_) => line![],
             };
             text.push_line(new_line);
-            if matches!(kind, Raw) {
-                let (highlight_text, content_type) = raw_value_to_highlight_text(Cow::from(l.clone()), true);
-                let ct = content_type.map(|ct| ct.to_string()).unwrap_or_default();
+            if let Raw(content_type) = kind {
+                let (highlight_text, content_type) = raw_value_to_highlight_text_with_content_type(Cow::from(l.clone()), content_type.clone(), true);
+                let ct = content_type.map(|ct| match ct {
+                    ContentType::JavaSerialized => format!("{} {}", ContentType::Ron, ContentType::JavaSerialized),
+                    ContentType::Protobuf  => format!("{} {}", ContentType::Ron, ContentType::Protobuf),
+                    _ => ct.to_string(),
+                }).unwrap_or_default();
                 text.push_line(line![span!(Style::default().dim(); format!("```{ct}"))]);
                 for x in highlight_text.lines {
                     text.push_line(x)
                 }
                 text.push_line(line![span!(Style::default().dim(); "```")])
             }
-
         }
         let paragraph = Paragraph::new(text)
             .wrap(Wrap { trim: false })

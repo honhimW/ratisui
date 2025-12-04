@@ -1,11 +1,11 @@
 use crate::app::{Listenable, Renderable};
-use ratisui_core::utils::clean_text_area;
+use ratisui_core::utils::{clean_text_area, clear_frame};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Constraint::{Fill, Length, Percentage};
 use ratatui::layout::{Layout, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::text::Span;
-use ratatui::widgets::{Block, BorderType, Clear};
+use ratatui::widgets::{Block, BorderType};
 use ratatui::Frame;
 use std::cmp;
 use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
@@ -178,7 +178,7 @@ impl Renderable for Form {
         let area = Layout::vertical([Length(blank_length), Length(height), Length(blank_length)]).split(rect)[1];
         let area = Layout::horizontal([Percentage(20), Percentage(60), Percentage(20)]).split(area)[1];
         // let area = centered_rect(50, 70, rect);
-        frame.render_widget(Clear::default(), area);
+        clear_frame(frame, area);
         let block = Block::bordered()
             .title(self.title.clone())
             .border_type(BorderType::Rounded);

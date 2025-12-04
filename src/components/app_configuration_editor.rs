@@ -5,13 +5,13 @@ use ratatui::layout::Constraint::{Fill, Length, Percentage};
 use ratatui::layout::{Layout, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::text::Span;
-use ratatui::widgets::{Block, BorderType, Clear};
+use ratatui::widgets::{Block, BorderType};
 use ratisui_core::bus::{GlobalEvent, publish_event};
 use ratisui_core::configuration::{CliOutputFormatKind, Configuration, save_configuration};
 use ratisui_core::marcos::KeyAsserter;
 use ratisui_core::mouse::MouseEventHelper;
 use ratisui_core::theme::get_color;
-use ratisui_core::utils::clean_text_area;
+use ratisui_core::utils::{clean_text_area, clear_frame};
 use std::cmp;
 use std::sync::Arc;
 use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
@@ -327,7 +327,7 @@ impl Renderable for Options {
         let area =
             Layout::horizontal([Percentage(30), Percentage(40), Percentage(30)]).split(area)[1];
         // let area = centered_rect(50, 70, rect);
-        frame.render_widget(Clear::default(), area);
+        clear_frame(frame, area);
         let block = Block::bordered()
             .title("Options(*restart)")
             .border_type(BorderType::Rounded);
