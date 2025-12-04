@@ -8,12 +8,30 @@ on:
   workflow_dispatch:
     inputs:
       major_version:
-        description: 'Major Ver.'
+        description: 'major.minor.patch'
         required: true
         type: string
 
 jobs:
+  check_version:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+    - name: Valid Version
+      run: |
+        PACKAGE_VERSION=$(cargo info ratisui | grep '^version:' | awk '{print $2}')
+        echo "Detected version: PACKAGE_VERSION"
+        echo "Expected version: ${{ github.event.inputs.major_version }}"
+
+        if [ "$PACKAGE_VERSION" = "${{ github.event.inputs.major_version }}" ]; then
+          echo "Version matches"
+        else
+          echo "Version mismatch"
+          exit 1
+        fi
   create_release:
+    needs: check_version
     runs-on: ubuntu-latest
     outputs:
       upload_url: ${{ steps.set_output.outputs.upload_url }}
