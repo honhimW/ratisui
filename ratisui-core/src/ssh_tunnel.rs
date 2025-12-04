@@ -1,9 +1,9 @@
-use std::future::Future;
-use anyhow::{Context, Error, Result};
+use anyhow::{Context, Error, Result, bail};
 use log::{error, info, warn};
-use russh::client::{Config, Handler};
-use russh::keys::{load_secret_key, PrivateKey, PrivateKeyWithHashAlg, PublicKey};
+use russh::client::{AuthResult, Config, Handler};
+use russh::keys::{PrivateKey, PrivateKeyWithHashAlg, PublicKey, load_secret_key};
 use russh::Disconnect;
+use std::future::Future;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
@@ -25,7 +25,14 @@ pub struct SshTunnel {
 }
 
 impl SshTunnel {
-    pub fn new(host: String, port: u16, username: String, password: String, forwarding_host: String, forwarding_port: u16) -> Self {
+    pub fn new(
+        host: String,
+        port: u16,
+        username: String,
+        password: String,
+        forwarding_host: String,
+        forwarding_port: u16,
+    ) -> Self {
         let (tx, rx) = tokio::sync::watch::channel::<u8>(1);
         Self {
             host,
@@ -48,46 +55,65 @@ impl SshTunnel {
             Arc::new(Config::default()),
             format!("{}:{}", self.host, self.port),
             IHandler {},
-        ).await?;
+        )
+        .await?;
         let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).await?;
         let addr = listener.local_addr()?;
         let forwarding_host = self.forwarding_host.clone();
         let forwarding_port = self.forwarding_port as u32;
 
         if self.password.is_empty() {
-            ssh_client.authenticate_publickey(self.username.clone(), PrivateKeyWithHashAlg::new(
-                Arc::new(load_private_key()?),
-                ssh_client.best_supported_rsa_hash().await?.flatten(),
-            )).await?;
-            let channel = ssh_client.channel_open_direct_tcpip(
-                forwarding_host.clone(),
-                forwarding_port,
-                Ipv4Addr::LOCALHOST.to_string(),
-                addr.port() as u32,
-            ).await.context("cannot build ssh tunnel via public-key")?;
+            let auth_result = ssh_client
+                .authenticate_publickey(
+                    self.username.clone(),
+                    PrivateKeyWithHashAlg::new(
+                        Arc::new(load_private_key()?),
+                        ssh_client.best_supported_rsa_hash().await?.flatten(),
+                    ),
+                )
+                .await?;
+            if let AuthResult::Failure { .. } = auth_result {
+                return bail!("ssh authenticate with public-key failure");
+            }
+            let channel = ssh_client
+                .channel_open_direct_tcpip(
+                    forwarding_host.clone(),
+                    forwarding_port,
+                    Ipv4Addr::LOCALHOST.to_string(),
+                    addr.port() as u32,
+                )
+                .await
+                .context("cannot build ssh tunnel via public-key")?;
             channel.close().await?;
         } else {
-            ssh_client.authenticate_password(self.username.clone(), self.password.clone()).await?;
-            let channel = ssh_client.channel_open_direct_tcpip(
-                forwarding_host.clone(),
-                forwarding_port,
-                Ipv4Addr::LOCALHOST.to_string(),
-                addr.port() as u32,
-            ).await.context("cannot build ssh tunnel via password")?;
+            ssh_client
+                .authenticate_password(self.username.clone(), self.password.clone())
+                .await?;
+            let channel = ssh_client
+                .channel_open_direct_tcpip(
+                    forwarding_host.clone(),
+                    forwarding_port,
+                    Ipv4Addr::LOCALHOST.to_string(),
+                    addr.port() as u32,
+                )
+                .await
+                .context("cannot build ssh tunnel via password")?;
             channel.close().await?;
         }
-        
+
         let rx_clone = self.rx.clone();
         tokio::spawn(async move {
             loop {
                 let mut rx_clone_clone = rx_clone.clone();
                 if let Ok((mut local_stream, _)) = listener.accept().await {
-                    let channel = ssh_client.channel_open_direct_tcpip(
-                        forwarding_host.clone(),
-                        forwarding_port,
-                        Ipv4Addr::LOCALHOST.to_string(),
-                        addr.port() as u32,
-                    ).await?;
+                    let channel = ssh_client
+                        .channel_open_direct_tcpip(
+                            forwarding_host.clone(),
+                            forwarding_port,
+                            Ipv4Addr::LOCALHOST.to_string(),
+                            addr.port() as u32,
+                        )
+                        .await?;
                     let mut remote_stream = channel.into_stream();
                     tokio::spawn(async move {
                         select! {
@@ -105,7 +131,9 @@ impl SshTunnel {
                     });
                 }
                 if rx_clone.has_changed()? {
-                    ssh_client.disconnect(Disconnect::ByApplication, "exit", "none").await?;
+                    ssh_client
+                        .disconnect(Disconnect::ByApplication, "exit", "none")
+                        .await?;
                     break;
                 }
             }
@@ -133,8 +161,7 @@ impl SshTunnel {
 fn load_private_key() -> Result<PrivateKey> {
     let key_path = dirs::home_dir().context("cannot get home directory")?;
     let key_path = key_path.join(".ssh").join("id_rsa");
-    load_secret_key(key_path, None)
-        .context("cannot load secret_key")
+    load_secret_key(key_path, None).context("cannot load secret_key")
 }
 
 struct IHandler;
@@ -142,7 +169,10 @@ struct IHandler;
 impl Handler for IHandler {
     type Error = Error;
 
-    fn check_server_key(&mut self, _: &PublicKey) -> impl Future<Output=std::result::Result<bool, Self::Error>> + Send {
+    fn check_server_key(
+        &mut self,
+        _: &PublicKey,
+    ) -> impl Future<Output = std::result::Result<bool, Self::Error>> + Send {
         async { Ok(true) }
     }
 }
