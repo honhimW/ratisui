@@ -3,6 +3,14 @@
 
 set -e
 
+AUTO_YES=false
+for arg in "$@"; do
+  if [ "$arg" = "-y" ]; then
+    AUTO_YES=true
+    break
+  fi
+done
+
 REPO="honhimW/ratisui"
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -65,6 +73,16 @@ echo "Resource  : $DOWNLOAD_URL"
 echo "Sha256    : $SHA_256"
 echo "Size      : $SIZE"
 echo "Created at: $CREATED_AT"
+
+# Confirmation block
+if [ "$AUTO_YES" = false ]; then
+  read -p "Continue? (y/n): " choice
+  case "$choice" in
+    y|Y ) echo "Proceeding..." ;;
+    n|N ) echo "Aborted."; exit 1 ;;
+    * ) echo "Invalid input. Aborted."; exit 1 ;;
+  esac
+fi
 
 # Do download
 TMP_DIR="$(mktemp -d)"
