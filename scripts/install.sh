@@ -82,6 +82,8 @@ if [ "$AUTO_YES" = false ]; then
     n|N ) echo "Aborted."; exit 1 ;;
     * ) echo "Invalid input. Aborted."; exit 1 ;;
   esac
+else
+  echo "Auto-confirm enabled with '-y'."
 fi
 
 # Do download
