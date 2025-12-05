@@ -76,7 +76,7 @@ echo "Created at: $CREATED_AT"
 
 # Confirmation block
 if [ "$AUTO_YES" = false ]; then
-  read -p "Continue? (y/n): " choice
+  read -p "Continue? (y/n): " choice << /dev/tty
   case "$choice" in
     y|Y ) echo "Proceeding..." ;;
     n|N ) echo "Aborted."; exit 1 ;;
