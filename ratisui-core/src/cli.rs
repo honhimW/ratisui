@@ -1,4 +1,4 @@
-use clap::{Parser, arg};
+use clap::Parser;
 
 #[derive(Default, Clone, Debug, Parser)]
 #[command(name = "ratisui")]
